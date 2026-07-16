@@ -1,0 +1,160 @@
+# go-comic-kit 設計案（go-manga-kit 後継 / ap-comic 前提）
+
+Status: Draft（2026-07-17）
+
+> go-manga-kit の `/v2` として実装する案も検討したが、消費者が完全に分かれる
+> （go-manga-kit = ap-manga-web ショーケース専用として凍結、go-comic-kit = ap-comic 用）こと、
+> ap-comic とのブランド整合から、**新リポジトリ go-comic-kit** として開始した。
+> ゼロから書き直すのではなく、go-manga-kit の実証済み基盤コードを順次移植し、
+> 契約（API・データモデル）だけを本設計に差し替える。
+
+## 1. 背景と目的
+
+MCP 対応の新プロジェクト **ap-comic** では、以下が中核要件になる。
+
+- **履歴一覧**: 作品（ジョブ）単位の一覧・詳細参照
+- **パネル単位の再生成**: 動画側の `regenerate_cut_keyframe` と同様に、「12パネル中3番だけシードを振り直して再生成」できること
+- **1パネル内の複数キャラクターと関係性の表現**（本設計の最重要変更点）
+
+現行 v1 の限界:
+
+| 現行の構造 | 問題 |
+|---|---|
+| `Panel.SpeakerID string`（単一） | 1パネル=1キャラを暗黙に固定。同席キャラ・聞き手・背景キャラを構造として表現できない |
+| 参照画像収集が `UniqueSpeakerIDs` 基準 | **発話しないキャラには参照画像（デザインシート）が添付されず、同一性が崩れる** |
+| `Dialogue string`（単一） | 1パネル複数吹き出し、ナレーション、心の声、SFX を区別できない |
+| 生成条件（seed / prompt / model）が非永続 | `UsedSeed` は design 以外で破棄。plot JSON を読み直しても同条件再生成が不可能 |
+| 全パネル一括生成 API（`Execute(panels)`） | 単一パネルの再生成を API として表現できない |
+
+## 2. 設計原則
+
+1. **MangaState を唯一の真実源（source of truth）にする。** GCS 上の state ドキュメント一覧がそのまま履歴になる。履歴一覧・ジョブ管理・キャッシュはアプリ（ap-comic）の責務で、kit は state の形式と操作だけを定義する。
+2. **操作は工程単位で冪等。** すべて state を受け取り、更新済み state を返す。
+3. **パネル内のキャラクターは「発話者」ではなく「登場者」として第一級で表現する。** 発話は登場とは独立した属性。
+
+## 3. スキーマ
+
+```go
+// MangaState は1作品の全状態を保持する永続ドキュメントです（旧 plot JSON の後継）。
+type MangaState struct {
+	Version      int               `json:"version"`       // state スキーマバージョン（=1 から開始）
+	ID           string            `json:"id"`            // 作品/ジョブID
+	Title        string            `json:"title"`
+	Description  string            `json:"description"`
+	StyleMode    string            `json:"style_mode"`    // プロンプトテンプレートの選択（visual_mode 相当）
+	DesignSheets []DesignSheetRef  `json:"design_sheets"` // 使用したデザインシートの記録
+	Panels       []Panel           `json:"panels"`
+	Pages        []PageArtifact    `json:"pages"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+}
+
+// DesignSheetRef は、この作品の同一性アンカーとして使ったシートの記録です。
+type DesignSheetRef struct {
+	CharacterID string `json:"character_id"`
+	ImageURL    string `json:"image_url"`
+	UsedSeed    int64  `json:"used_seed"`
+}
+
+// Panel は漫画の1コマを表します。
+type Panel struct {
+	ID           string            `json:"id"`   // 再生成ターゲティング用の安定ID（例: "p03"）
+	Page         int               `json:"page"`
+	Shot         string            `json:"shot,omitempty"`    // "close-up" | "medium" | "wide" | "bird's-eye" 等
+	Setting      string            `json:"setting,omitempty"` // 場所・時間帯（例: "放課後の音楽室、夕方"）
+	VisualAnchor string            `json:"visual_anchor"`     // コマ全体の演出・構図の自由記述（v1踏襲）
+	Characters   []PanelCharacter  `json:"characters"`        // ★登場キャラクター（発話の有無と独立）
+	Dialogues    []DialogueLine    `json:"dialogues"`         // ★複数吹き出し
+	Generation   *GenerationRecord `json:"generation,omitempty"` // 生成結果の記録（再生成の基礎）
+}
+
+// PanelCharacter は、コマへの1キャラクターの登場のしかたを表します。
+type PanelCharacter struct {
+	CharacterID string `json:"character_id"`
+	Prominence  string `json:"prominence,omitempty"` // "primary" | "secondary" | "background"
+	Emotion     string `json:"emotion,omitempty"`    // 例: "驚き", "怒りを堪えている"
+	Action      string `json:"action,omitempty"`     // 例: "メタンの肩を掴んで揺さぶる" ← 関係性はここに自由記述
+	Position    string `json:"position,omitempty"`   // 例: "left foreground", "background right"
+}
+
+// DialogueLine は1つの吹き出し・ナレーションを表します。
+type DialogueLine struct {
+	SpeakerID string `json:"speaker_id,omitempty"` // 空文字はナレーション/キャプション
+	Text      string `json:"text"`
+	Kind      string `json:"kind,omitempty"` // "speech" | "thought" | "shout" | "narration" | "sfx"
+}
+
+// GenerationRecord は画像がどの条件で生成されたかの完全な記録です。
+// これがあることで「同条件で再生成」「シードだけ変えて再生成」が可能になります。
+type GenerationRecord struct {
+	ImageURL       string    `json:"image_url"`
+	UsedSeed       int64     `json:"used_seed"`
+	Prompt         string    `json:"prompt"`
+	NegativePrompt string    `json:"negative_prompt,omitempty"`
+	Model          string    `json:"model"`
+	GeneratedAt    time.Time `json:"generated_at"`
+}
+
+// PageArtifact は複数パネルを1枚に合成したページ画像の記録です。
+type PageArtifact struct {
+	PageNumber int               `json:"page_number"`
+	PanelIDs   []string          `json:"panel_ids"`
+	Generation *GenerationRecord `json:"generation,omitempty"`
+}
+```
+
+### 関係性の表現方針
+
+キャラクター間の関係性（誰が誰に何をしているか）は、初期版では **`PanelCharacter.Action` の自由記述**で表現する（例: `"ずんだもんを睨みつける"`）。
+
+- 生成AIへのプロンプトとしては構造化エッジより自然文の方が忠実に反映される
+- 台本生成モデルの出力スキーマを複雑にするほど JSON 生成の失敗モードが増える
+- 将来、関係性の機械的な検証・活用（相関図生成等）が必要になった時点で
+  `Interactions []struct{From, To, Kind string}` を追加すればよい（後方互換の追加になる）
+
+### 1パネルあたりのキャラクター数の実務上の上限
+
+参照画像を添付できる数と、複数キャラ同時生成の同一性維持の難度から、**primary + secondary で3体まで**を推奨上限とし、それを超える分は `Prominence: "background"`（参照画像なし・モブとして描画）とする。この制約は台本生成プロンプトに明記する。
+
+## 4. 波及効果（go-manga-kit からの主な変更）
+
+1. **参照画像収集**: `UniqueSpeakerIDs()` → `Panel.Characters[].CharacterID` の集合に変更。
+   発話しないキャラにもデザインシートが添付され、同一性が維持される（本設計の最大の実益）。
+2. **プロンプト契約**: `ImagePrompt.BuildPanel(panel, char)`（単一キャラ前提）→
+   `BuildPanel(panel Panel, chars map[string]*Character)` に変更。プロンプト内では
+   design.go の合成シートと同じ `[Subject N: ...]` 方式で複数参照画像とキャラ記述を対応付ける。
+3. **台本生成**: script runner の出力スキーマを v2 Panel に更新。Shot / Emotion / Position を
+   モデルに書かせることは、画像品質だけでなく台本自体の演出品質も引き上げる。
+4. **Publisher**: `Dialogues` 複数対応（吹き出しの話者ラベル、ナレーション枠、SFX の描き分け）。
+5. **バリデーション**: `Characters[].CharacterID` と `Dialogues[].SpeakerID` は
+   characters.json に解決できることを state ロード時に検証する。
+
+## 5. 操作セット（go-comic-kit API 案）
+
+すべて冪等・state in/out。MCP ツールと1対1対応。
+
+| 操作 | 対応する MCP ツール（ap-comic） |
+|---|---|
+| `GenerateScript(ctx, src, opts) → *MangaState` | `compose_comic`（の第1工程） |
+| `GenerateDesignSheet(ctx, state, charID, opts) → state` | `generate_design_sheet` |
+| `GeneratePanel(ctx, state, panelID, opts) → state` | `regenerate_panel` ★ |
+| `ComposePage(ctx, state, page, opts) → state` | `regenerate_page` |
+| `Publish(ctx, state, dst) → *PublishResult` | `publish_comic` |
+
+`GeneratePanel` の `opts`: `Seed *int64`（nil なら前回と同じ＝ GenerationRecord.UsedSeed を再利用、指定すれば振り直し）、`PromptOverride string`、`ModelOverride string`。
+
+## 6. 立ち上げ・移行方針
+
+- 新リポジトリ `go-comic-kit`（クリーンスタート、2026-07-17 作成済み）に、go-manga-kit から
+  実証済みコードを**パッケージ単位で移植**する: File API アップロードキャッシュ（singleflight）、
+  Vertex/API バックエンド分岐、合成デザインシート、DesignOverride、v1.12.2 で入れた
+  デザインプロンプト改善（SystemPrompt / NegativePrompt / 指の本数対策）等。
+  移植時に契約（本設計のデータモデル・操作セット）へ差し替え、テストも同時に移植・更新する。
+- 旧 plot JSON → MangaState の変換関数を提供:
+  `SpeakerID` → `Characters: [{CharacterID: SpeakerID, Prominence: "primary"}]`、
+  `Dialogue` → `Dialogues: [{SpeakerID, Text: Dialogue, Kind: "speech"}]`。
+- **go-manga-kit は ap-manga-web（ショーケース）専用として凍結**（バグ修正のみ）。
+  ap-comic は最初から go-comic-kit のみを使う。
+- 先行改善候補として挙げていた4点（デザインプロンプトのテンプレート化、StyleSuffix の
+  ワークフロー別分離、DesignRequest 構造体化、runner→layout の狭いインターフェース化）は
+  go-manga-kit には適用せず、go-comic-kit の初期リファクタリングとして本設計に吸収する。
