@@ -155,3 +155,35 @@ func (p Panel) ReferencedCharacterIDs() []string {
 	}
 	return ids
 }
+
+// UniqueReferencedCharacterIDs は、全パネルで参照画像を添付すべきキャラクター ID を
+// 重複なく登場順で返します（ProminenceBackground は除外）。
+// 参照画像の事前アップロード対象の列挙に使います。
+func (s *MangaState) UniqueReferencedCharacterIDs() []string {
+	if s == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var ids []string
+	for i := range s.Panels {
+		for _, id := range s.Panels[i].ReferencedCharacterIDs() {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// SetDesignSheet は指定キャラクターのデザインシート記録を追加または更新（upsert）します。
+func (s *MangaState) SetDesignSheet(ref DesignSheetRef) {
+	for i := range s.DesignSheets {
+		if s.DesignSheets[i].CharacterID == ref.CharacterID {
+			s.DesignSheets[i] = ref
+			return
+		}
+	}
+	s.DesignSheets = append(s.DesignSheets, ref)
+}

@@ -119,3 +119,29 @@ func TestPanelReferencedCharacterIDsExcludesBackground(t *testing.T) {
 		t.Errorf("ReferencedCharacterIDs = %v, want %v (background must be excluded)", got, want)
 	}
 }
+
+func TestMangaStateUniqueReferencedCharacterIDs(t *testing.T) {
+	t.Parallel()
+
+	s := sampleState()
+	want := []string{"zundamon", "metan"}
+	if got := s.UniqueReferencedCharacterIDs(); !reflect.DeepEqual(got, want) {
+		t.Errorf("UniqueReferencedCharacterIDs = %v, want %v", got, want)
+	}
+}
+
+func TestMangaStateSetDesignSheetUpserts(t *testing.T) {
+	t.Parallel()
+
+	s := &MangaState{}
+	s.SetDesignSheet(DesignSheetRef{CharacterID: "zundamon", ImageURL: "gs://a.png", UsedSeed: 1})
+	s.SetDesignSheet(DesignSheetRef{CharacterID: "metan", ImageURL: "gs://b.png", UsedSeed: 2})
+	s.SetDesignSheet(DesignSheetRef{CharacterID: "zundamon", ImageURL: "gs://c.png", UsedSeed: 3})
+
+	if len(s.DesignSheets) != 2 {
+		t.Fatalf("DesignSheets = %+v, want 2 entries (upsert)", s.DesignSheets)
+	}
+	if s.DesignSheets[0].ImageURL != "gs://c.png" || s.DesignSheets[0].UsedSeed != 3 {
+		t.Errorf("zundamon entry = %+v, want updated to gs://c.png / seed 3", s.DesignSheets[0])
+	}
+}

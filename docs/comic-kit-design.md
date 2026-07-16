@@ -135,13 +135,22 @@ type PageArtifact struct {
 
 | 操作 | 対応する MCP ツール（ap-comic） |
 |---|---|
-| `GenerateScript(ctx, src, opts) → *MangaState` | `compose_comic`（の第1工程） |
-| `GenerateDesignSheet(ctx, state, charID, opts) → state` | `generate_design_sheet` |
+| `GenerateScript(ctx, req) → *MangaState` | `compose_comic`（の第1工程） |
+| `GenerateDesignSheet(ctx, state, req) → state` | `generate_design_sheet` |
 | `GeneratePanel(ctx, state, panelID, opts) → state` | `regenerate_panel` ★ |
 | `ComposePage(ctx, state, page, opts) → state` | `regenerate_page` |
 | `Publish(ctx, state, dst) → *PublishResult` | `publish_comic` |
 
-`GeneratePanel` の `opts`: `Seed *int64`（nil なら前回と同じ＝ GenerationRecord.UsedSeed を再利用、指定すれば振り直し）、`PromptOverride string`、`ModelOverride string`。
+`GenerateDesignSheet` の `req`（`DesignSheetRequest`）は `CharacterIDs []string` を取り、
+複数指定時は1枚の合成シート（v1 の機能を継承）として生成して各キャラクターに同じ画像を記録する。
+state が nil の場合は新しい state を作成する（台本より先にアンカーだけ作る運用向け）。
+
+`GeneratePanel` の `opts`（`GenerateOptions`）:
+- `Seed *int64` — nil なら前回と同じ（GenerationRecord.UsedSeed を再利用）、指定すれば振り直し
+- `EditPrompt string` — 指定すると既存の生成済み画像を入力とした**編集モード**になり、
+  構図・ポーズ・背景を保ったまま指示箇所だけを変更する
+  （go-veo-orchestrator の `EditCut` と同方式。`regenerate_cut_keyframe` で実証済みのパターン）
+- `PromptOverride string` / `ModelOverride string`
 
 ## 6. 立ち上げ・移行方針
 
