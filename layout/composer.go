@@ -140,8 +140,9 @@ func (mc *ComicComposer) PreparePanelResources(ctx context.Context, state *ports
 }
 
 // getOrUploadAsset はキャラクター用アセットをキャッシュ制御しつつ取得またはアップロードします。
-func (mc *ComicComposer) getOrUploadAsset(ctx context.Context, charID, referenceURL string) (string, error) {
-	return mc.getOrUploadResource(ctx, charID, referenceURL, mc.resourceMap.character)
+// キャラクターアセットの場合も検索キーは参照URLです（PrepareCharacterResources 参照）。
+func (mc *ComicComposer) getOrUploadAsset(ctx context.Context, key, referenceURL string) (string, error) {
+	return mc.getOrUploadResource(ctx, key, referenceURL, mc.resourceMap.character)
 }
 
 // getOrUploadPanelAsset はパネル用参照URLをキャッシュ制御しつつ取得またはアップロードします。
@@ -182,7 +183,10 @@ func (mc *ComicComposer) getOrUploadResource(ctx context.Context, key, reference
 
 		if !ok {
 			mc.mu.Lock()
-			resourceMap[key] = ""
+			// RUnlock と Lock の間に他のゴルーチンが書き込んでいる可能性があるため再確認する
+			if _, ok := resourceMap[key]; !ok {
+				resourceMap[key] = ""
+			}
 			mc.mu.Unlock()
 		}
 		return "", nil

@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
@@ -252,6 +253,41 @@ func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 	}
 	if genMock.lastReq.AspectRatio != "9:16" {
 		t.Errorf("AspectRatio = %q, want 9:16", genMock.lastReq.AspectRatio)
+	}
+}
+
+func TestDesignFileTagTruncatesLongIDs(t *testing.T) {
+	t.Parallel()
+
+	// 短い場合はそのまま
+	if got := designFileTag([]string{"tsumugi", "metan"}); got != "tsumugi_metan" {
+		t.Errorf("designFileTag = %q, want tsumugi_metan", got)
+	}
+
+	// 上限超過はチェックサム付きで切り詰め（ファイル名長制限対策）
+	var many []string
+	for range 30 {
+		many = append(many, "very-long-character-id")
+	}
+	got := designFileTag(many)
+	if len(got) > maxDesignFileTagBytes+9 { // "_%08x" 分
+		t.Errorf("designFileTag length = %d, want <= %d", len(got), maxDesignFileTagBytes+9)
+	}
+
+	// 異なる組み合わせはチェックサムで区別される
+	other := designFileTag(append(many[:29:29], "different-id"))
+	if got == other {
+		t.Error("different long ID sets must produce different tags")
+	}
+
+	// マルチバイトIDを境界で切ってもUTF-8として正しい
+	var jp []string
+	for range 30 {
+		jp = append(jp, "ずんだもん")
+	}
+	jpTag := designFileTag(jp)
+	if !utf8.ValidString(jpTag) {
+		t.Errorf("designFileTag(%q...) produced invalid UTF-8: %q", jp[0], jpTag)
 	}
 }
 

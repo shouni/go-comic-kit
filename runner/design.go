@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hash/crc32"
 	"log/slog"
 	"path"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-remote-io/remoteio"
@@ -164,9 +166,14 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	return state, nil
 }
 
+// maxDesignFileTagBytes はファイル名に埋め込むキャラクタータグの最大バイト長です。
+// ファイルシステムのファイル名長制限（一般に255バイト）に、ディレクトリや接頭辞・拡張子を
+// 加えても収まる余裕を持たせた値です。
+const maxDesignFileTagBytes = 100
+
 // saveResponseImage は、生成された画像データを指定されたディレクトリに保存します。
 func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imagePorts.ImageResponse, charIDs []string, outputDir string) (string, error) {
-	charTags := fileNameSanitizer.Replace(strings.Join(charIDs, "_"))
+	charTags := designFileTag(charIDs)
 
 	extension := getPreferredExtension(resp.MimeType)
 	relativePath := path.Join(asset.CharacterDesignDir, fmt.Sprintf("design_%s%s", charTags, extension))
@@ -183,6 +190,23 @@ func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imageP
 	}
 
 	return finalPath, nil
+}
+
+// designFileTag はキャラクターID群からファイル名用のタグを生成します。
+// ID が多い・長い場合でもファイルシステムのファイル名長制限に抵触しないよう、
+// 上限を超えたら rune 境界で切り詰め、組み合わせの一意性はチェックサムで担保します。
+func designFileTag(charIDs []string) string {
+	tag := fileNameSanitizer.Replace(strings.Join(charIDs, "_"))
+	if len(tag) <= maxDesignFileTagBytes {
+		return tag
+	}
+	sum := crc32.ChecksumIEEE([]byte(tag))
+	cut := tag[:maxDesignFileTagBytes]
+	// バイト位置での切り詰めがマルチバイト文字を分断した場合は末尾を除去して修復する
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return fmt.Sprintf("%s_%08x", cut, sum)
 }
 
 // buildDesignPrompt はキャラクターデザインシート生成用の詳細なプロンプト文字列を構築します。
