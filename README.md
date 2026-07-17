@@ -39,8 +39,8 @@
     * 章立て・章台本のプロンプトは go:embed のテンプレートを内蔵（`.md` を置くだけでモード追加）。
       章立て・章台本・デザインシートの3操作は `workflow.Args`（`OutlinePrompt` /
       `ChapterScriptPrompt` / `DesignSheetPrompt`）でアプリ側から完全に差し替え可能です。
-      パネル・ページのプロンプトは構造化された `Panel` からキット内部で組み立てる方式で、
-      差し替えの対象外です。
+      パネル・ページのプロンプトは構造化された `Panel` からキット内部で組み立てますが、
+      `GenerateOptions.PromptOverride` による呼び出し単位の上書きも可能です。
 * **🌍 Multi-Backend Asset Support**:
     * Gemini API モードでは **File API**、Vertex AI モードでは **Cloud Storage (GCS)** 上の画像を直接参照。
       `singleflight` による二重アップロード防止つき。
