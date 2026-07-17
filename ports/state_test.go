@@ -130,6 +130,69 @@ func TestMangaStateUniqueReferencedCharacterIDs(t *testing.T) {
 	}
 }
 
+func TestMangaStateReplaceChapterPanels(t *testing.T) {
+	t.Parallel()
+
+	s := &MangaState{
+		Chapters: []Chapter{
+			{ID: "ch01", Title: "第一章"},
+			{ID: "ch02", Title: "第二章"},
+			{ID: "ch03", Title: "第三章"},
+		},
+		Panels: []Panel{
+			{ID: "ch01-p01", ChapterID: "ch01"},
+			{ID: "ch02-p01", ChapterID: "ch02"},
+			{ID: "ch02-p02", ChapterID: "ch02"},
+			{ID: "ch03-p01", ChapterID: "ch03"},
+			{ID: "orphan"}, // 章に属さないパネルは末尾に保持される
+		},
+	}
+
+	replaced := s.ReplaceChapterPanels("ch02", []Panel{
+		{ID: "ch02-p01", ChapterID: "ch02", Shot: "wide"},
+		{ID: "ch02-p02", ChapterID: "ch02"},
+		{ID: "ch02-p03", ChapterID: "ch02"},
+	})
+	if !replaced {
+		t.Fatal("ReplaceChapterPanels returned false, want true")
+	}
+
+	gotIDs := make([]string, len(s.Panels))
+	for i, p := range s.Panels {
+		gotIDs[i] = p.ID
+	}
+	wantIDs := []string{"ch01-p01", "ch02-p01", "ch02-p02", "ch02-p03", "ch03-p01", "orphan"}
+	if !reflect.DeepEqual(gotIDs, wantIDs) {
+		t.Errorf("panel order = %v, want %v", gotIDs, wantIDs)
+	}
+	if s.Panels[1].Shot != "wide" {
+		t.Error("new panel content was not applied")
+	}
+
+	ch := s.ChapterByID("ch02")
+	if !reflect.DeepEqual(ch.PanelIDs, []string{"ch02-p01", "ch02-p02", "ch02-p03"}) {
+		t.Errorf("chapter PanelIDs = %v, want new panel IDs", ch.PanelIDs)
+	}
+
+	if s.ReplaceChapterPanels("missing", nil) {
+		t.Error("ReplaceChapterPanels(missing) = true, want false")
+	}
+}
+
+func TestMangaStateRepaginate(t *testing.T) {
+	t.Parallel()
+
+	s := &MangaState{Panels: make([]Panel, 7)}
+	s.Repaginate(3)
+
+	wantPages := []int{1, 1, 1, 2, 2, 2, 3}
+	for i, want := range wantPages {
+		if s.Panels[i].Page != want {
+			t.Errorf("Panels[%d].Page = %d, want %d", i, s.Panels[i].Page, want)
+		}
+	}
+}
+
 func TestMangaStateSetDesignSheetUpserts(t *testing.T) {
 	t.Parallel()
 

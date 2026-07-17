@@ -36,11 +36,25 @@ type MangaState struct {
 	Title        string           `json:"title"`
 	Description  string           `json:"description"`
 	StyleMode    string           `json:"style_mode"`
+	ScriptMode   string           `json:"script_mode,omitempty"`
+	Chapters     []Chapter        `json:"chapters,omitempty"`
 	DesignSheets []DesignSheetRef `json:"design_sheets,omitempty"`
 	Panels       []Panel          `json:"panels"`
 	Pages        []PageArtifact   `json:"pages,omitempty"`
 	CreatedAt    time.Time        `json:"created_at"`
 	UpdatedAt    time.Time        `json:"updated_at"`
+}
+
+// Chapter は作品の1章（台本生成の単位）を表します。
+// 台本は「章立て（GenerateOutline）→ 章ごとのパネル生成（GenerateChapterScript）」の
+// 2段階で生成します。リッチな Panel スキーマを一発で大量生成すると JSON の破綻率と
+// 品質のブレが上がるため、1回の生成の複雑度を章単位に抑えます。
+type Chapter struct {
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Summary       string   `json:"summary"`
+	SourceExcerpt string   `json:"source_excerpt,omitempty"`
+	PanelIDs      []string `json:"panel_ids,omitempty"`
 }
 
 // DesignSheetRef は、この作品の同一性アンカーとして使ったデザインシートの記録です。
@@ -55,6 +69,7 @@ type DesignSheetRef struct {
 // 発話しないキャラクターも登場者として第一級で表現できます。
 type Panel struct {
 	ID           string            `json:"id"`
+	ChapterID    string            `json:"chapter_id,omitempty"`
 	Page         int               `json:"page"`
 	Shot         string            `json:"shot,omitempty"`
 	Setting      string            `json:"setting,omitempty"`
@@ -186,4 +201,70 @@ func (s *MangaState) SetDesignSheet(ref DesignSheetRef) {
 		}
 	}
 	s.DesignSheets = append(s.DesignSheets, ref)
+}
+
+// ChapterByID は指定 ID の章へのポインタを返します。見つからない場合は nil を返します。
+func (s *MangaState) ChapterByID(id string) *Chapter {
+	if s == nil {
+		return nil
+	}
+	for i := range s.Chapters {
+		if s.Chapters[i].ID == id {
+			return &s.Chapters[i]
+		}
+	}
+	return nil
+}
+
+// ReplaceChapterPanels は指定章のパネル群を置き換えます（冪等な章単位再生成の基礎）。
+// 既存の同章パネルを取り除き、state.Chapters の章順を保った位置に newPanels を挿入します。
+// 章の PanelIDs も更新します。指定 ID の章が存在しない場合は false を返し、何も変更しません。
+func (s *MangaState) ReplaceChapterPanels(chapterID string, newPanels []Panel) bool {
+	chapter := s.ChapterByID(chapterID)
+	if chapter == nil {
+		return false
+	}
+
+	// 章順にパネルを並べ直す。対象章の位置に newPanels を差し込み、
+	// どの章にも属さないパネルは末尾に保持する。
+	rebuilt := make([]Panel, 0, len(s.Panels)+len(newPanels))
+	for i := range s.Chapters {
+		if s.Chapters[i].ID == chapterID {
+			rebuilt = append(rebuilt, newPanels...)
+			continue
+		}
+		for j := range s.Panels {
+			if s.Panels[j].ChapterID == s.Chapters[i].ID {
+				rebuilt = append(rebuilt, s.Panels[j])
+			}
+		}
+	}
+	for j := range s.Panels {
+		if s.Panels[j].ChapterID == "" || s.ChapterByID(s.Panels[j].ChapterID) == nil {
+			rebuilt = append(rebuilt, s.Panels[j])
+		}
+	}
+	s.Panels = rebuilt
+
+	ids := make([]string, len(newPanels))
+	for i := range newPanels {
+		ids[i] = newPanels[i].ID
+	}
+	chapter.PanelIDs = ids
+	return true
+}
+
+// Repaginate は全パネルの Page 番号を先頭から maxPerPage 区切りで振り直します。
+// 章の生成・再生成後に呼ぶことで、ページ割りを常に決定的に保ちます。
+// maxPerPage が 0 以下の場合は 6 を使います。
+func (s *MangaState) Repaginate(maxPerPage int) {
+	if s == nil {
+		return
+	}
+	if maxPerPage <= 0 {
+		maxPerPage = 6
+	}
+	for i := range s.Panels {
+		s.Panels[i].Page = i/maxPerPage + 1
+	}
 }

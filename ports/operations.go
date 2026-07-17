@@ -5,21 +5,30 @@ import "context"
 // 本ファイルは go-comic-kit の操作セット（docs/comic-kit-design.md §5）の契約を定義します。
 // すべての操作は冪等で、MangaState を受け取り更新済み MangaState を返します。
 
-// ScriptRequest は台本生成（GenerateScript）への入力です。
-type ScriptRequest struct {
+// OutlineRequest は章立て生成（GenerateOutline）への入力です。
+type OutlineRequest struct {
 	// SourceURL は原稿の取得元 URI です（SourceText と排他）。
 	SourceURL string
 	// SourceText は原稿テキストそのものです（SourceURL と排他）。
 	SourceText string
-	// Mode は台本生成プロンプトのモード（テンプレート選択）です。
+	// Mode は章立てプロンプトのモード（テンプレート選択）です。空なら既定テンプレート。
 	Mode string
 	// StyleMode は画像生成時のスタイル選択で、生成された MangaState に記録されます。
 	StyleMode string
+	// MaxChapters は章数の上限です。0 以下なら既定値を使います。
+	MaxChapters int
 }
 
-// ScriptGenerator は、原稿から構造化された MangaState（台本）を生成する契約です。
-type ScriptGenerator interface {
-	GenerateScript(ctx context.Context, req ScriptRequest) (*MangaState, error)
+// OutlineGenerator は、原稿から章立て（Chapters）のみを持つ MangaState を生成する契約です。
+// 台本生成の第1段で、各章のパネルは ChapterScriptGenerator が章単位で生成します。
+type OutlineGenerator interface {
+	GenerateOutline(ctx context.Context, req OutlineRequest) (*MangaState, error)
+}
+
+// ChapterScriptGenerator は、章立て全体を文脈としつつ指定章のパネル群（台本）を生成し、
+// 既存の同章パネルを置き換える契約です（冪等・章単位の再生成に対応）。
+type ChapterScriptGenerator interface {
+	GenerateChapterScript(ctx context.Context, state *MangaState, chapterID string) (*MangaState, error)
 }
 
 // DesignOverride は、1回の呼び出しに限定してキャラクターの参照画像・visual_cues を

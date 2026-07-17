@@ -14,6 +14,12 @@ const (
 	DefaultImageQualityModel = "gemini-3-pro-image-preview"
 	// DefaultMaxConcurrency は画像生成の既定の最大並列数です。
 	DefaultMaxConcurrency = 1
+	// DefaultMaxChapters は章立て生成（GenerateOutline）の既定の章数上限です。
+	DefaultMaxChapters = 8
+	// DefaultMaxPanelsPerChapter は章単位の台本生成の既定のパネル数上限です。
+	DefaultMaxPanelsPerChapter = 8
+	// DefaultMaxPanelsPerPage は1ページに載せるパネル数の既定値です（Repaginate 用）。
+	DefaultMaxPanelsPerPage = 6
 
 	// DefaultStyleSuffix は、パネル・ページ画像生成プロンプトに付与する既定の画風指定です。
 	// 演出（cinematic lighting 等）を含むため、デザインシートには使いません。
