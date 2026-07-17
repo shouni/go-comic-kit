@@ -203,6 +203,44 @@ func (s *MangaState) SetDesignSheet(ref DesignSheetRef) {
 	s.DesignSheets = append(s.DesignSheets, ref)
 }
 
+// SetPageArtifact は指定ページ番号のページ画像記録を追加または更新（upsert）します。
+func (s *MangaState) SetPageArtifact(artifact PageArtifact) {
+	for i := range s.Pages {
+		if s.Pages[i].PageNumber == artifact.PageNumber {
+			s.Pages[i] = artifact
+			return
+		}
+	}
+	s.Pages = append(s.Pages, artifact)
+}
+
+// PageArtifactByNumber は指定ページ番号のページ画像記録を返します。無ければ nil を返します。
+func (s *MangaState) PageArtifactByNumber(page int) *PageArtifact {
+	if s == nil {
+		return nil
+	}
+	for i := range s.Pages {
+		if s.Pages[i].PageNumber == page {
+			return &s.Pages[i]
+		}
+	}
+	return nil
+}
+
+// PanelsForPage は指定ページ番号に属するパネルを登場順で返します。
+func (s *MangaState) PanelsForPage(page int) []Panel {
+	if s == nil {
+		return nil
+	}
+	var panels []Panel
+	for i := range s.Panels {
+		if s.Panels[i].Page == page {
+			panels = append(panels, s.Panels[i])
+		}
+	}
+	return panels
+}
+
 // ChapterByID は指定 ID の章へのポインタを返します。見つからない場合は nil を返します。
 func (s *MangaState) ChapterByID(id string) *Chapter {
 	if s == nil {

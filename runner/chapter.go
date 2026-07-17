@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shouni/go-gemini-client/gemini"
+	"google.golang.org/genai"
 
 	"github.com/shouni/go-comic-kit/ports"
 )
@@ -15,7 +15,7 @@ import (
 // ChapterScriptRunner は章単位の台本生成（GenerateChapterScript 操作）を実行します。
 type ChapterScriptRunner struct {
 	prompt           ports.ChapterScriptPrompt
-	aiClient         gemini.ContentGenerator
+	aiClient         StructuredGenerator
 	characters       *ports.Characters
 	model            string
 	maxPanels        int
@@ -28,7 +28,7 @@ var _ ports.ChapterScriptGenerator = (*ChapterScriptRunner)(nil)
 // maxPanels / maxPanelsPerPage が 0 以下の場合は ports の既定値を使います。
 func NewChapterScriptRunner(
 	prompt ports.ChapterScriptPrompt,
-	aiClient gemini.ContentGenerator,
+	aiClient StructuredGenerator,
 	characters *ports.Characters,
 	model string,
 	maxPanels int,
@@ -87,10 +87,11 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		return nil, fmt.Errorf("章台本プロンプトの構築に失敗しました: %w", err)
 	}
 
-	// 2. 生成
+	// 2. 生成（構造化出力: スキーマで文法レベルに制約する）
 	slog.Info("ChapterScriptRunner: Gemini APIを呼び出し中",
 		"model", r.model, "chapter", chapterID)
-	resp, err := r.aiClient.GenerateContent(ctx, r.model, finalPrompt)
+	parts := []*genai.Part{{Text: finalPrompt}}
+	resp, err := r.aiClient.GenerateWithParts(ctx, r.model, parts, buildJSONGenerateOptions(chapterScriptSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("章 %q の台本生成に失敗しました: %w", chapterID, err)
 	}

@@ -22,7 +22,7 @@ golangci-lint run    # config in .golangci.yml (v2 format; errcheck, staticcheck
 
 CI (`.github/workflows/ci.yml`) runs exactly: `go build`, `go vet`, gofmt check, `go test -race`, golangci-lint, and govulncheck. revive requires doc comments on all exported symbols (this repo's comments are written in Japanese).
 
-Dependencies (`gemini-image-kit`, `go-character-kit`, `go-remote-io`, `go-utils`, `go-gemini-client`) are pinned to the versions proven in go-manga-kit — don't bump casually.
+Dependencies (`gemini-image-kit`, `go-character-kit`, `go-remote-io`, `go-utils`) are pinned to the versions proven in go-manga-kit — don't bump casually. `go-gemini-client` is at v1.11.0+ on purpose: script generation relies on its `GenerateOptions.ResponseSchema` (structured output / constrained decoding, same approach as its `lyria` package) so the model's JSON is grammar-constrained instead of regex-repaired. `cleanJSONResponse` in `runner/script_common.go` is the ported lyria decoder-based cleanup kept as a defensive layer.
 
 ## Architecture
 
@@ -36,7 +36,9 @@ Dependencies (`gemini-image-kit`, `go-character-kit`, `go-remote-io`, `go-utils`
 | `ChapterScriptGenerator.GenerateChapterScript` — panels for ONE chapter, replaces existing | implemented (`runner/chapter.go`) |
 | `DesignSheetGenerator.GenerateDesignSheet` — identity-anchor sheets | implemented (`runner/design.go`) |
 | `PanelImageGenerator.GeneratePanel` — per-panel image gen/regen (seed re-roll or `EditPrompt` image-to-image edit) | implemented (`runner/panel.go`) |
-| `PageImageComposer.ComposePage` / `Publisher.Publish` | not yet implemented |
+| `PageImageComposer.ComposePage` — compose one page from its panels (layout map, balloons, `EditPrompt` edit) | implemented (`runner/page.go`) |
+
+There is deliberately NO publish/export operation (v1's HTML/Markdown output was dropped): presentation is the consuming app's job, reading the state document and GCS images directly.
 
 Script generation is deliberately **two-stage** (outline → per-chapter panels) to keep each LLM call's JSON schema small and to give chapter-level regeneration granularity. Downstream regeneration (`regenerate_panel` etc.) works by re-running the same operation against the state.
 
@@ -55,6 +57,8 @@ Script generation is deliberately **two-stage** (outline → per-chapter panels)
 - **`runner`** — one file per operation. Runners depend on narrow interfaces (`CharacterResourceProvider`, `DesignImageGenerator`, `gemini.ContentGenerator`), not concrete layout types, so tests use lightweight fakes.
 - **`layout`** — `ComicComposer`: pre-upload and caching of reference images (singleflight dedup; Vertex AI + `gs://` URIs bypass the File API upload entirely and resolve to empty string). Aspect-ratio constants and normalization live in `types.go`.
 - **`asset`** — file-naming conventions and GCS/local output path resolution.
+- **`store`** — Load/Save of the MangaState document (`comic_state.json`, upsert-style overwrite; Load rejects newer schema versions).
+- **`workflow`** — the DI layer: `workflow.New(Args)` assembles all five operations (two generation units: standard model for panels, quality model for design sheets and pages; kit-embedded prompts by default, overridable via Args). Call `Operations.Close()` when done to stop the internal TTL caches.
 
 ### Prompt-quality rules (hard-won, do not regress)
 

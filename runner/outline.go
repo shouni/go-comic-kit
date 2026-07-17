@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/shouni/go-gemini-client/gemini"
+	"google.golang.org/genai"
 
 	"github.com/shouni/go-comic-kit/ports"
 )
@@ -14,7 +14,7 @@ import (
 // OutlineRunner は章立て生成（GenerateOutline 操作）を実行します。
 type OutlineRunner struct {
 	prompt      ports.OutlinePrompt
-	aiClient    gemini.ContentGenerator
+	aiClient    StructuredGenerator
 	reader      ports.ContentReader
 	characters  *ports.Characters
 	model       string
@@ -27,7 +27,7 @@ var _ ports.OutlineGenerator = (*OutlineRunner)(nil)
 // maxChapters が 0 以下の場合は ports.DefaultMaxChapters を使います。
 func NewOutlineRunner(
 	prompt ports.OutlinePrompt,
-	aiClient gemini.ContentGenerator,
+	aiClient StructuredGenerator,
 	reader ports.ContentReader,
 	characters *ports.Characters,
 	model string,
@@ -83,9 +83,10 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, fmt.Errorf("章立てプロンプトの構築に失敗しました: %w", err)
 	}
 
-	// 3. 生成
+	// 3. 生成（構造化出力: スキーマで文法レベルに制約する）
 	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", r.model, "max_chapters", maxChapters)
-	resp, err := r.aiClient.GenerateContent(ctx, r.model, finalPrompt)
+	parts := []*genai.Part{{Text: finalPrompt}}
+	resp, err := r.aiClient.GenerateWithParts(ctx, r.model, parts, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("章立ての生成に失敗しました: %w", err)
 	}

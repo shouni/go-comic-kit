@@ -155,7 +155,9 @@ type PageArtifact struct {
 | `GenerateDesignSheet(ctx, state, req) → state` | `generate_design_sheet` |
 | `GeneratePanel(ctx, state, panelID, opts) → state` | `regenerate_panel` ★ |
 | `ComposePage(ctx, state, page, opts) → state` | `regenerate_page` |
-| `Publish(ctx, state, dst) → *PublishResult` | `publish_comic` |
+
+> HTML/Markdown 等への出力（v1 の Publish 工程）はキットの操作セットに含めない。
+> 閲覧・配信は ap-comic 側の責務で、state ドキュメントと GCS 上の画像を直接読んで表現する。
 
 `GenerateOutline` は元文章（URL またはテキスト）から Chapters のみを持つ state を作る。
 `GenerateChapterScript` は章立て全体を文脈として渡しつつ指定章のパネル群を生成し、

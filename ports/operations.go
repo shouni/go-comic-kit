@@ -98,14 +98,19 @@ type PageImageComposer interface {
 	ComposePage(ctx context.Context, state *MangaState, page int, opts GenerateOptions) (*MangaState, error)
 }
 
-// PublishResult はパブリッシュ処理の結果として生成されたファイルの情報を保持します。
-type PublishResult struct {
-	MarkdownPath string   // 生成された Markdown のパス
-	HTMLPath     string   // 生成された HTML のパス
-	ImagePaths   []string // 保存された全画像のパスリスト
+// Operations は、構築済みの全操作を保持します（workflow.New が組み立てて返します）。
+type Operations struct {
+	Outline       OutlineGenerator
+	ChapterScript ChapterScriptGenerator
+	DesignSheet   DesignSheetGenerator
+	Panel         PanelImageGenerator
+	Page          PageImageComposer
+	CloseFunc     func()
 }
 
-// Publisher は、MangaState を統合し、指定された形式（HTML/Markdown 等）で出力する契約です。
-type Publisher interface {
-	Publish(ctx context.Context, state *MangaState, outputDir string) (*PublishResult, error)
+// Close は、保持しているリソースの解放関数（CloseFunc）を呼び出します。
+func (o *Operations) Close() {
+	if o != nil && o.CloseFunc != nil {
+		o.CloseFunc()
+	}
 }
