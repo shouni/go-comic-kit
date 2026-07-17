@@ -58,7 +58,7 @@ Script generation is deliberately **two-stage** (outline → per-chapter panels)
 - **`layout`** — `ComicComposer`: pre-upload and caching of reference images (singleflight dedup; Vertex AI + `gs://` URIs bypass the File API upload entirely and resolve to empty string). Aspect-ratio constants and normalization live in `types.go`.
 - **`asset`** — file-naming conventions and GCS/local output path resolution.
 - **`store`** — Load/Save of the MangaState document (`comic_state.json`, upsert-style overwrite; Load rejects newer schema versions).
-- **`workflow`** — the DI layer: `workflow.New(Args)` assembles all five operations (two generation units: standard model for panels, quality model for design sheets and pages; kit-embedded prompts by default, overridable via Args). Call `Operations.Close()` when done to stop the internal TTL caches.
+- **`workflow`** — the DI layer: `workflow.New(Args)` assembles all five operations (two generation units: standard model for panels, quality model for design sheets and pages; kit-embedded prompts by default, overridable via Args). Call `Operations.Close()` when done to stop the internal TTL caches. All AI calls (text + image) are wrapped in **singleflight decorators** (`workflow/singleflight.go`): identical in-flight requests are collapsed to one API call, shared responses are cloned per caller, and the shared execution runs on a detached context so one caller's cancel can't kill piggybacking callers. This only dedupes within one process — durable idempotency is the job of the consuming app via `GenerationRecord`.
 
 ### Prompt-quality rules (hard-won, do not regress)
 
