@@ -47,6 +47,12 @@ type Config struct {
 	// パネル用の StyleSuffix とは分離されています（演出照明の混入を防ぐため）。
 	DesignStyleSuffix string
 
+	// --- Script Settings ---
+	// MaxChapters は章立て生成の章数上限です。
+	MaxChapters int
+	// MaxPanelsPerChapter は章単位の台本生成のパネル数上限です。
+	MaxPanelsPerChapter int
+
 	// --- Layout Settings ---
 	MaxPanelsPerPage int
 
@@ -73,5 +79,14 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.DesignStyleSuffix == "" {
 		c.DesignStyleSuffix = DefaultDesignStyleSuffix
+	}
+	if c.MaxChapters <= 0 {
+		c.MaxChapters = DefaultMaxChapters
+	}
+	if c.MaxPanelsPerChapter <= 0 {
+		c.MaxPanelsPerChapter = DefaultMaxPanelsPerChapter
+	}
+	if c.MaxPanelsPerPage <= 0 {
+		c.MaxPanelsPerPage = DefaultMaxPanelsPerPage
 	}
 }

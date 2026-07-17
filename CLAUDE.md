@@ -57,6 +57,8 @@ Script generation is deliberately **two-stage** (outline → per-chapter panels)
 - **`runner`** — one file per operation. Runners depend on narrow interfaces (`CharacterResourceProvider`, `DesignImageGenerator`, `gemini.ContentGenerator`), not concrete layout types, so tests use lightweight fakes.
 - **`layout`** — `ComicComposer`: pre-upload and caching of reference images (singleflight dedup; Vertex AI + `gs://` URIs bypass the File API upload entirely and resolve to empty string). Aspect-ratio constants and normalization live in `types.go`.
 - **`asset`** — file-naming conventions and GCS/local output path resolution.
+- **`store`** — Load/Save of the MangaState document (`comic_state.json`, upsert-style overwrite; Load rejects newer schema versions).
+- **`workflow`** — the DI layer: `workflow.New(Args)` assembles all five operations (two generation units: standard model for panels, quality model for design sheets and pages; kit-embedded prompts by default, overridable via Args). Call `Operations.Close()` when done to stop the internal TTL caches.
 
 ### Prompt-quality rules (hard-won, do not regress)
 

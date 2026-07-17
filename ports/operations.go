@@ -97,3 +97,20 @@ type PanelImageGenerator interface {
 type PageImageComposer interface {
 	ComposePage(ctx context.Context, state *MangaState, page int, opts GenerateOptions) (*MangaState, error)
 }
+
+// Operations は、構築済みの全操作を保持します（workflow.New が組み立てて返します）。
+type Operations struct {
+	Outline       OutlineGenerator
+	ChapterScript ChapterScriptGenerator
+	DesignSheet   DesignSheetGenerator
+	Panel         PanelImageGenerator
+	Page          PageImageComposer
+	CloseFunc     func()
+}
+
+// Close は、保持しているリソースの解放関数（CloseFunc）を呼び出します。
+func (o *Operations) Close() {
+	if o != nil && o.CloseFunc != nil {
+		o.CloseFunc()
+	}
+}
