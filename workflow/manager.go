@@ -37,10 +37,11 @@ type Args struct {
 	AIClientQuality gemini.GenerativeModel
 	Characters      *ports.Characters
 
-	// OutlinePrompt / ChapterScriptPrompt を指定するとプロンプト構築を差し替えられます。
-	// nil の場合はキット内蔵テンプレート（prompts パッケージ）を使います。
+	// OutlinePrompt / ChapterScriptPrompt / DesignSheetPrompt を指定するとプロンプト構築を
+	// 差し替えられます。nil の場合はキット内蔵テンプレート（prompts パッケージ）を使います。
 	OutlinePrompt       ports.OutlinePrompt
 	ChapterScriptPrompt ports.ChapterScriptPrompt
+	DesignSheetPrompt   ports.DesignSheetPrompt
 }
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
@@ -87,6 +88,10 @@ func New(args Args) (*ports.Operations, error) {
 			chapterPrompt = builtin
 		}
 	}
+	designPrompt := args.DesignSheetPrompt
+	if designPrompt == nil {
+		designPrompt = prompts.DefaultDesignPrompt{}
+	}
 
 	standard, err := buildGenerationUnit(&args, args.AIClient, cfg.ImageStandardModel)
 	if err != nil {
@@ -111,7 +116,7 @@ func New(args Args) (*ports.Operations, error) {
 			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
 		DesignSheet: runner.NewDesignSheetRunner(
-			args.Characters, quality.composer, quality.imageGenerator, args.Writer,
+			designPrompt, args.Characters, quality.composer, quality.imageGenerator, args.Writer,
 			quality.model, cfg.DesignStyleSuffix,
 		),
 		Panel: runner.NewPanelImageRunner(

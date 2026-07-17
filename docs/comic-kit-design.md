@@ -137,10 +137,13 @@ type PageArtifact struct {
 1. **参照画像収集**: `UniqueSpeakerIDs()` → `Panel.ReferencedCharacterIDs()`（primary/secondary のみ、
    background は除外）に変更。発話しないキャラにもデザインシートが添付され、同一性が
    維持される（本設計の最大の実益）。
-2. **画像プロンプトはキット内蔵**: v1 でアプリ側ポートだった `ImagePrompt` は廃止し、
-   パネル/ページのプロンプト構築は構造化された Panel からキット内部で組み立てる
-   （`runner/panel.go` / `runner/page.go`）。複数参照画像とキャラ記述は design と同じ
-   `[Subject N: ...]` / `input_file_N` 方式で対応付ける。
+2. **画像プロンプトはキット内蔵、全操作で DI 差し替え可能**: v1 でアプリ側ポートだった
+   `ImagePrompt` は廃止し、パネル/ページのプロンプト構築は構造化された Panel からキット
+   内部で組み立てる（`runner/panel.go` / `runner/page.go`）。複数参照画像とキャラ記述は
+   design と同じ `[Subject N: ...]` / `input_file_N` 方式で対応付ける。
+   台本（Outline/ChapterScript）とデザインシート（DesignSheet）は `workflow.Args` の
+   `OutlinePrompt` / `ChapterScriptPrompt` / `DesignSheetPrompt`（`ports.*Prompt` インター
+   フェース）でアプリ側から差し替えられる（nil ならキット内蔵の既定実装）。
 3. **台本生成は2段階 + 構造化出力**: 章立て（GenerateOutline）→ 章ごとのネーム
    （GenerateChapterScript）に分割し、`ResponseSchema` による constrained decoding で
    JSON を文法レベルに制約する。Shot / Emotion / Position をモデルに書かせることは、

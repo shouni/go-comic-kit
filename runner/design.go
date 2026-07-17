@@ -19,39 +19,6 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-const (
-	// designPromptBaseTemplate はデザインシートプロンプトの基本形です。
-	designPromptBaseTemplate = "Masterpiece character design sheet of %s"
-
-	// designLayoutMultiView は既定のターンアラウンド（前・横・後の3面図）レイアウトです。
-	// 全ビューが同一キャラクターであることと、衣装が隠れないニュートラルな
-	// Aポーズを明示し、面ごとの細部ブレを抑えます。
-	designLayoutMultiView = "multiple views (front, side, back) of the same character, standing full body in a neutral A-pose with arms held slightly away from the body so the costume stays fully visible, views arranged side-by-side and evenly spaced, separate character charts"
-	// designLayoutSingleView は、他の生成物（go-veo-orchestratorのキーフレーム、ap-compの
-	// カバーアート等）の参照アンカーとして使うための、単一ポーズ・正面向きのレイアウトです。
-	// 3面図シートは複数ポーズが1枚の画像に混在するため、それと異なるアスペクト比の生成先の
-	// 参照に使うと色・小物配置・髪型などの細部がブレやすい問題があり、単一ポーズは
-	// そのアンカー用途に特化したオプションです。
-	designLayoutSingleView = "single view, front-facing, standing full body in a neutral relaxed pose, centered composition, the entire body from head to toe inside the frame"
-
-	designLayoutPromptFormat = "Layout: %s"
-
-	// designSystemPrompt はデザインシート生成時にモデルへ与えるシステム指示です。
-	// 生成物は他ワークフロー（カバーアート、キーフレーム、パネル等）のキャラクター同一性
-	// アンカーとして参照されるため、演出的な絵作りよりも正確さ・一貫性を最優先させます。
-	designSystemPrompt = `You are a professional character designer creating official model sheets for animation and manga production.
-This sheet is the canonical identity reference that other artists and AI generators will rely on, so accuracy and consistency outweigh artistic flair:
-- Anatomical correctness is critical. Draw every hand with exactly five fingers, correct limb proportions, and clean readable silhouettes.
-- Every view on the sheet must depict the SAME character with identical hairstyle, hair color, eye color, skin tone, outfit, and accessories.
-- Use flat, even, neutral studio lighting only. No dramatic shadows, rim light, lens flares, or color grading — lighting baked into this sheet contaminates every downstream generation that references it.
-- The full body must be visible from head to toe and must never be cropped by the frame.
-- Render absolutely no text, labels, arrows, color swatches, logos, or annotations of any kind.`
-
-	// designNegativePrompt はデザインシートに含めたくない要素を指定する負のプロンプトです。
-	// 指の本数・手の崩れ対策と、シート特有の文字注釈・スウォッチ混入対策を含みます。
-	designNegativePrompt = "text, labels, annotations, arrows, color swatches, watermark, logo, signature, malformed hands, fused fingers, extra fingers, missing fingers, extra limbs, deformed anatomy, asymmetrical eyes, cropped body, cut-off feet, dramatic lighting, strong shadows, rim light, lens flare, inconsistent details between views, different character per view, background scenery, props, low quality, blurry"
-)
-
 // CharacterResourceProvider は、DesignSheetRunner が layout.ComicComposer に依存する範囲
 // だけを切り出した契約です（go-veo-orchestrator の同名インターフェースと同じ方針）。
 // 事前アップロード済みのキャラクター参照画像 URI を解決します。
@@ -61,6 +28,7 @@ type CharacterResourceProvider interface {
 
 // DesignSheetRunner はキャラクターデザインシート生成（GenerateDesignSheet 操作）を実行します。
 type DesignSheetRunner struct {
+	prompt      ports.DesignSheetPrompt
 	characters  *ports.Characters
 	resources   CharacterResourceProvider
 	generator   ImageFusionGenerator
@@ -74,7 +42,10 @@ var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 // NewDesignSheetRunner は依存関係を注入して初期化します。styleSuffix にはデザインシート用の
 // 画風指定（ports.Config.DesignStyleSuffix）を渡してください。パネル用の StyleSuffix
 // （cinematic lighting 等の演出を含む）を渡すと、参照アンカーに演出照明が焼き付きます。
+// prompt にはキット内蔵の prompts.DefaultDesignPrompt{} を渡すか、アプリ側で
+// ports.DesignSheetPrompt を実装して独自のプロンプトに差し替えられます。
 func NewDesignSheetRunner(
+	prompt ports.DesignSheetPrompt,
 	characters *ports.Characters,
 	resources CharacterResourceProvider,
 	generator ImageFusionGenerator,
@@ -83,6 +54,7 @@ func NewDesignSheetRunner(
 	styleSuffix string,
 ) *DesignSheetRunner {
 	return &DesignSheetRunner{
+		prompt:      prompt,
 		characters:  characters,
 		resources:   resources,
 		generator:   generator,
@@ -110,18 +82,22 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	)
 
 	// 2. プロンプト構築
-	designPrompt := dr.buildDesignPrompt(descriptions, req.Layout)
-	if designPrompt == "" {
-		return nil, fmt.Errorf("キャラクター情報が空のため、プロンプトを生成できませんでした")
+	systemPrompt, userPrompt, negativePrompt, err := dr.prompt.BuildDesignSheet(&ports.DesignSheetPromptData{
+		Descriptions: descriptions,
+		Layout:       req.Layout,
+		StyleSuffix:  dr.styleSuffix,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("デザインシートプロンプトの構築に失敗しました: %w", err)
 	}
 
 	// 3. 生成リクエスト
 	fusionReq := imagePorts.ImageFusionRequest{
 		GenerationOptions: imagePorts.GenerationOptions{
 			Model:          dr.model,
-			Prompt:         designPrompt,
-			SystemPrompt:   designSystemPrompt,
-			NegativePrompt: designNegativePrompt,
+			Prompt:         userPrompt,
+			SystemPrompt:   systemPrompt,
+			NegativePrompt: negativePrompt,
 			AspectRatio:    layout.NormalizeDesignAspectRatio(req.AspectRatio),
 			ImageSize:      layout.ImageSize2K,
 			Seed:           ptrInt64(req.Seed),
@@ -202,49 +178,6 @@ func designFileTag(charIDs []string) string {
 		cut = cut[:len(cut)-1]
 	}
 	return fmt.Sprintf("%s_%08x", cut, sum)
-}
-
-// buildDesignPrompt はキャラクターデザインシート生成用の詳細なプロンプト文字列を構築します。
-// layoutKind に ports.DesignLayoutSingleView を渡すと単一ポーズレイアウトになります。
-func (dr *DesignSheetRunner) buildDesignPrompt(descriptions []string, layoutKind string) string {
-	numChars := len(descriptions)
-	if numChars == 0 {
-		slog.Warn("buildDesignPrompt called with empty descriptions")
-		return ""
-	}
-
-	var subjects string
-	if numChars > 1 {
-		subjectParts := make([]string, numChars)
-		for i, d := range descriptions {
-			subjectParts[i] = fmt.Sprintf("[Subject %d: %s]", i+1, d)
-		}
-		subjects = fmt.Sprintf("%d DIFFERENT characters: %s", numChars, strings.Join(subjectParts, " "))
-	} else {
-		subjects = descriptions[0]
-	}
-
-	base := fmt.Sprintf(designPromptBaseTemplate, subjects)
-	designLayout := designLayoutMultiView
-	if layoutKind == ports.DesignLayoutSingleView {
-		designLayout = designLayoutSingleView
-	}
-	layoutPrompt := fmt.Sprintf(designLayoutPromptFormat, designLayout)
-
-	promptParts := []string{base, layoutPrompt}
-	if dr.styleSuffix != "" {
-		promptParts = append(promptParts, dr.styleSuffix)
-	}
-	// styleSuffix に演出用の指定が紛れ込んでも、参照アンカーとしての制約
-	// （フラットな照明・白背景・手の正確さ）を後置して優先させる。
-	promptParts = append(promptParts,
-		"plain uniform white studio background",
-		"flat even neutral lighting",
-		"sharp focus",
-		"perfectly drawn hands with five fingers per hand",
-	)
-
-	return strings.Join(promptParts, ", ")
 }
 
 // collectCharacterURIs はキャラクター情報を収集し、ImageURIスライスと説明文を返します。
