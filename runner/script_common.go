@@ -6,12 +6,20 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/shouni/go-gemini-client/gemini"
+	"google.golang.org/genai"
+
 	"github.com/shouni/go-comic-kit/ports"
 )
+
+// StructuredGenerator は、構造化出力オプション付きのテキスト生成を行う依存インターフェースです。
+// gemini.Generator（go-gemini-client）がこれを満たします。
+type StructuredGenerator interface {
+	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error)
+}
 
 const (
 	// maxInputSize は読み込みを許可する最大テキストサイズ (5MB) です。
@@ -20,8 +28,15 @@ const (
 	maxErrorResponseLength = 200
 )
 
-// jsonBlockRegex は、Markdown 形式の JSON ブロックを抽出するための正規表現です。
-var jsonBlockRegex = regexp.MustCompile("(?s)```(?:json)?\\s*(.*\\S)\\s*```")
+// buildJSONGenerateOptions は JSON 形式の構造化データ生成に最適化されたオプションを返します。
+// schema を指定すると構造化出力（constrained decoding）が有効になり、出力が文法レベルで
+// スキーマに制約されます（go-gemini-client/lyria と同方式）。
+func buildJSONGenerateOptions(schema *genai.Schema) gemini.GenerateOptions {
+	return gemini.GenerateOptions{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	}
+}
 
 // resolveSourceText は OutlineRequest のソース指定（テキスト直接 or URL）を解決します。
 func resolveSourceText(ctx context.Context, reader ports.ContentReader, sourceText, sourceURL string) (string, error) {
@@ -84,13 +99,7 @@ func readContent(ctx context.Context, reader ports.ContentReader, url string) (s
 
 // parseJSONResponse は AI の応答から JSON を抽出し、out にデコードします。
 func parseJSONResponse(raw string, out any) error {
-	jsonStr := extractJSONString(raw)
-	if jsonStr == "" {
-		slog.Warn("AIの応答からJSONを抽出できませんでした。応答全体を対象にパースを試みます。",
-			"response_snippet", truncateString(raw, 100))
-		jsonStr = raw
-	}
-
+	jsonStr := cleanJSONResponse(raw)
 	if err := json.Unmarshal([]byte(jsonStr), out); err != nil {
 		return fmt.Errorf("AI応答JSONの解析に失敗しました (抜粋: %q): %w",
 			truncateString(raw, maxErrorResponseLength), err)
@@ -98,21 +107,30 @@ func parseJSONResponse(raw string, out any) error {
 	return nil
 }
 
-// extractJSONString は文字列から JSON 部分を抽出します。
-func extractJSONString(raw string) string {
-	cleanRaw := strings.TrimSpace(raw)
-
-	if matches := jsonBlockRegex.FindStringSubmatch(cleanRaw); len(matches) > 1 {
-		return matches[1]
+// cleanJSONResponse は LLM が出力しがちな Markdown の装飾や末尾ノイズを除去・補正します
+// （go-gemini-client/lyria の実証済みロジックの移植）。json.Decoder は文字列リテラル内の
+// 括弧も正しく扱いながらバランスの取れた位置で停止するため、正規表現方式と違い
+// セリフ内の '}' や値の後ろに続く説明テキストに影響されません。
+func cleanJSONResponse(input string) string {
+	start := strings.Index(input, "{")
+	if start == -1 {
+		return input
 	}
 
-	first := strings.Index(cleanRaw, "{")
-	last := strings.LastIndex(cleanRaw, "}")
-	if first != -1 && last != -1 && last > first {
-		return cleanRaw[first : last+1]
+	// 最初の完結した JSON 値だけを取り出す
+	var obj json.RawMessage
+	if err := json.NewDecoder(strings.NewReader(input[start:])).Decode(&obj); err == nil {
+		return string(obj)
 	}
 
-	return ""
+	// LLM が '}' の代わりに ')' などで閉じてしまうケースを補正する
+	trimmed := strings.TrimRight(input[start:], " \t\n\r),;")
+	repaired := trimmed + "}"
+	if json.Valid([]byte(repaired)) {
+		return repaired
+	}
+
+	return input
 }
 
 // truncateString は指定された長さで文字列を安全に切り捨てます。

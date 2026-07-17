@@ -97,15 +97,3 @@ type PanelImageGenerator interface {
 type PageImageComposer interface {
 	ComposePage(ctx context.Context, state *MangaState, page int, opts GenerateOptions) (*MangaState, error)
 }
-
-// PublishResult はパブリッシュ処理の結果として生成されたファイルの情報を保持します。
-type PublishResult struct {
-	MarkdownPath string   // 生成された Markdown のパス
-	HTMLPath     string   // 生成された HTML のパス
-	ImagePaths   []string // 保存された全画像のパスリスト
-}
-
-// Publisher は、MangaState を統合し、指定された形式（HTML/Markdown 等）で出力する契約です。
-type Publisher interface {
-	Publish(ctx context.Context, state *MangaState, outputDir string) (*PublishResult, error)
-}

@@ -25,7 +25,7 @@
     * 1作品の全状態（台本・登場キャラ・生成条件・成果物URL）を1つの状態ドキュメントとして永続化。
       履歴一覧・詳細参照はアプリ側が state 一覧を読むだけで実現できます。
 * **🔁 冪等・工程単位の操作**:
-    * `GenerateScript` / `GenerateDesignSheet` / `GeneratePanel` / `ComposePage` / `Publish` —
+    * `GenerateOutline` / `GenerateChapterScript` / `GenerateDesignSheet` / `GeneratePanel` / `ComposePage` —
       すべて state を受け取り更新済み state を返します。**「12パネル中3番だけシードを振り直して再生成」**が
       API として表現でき、MCP ツール（`regenerate_panel` 等）と1対1で対応します。
 * **👥 マルチキャラクター・パネル**:
@@ -49,11 +49,14 @@
 
 | 操作 | 内容 | 対応する MCP ツール |
 | --- | --- | --- |
-| `GenerateScript` | 原稿から、登場キャラ・セリフ・構図を含む MangaState を生成 | `compose_comic`（第1工程） |
+| `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 | `compose_comic`（第1工程） |
+| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 | `regenerate_chapter_script` |
 | `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 | `generate_design_sheet` |
-| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件 or 新Seed） | `regenerate_panel` |
+| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） | `regenerate_panel` |
 | `ComposePage` | ページ単位で再レイアウト・合成 | `regenerate_page` |
-| `Publish` | 画像とテキストを統合し、HTML/Markdown 等で出力 | `publish_comic` |
+
+HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ（ap-comic）側の責務で、
+state ドキュメントと GCS 上の画像を直接読んで表現します。
 
 ---
 

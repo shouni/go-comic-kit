@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shouni/go-gemini-client/gemini"
+	"google.golang.org/genai"
 
 	"github.com/shouni/go-comic-kit/ports"
 	"github.com/shouni/go-comic-kit/prompts"
@@ -20,11 +21,15 @@ type fakeContentGenerator struct {
 	err        error
 	lastPrompt string
 	lastModel  string
+	lastOpts   gemini.GenerateOptions
 }
 
-func (f *fakeContentGenerator) GenerateContent(_ context.Context, model, prompt string) (*gemini.Response, error) {
+func (f *fakeContentGenerator) GenerateWithParts(_ context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
 	f.lastModel = model
-	f.lastPrompt = prompt
+	if len(parts) > 0 && parts[0] != nil {
+		f.lastPrompt = parts[0].Text
+	}
+	f.lastOpts = opts
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -48,7 +53,7 @@ const outlineJSON = `{
   ]
 }`
 
-func newOutlineRunner(t *testing.T, ai gemini.ContentGenerator, reader ports.ContentReader) *OutlineRunner {
+func newOutlineRunner(t *testing.T, ai StructuredGenerator, reader ports.ContentReader) *OutlineRunner {
 	t.Helper()
 	p, err := prompts.NewScriptPrompts()
 	if err != nil {
@@ -95,6 +100,10 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 	}
 	if state.CreatedAt.IsZero() || state.UpdatedAt.IsZero() {
 		t.Error("CreatedAt/UpdatedAt must be set")
+	}
+	// 構造化出力オプションの検証
+	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseSchema == nil {
+		t.Errorf("opts = %+v, want application/json with ResponseSchema", ai.lastOpts)
 	}
 }
 

@@ -19,8 +19,6 @@ const (
 	DefaultImageDir = "images"
 	// DefaultStateJSON は MangaState（状態ドキュメント）のデフォルト JSON ファイル名です。
 	DefaultStateJSON = "comic_state.json"
-	// DefaultMarkdownName はパブリッシュ時に生成される Markdown のデフォルトファイル名です。
-	DefaultMarkdownName = "comic_plot.md"
 	// DefaultPanelFileName はパネル画像の共通のベースファイル名です。
 	DefaultPanelFileName = "panel.png"
 	// DefaultPageFileName はページ画像の共通のベースファイル名です。
