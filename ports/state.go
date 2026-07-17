@@ -1,7 +1,7 @@
 // Package ports は、go-comic-kit の中核データモデルと契約を定義します。
 //
 // 中心となるのは MangaState（1作品の全状態を保持する永続ドキュメント）です。
-// 設計の詳細は docs/comic-kit-design.md を参照してください。
+// 設計の詳細は README.md を参照してください。
 package ports
 
 import "time"

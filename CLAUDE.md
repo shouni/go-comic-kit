@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-go-comic-kit is a Go library for AI manga/comic generation with character-identity consistency. It is the successor to [go-manga-kit](https://github.com/shouni/go-manga-kit) (now frozen, kept only for the ap-manga-web showcase) and is being built as the core library for **ap-comic**, a planned MCP-enabled orchestrator service. Proven infrastructure code is ported from go-manga-kit package by package while the contracts are redesigned.
+go-comic-kit is a Go library for AI manga/comic generation with character-identity consistency. It is the successor to [go-manga-kit](https://github.com/shouni/go-manga-kit) (now frozen, kept only for the ap-manga-web showcase) and is the core library for **ap-comic**, an MCP-enabled orchestrator service.
 
-**`docs/comic-kit-design.md` is the authoritative design document** — schema, operation set, MCP tool mapping, and migration policy. Read it before making non-trivial changes, and keep it in sync when changing contracts.
+**`README.md` is the authoritative reference** — schema, operation set, and MCP tool mapping. Read it before making non-trivial changes, and keep it in sync when changing contracts.
 
 ## Common commands
 
@@ -58,7 +58,7 @@ Script generation is deliberately **two-stage** (outline → per-chapter panels)
 - **`layout`** — `ComicComposer`: pre-upload and caching of reference images (singleflight dedup; Vertex AI + `gs://` URIs bypass the File API upload entirely and resolve to empty string). Aspect-ratio constants and normalization live in `types.go`.
 - **`asset`** — file-naming conventions and GCS/local output path resolution.
 - **`store`** — Load/Save of the MangaState document (`comic_state.json`, upsert-style overwrite; Load rejects newer schema versions).
-- **`workflow`** — the DI layer: `workflow.New(Args)` assembles all five operations (two generation units: standard model for panels, quality model for design sheets and pages; kit-embedded prompts by default, overridable via Args). Call `Operations.Close()` when done to stop the internal TTL caches. All AI calls (text + image) are wrapped in **singleflight decorators** (`workflow/singleflight.go`): identical in-flight requests are collapsed to one API call, shared responses are cloned per caller, and the shared execution runs on a detached context so one caller's cancel can't kill piggybacking callers. This only dedupes within one process — durable idempotency is the job of the consuming app via `GenerationRecord`.
+- **`workflow`** — the DI layer: `workflow.New(Args)` assembles all five operations (two generation units: standard model for panels, quality model for design sheets and pages). Outline/ChapterScript/DesignSheet prompts are kit-embedded by default and overridable via `Args.OutlinePrompt` / `ChapterScriptPrompt` / `DesignSheetPrompt`; Panel/Page prompts are built internally from the structured `Panel` data and are not DI-overridable. Call `Operations.Close()` when done to stop the internal TTL caches. All AI calls (text + image) are wrapped in **singleflight decorators** (`workflow/singleflight.go`): identical in-flight requests are collapsed to one API call, shared responses are cloned per caller, and the shared execution runs on a detached context so one caller's cancel can't kill piggybacking callers. This only dedupes within one process — durable idempotency is the job of the consuming app via `GenerationRecord`.
 
 ### Prompt-quality rules (hard-won, do not regress)
 
