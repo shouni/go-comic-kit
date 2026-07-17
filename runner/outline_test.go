@@ -105,6 +105,15 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseSchema == nil {
 		t.Errorf("opts = %+v, want application/json with ResponseSchema", ai.lastOpts)
 	}
+	// セーフティブロックによる生成失敗を抑えるため BlockNone を指定する
+	if len(ai.lastOpts.SafetySettings) != 4 {
+		t.Errorf("SafetySettings = %+v, want 4 categories with BlockNone", ai.lastOpts.SafetySettings)
+	}
+	for _, s := range ai.lastOpts.SafetySettings {
+		if s.Threshold != genai.HarmBlockThresholdBlockNone {
+			t.Errorf("SafetySettings[%s] = %v, want BlockNone", s.Category, s.Threshold)
+		}
+	}
 }
 
 func TestGenerateOutlineFromSourceURL(t *testing.T) {

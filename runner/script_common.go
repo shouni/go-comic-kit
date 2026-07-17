@@ -35,6 +35,20 @@ func buildJSONGenerateOptions(schema *genai.Schema) gemini.GenerateOptions {
 	return gemini.GenerateOptions{
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   schema,
+		SafetySettings:   buildSafetySettings(),
+	}
+}
+
+// buildSafetySettings はパッケージ共通の安全性設定を返します。
+// NOTE: 台本生成の失敗（セーフティブロックによる空応答）を抑えるため、対応カテゴリの
+// ブロック閾値は BlockNone に統一しています（go-gemini-client/lyria と同方針）。
+// 入力・出力の制御は呼び出し側または後段処理で行う前提です。
+func buildSafetySettings() []*genai.SafetySetting {
+	return []*genai.SafetySetting{
+		{Category: genai.HarmCategoryHarassment, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategoryHateSpeech, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategorySexuallyExplicit, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategoryDangerousContent, Threshold: genai.HarmBlockThresholdBlockNone},
 	}
 }
 
