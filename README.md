@@ -16,19 +16,22 @@
 ## ✨ コア・コンセプト (Core Concepts)
 
 * **📄 MangaState = 唯一の真実源**:
-    * 1作品の全状態（台本・登場キャラ・生成条件・成果物URL）を1つの状態ドキュメントとして永続化。
-      履歴一覧・詳細参照はアプリ側が state 一覧を読むだけで実現できます。
+    * 1作品の全状態（台本・登場キャラ・パネル/ページの生成条件・成果物URL）を1つの状態
+      ドキュメントとして永続化。履歴一覧・詳細参照はアプリ側が state 一覧を読むだけで実現できます。
 * **🔁 冪等・工程単位の操作**:
-    * `GenerateOutline` / `GenerateChapterScript` / `GenerateDesignSheet` / `GeneratePanel` / `ComposePage` —
-      すべて state を受け取り更新済み state を返します。**「12パネル中3番だけシードを振り直して再生成」**が
+    * `GenerateOutline` が原稿から state を新規作成し、`GenerateChapterScript` /
+      `GenerateDesignSheet` / `GeneratePanel` / `ComposePage` は以降 state を受け取って
+      更新済み state を返します。**「12パネル中3番だけシードを振り直して再生成」**が
       API として表現でき、MCP ツール（`regenerate_panel` 等）と1対1で対応します。
 * **👥 マルチキャラクター・パネル**:
     * パネルは「発話者1人」ではなく **登場キャラクターの集合**（`Characters []PanelCharacter`）として表現。
       感情・アクション（関係性）・配置・扱い（primary/secondary/background）を個別に指定でき、
-      発話しないキャラクターにも参照画像が添付されるため同一性が崩れません。
+      発話しない primary/secondary キャラクターにも参照画像が添付されるため同一性が崩れません
+      （background は参照画像の対象外）。
 * **🧬 3-Factor Consistency Control**:
     * **Seed値**（基盤）、**参照アセット**（外見）、**VisualCues/言語指示**（詳細）の3要素で
-      キャラクターの一貫性を制御。生成条件は `GenerationRecord` として state に永続化されます。
+      キャラクターの一貫性を制御。パネル・ページの生成条件は `GenerationRecord` として
+      state に永続化されます。
 * **📐 構造化出力（Constrained Decoding）**:
     * 台本生成は `ResponseSchema` によりモデル出力が**文法レベルでスキーマに制約**されます。
       JSON の破綻を事後修復ではなく発生源で防ぎ、`prominence` や `kind` は Enum 制約で不正値を排除します。
@@ -60,10 +63,10 @@
 ```go
 type MangaState struct {
 	Version      int              // state スキーマバージョン
-	ID           string           // 作品/ジョブID
+	ID           string           // 作品/ジョブID（キットは設定しない。呼び出し側が GenerateOutline 後に設定する）
 	Title        string
 	Description  string
-	StyleMode    string           // 画像生成スタイルの選択
+	StyleMode    string           // アプリ側で使う画像スタイル識別子（記録されるのみで、キット内では生成に未使用）
 	ScriptMode   string           // 台本プロンプトテンプレートの選択（再生成時に同一モードを使うため永続化）
 	Chapters     []Chapter        // 章立て（GenerateOutline の成果物）
 	DesignSheets []DesignSheetRef // 使用したデザインシートの記録
@@ -122,7 +125,8 @@ type GenerationRecord struct {
 
 ## 🔁 操作セット (Operations)
 
-すべて冪等・state in/out。ap-comic の MCP ツールと1対1で対応します。
+すべて冪等。`GenerateOutline` は原稿から state を新規作成し、以降の操作は state を受け取って
+更新済み state を返します（state in/out）。ap-comic の MCP ツールと1対1で対応します。
 
 | 操作 | 内容 | 対応する MCP ツール |
 | --- | --- | --- |
@@ -157,6 +161,7 @@ defer ops.Close()
 
 // 章立て → 章ごとの台本 → デザインシート → パネル → ページ
 state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{SourceURL: "gs://bucket/article.md"})
+state.ID = workID // 作品IDはキットが設定しないため、アプリ側で採番して設定する
 state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01")
 state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequest{
 	CharacterIDs: []string{"zundamon"}, OutputDir: outDir,
