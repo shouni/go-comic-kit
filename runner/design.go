@@ -52,11 +52,6 @@ This sheet is the canonical identity reference that other artists and AI generat
 	designNegativePrompt = "text, labels, annotations, arrows, color swatches, watermark, logo, signature, malformed hands, fused fingers, extra fingers, missing fingers, extra limbs, deformed anatomy, asymmetrical eyes, cropped body, cut-off feet, dramatic lighting, strong shadows, rim light, lens flare, inconsistent details between views, different character per view, background scenery, props, low quality, blurry"
 )
 
-// DesignImageGenerator は、複数参照画像を融合してデザインシート画像を生成する依存インターフェースです。
-type DesignImageGenerator interface {
-	GenerateFusedImage(ctx context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error)
-}
-
 // CharacterResourceProvider は、DesignSheetRunner が layout.ComicComposer に依存する範囲
 // だけを切り出した契約です（go-veo-orchestrator の同名インターフェースと同じ方針）。
 // 事前アップロード済みのキャラクター参照画像 URI を解決します。
@@ -68,7 +63,7 @@ type CharacterResourceProvider interface {
 type DesignSheetRunner struct {
 	characters  *ports.Characters
 	resources   CharacterResourceProvider
-	generator   DesignImageGenerator
+	generator   ImageFusionGenerator
 	writer      remoteio.Writer
 	model       string
 	styleSuffix string
@@ -82,7 +77,7 @@ var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 func NewDesignSheetRunner(
 	characters *ports.Characters,
 	resources CharacterResourceProvider,
-	generator DesignImageGenerator,
+	generator ImageFusionGenerator,
 	writer remoteio.Writer,
 	model string,
 	styleSuffix string,
