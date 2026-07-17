@@ -45,7 +45,7 @@ type Args struct {
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
 type generationUnit struct {
-	imageGenerator *generator.GeminiGenerator
+	imageGenerator runner.ImageFusionGenerator
 	composer       *layout.ComicComposer
 	model          string
 	cache          *imageCache
@@ -98,13 +98,16 @@ func New(args Args) (*ports.Operations, error) {
 		return nil, fmt.Errorf("quality 生成ユニットの構築に失敗しました: %w", err)
 	}
 
+	// 同一内容のテキスト生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
+	textGenerator := &singleflightStructuredGenerator{inner: args.AIClient}
+
 	ops := &ports.Operations{
 		Outline: runner.NewOutlineRunner(
-			outlinePrompt, args.AIClient, args.Reader, args.Characters,
+			outlinePrompt, textGenerator, args.Reader, args.Characters,
 			cfg.GeminiModel, cfg.MaxChapters,
 		),
 		ChapterScript: runner.NewChapterScriptRunner(
-			chapterPrompt, args.AIClient, args.Characters,
+			chapterPrompt, textGenerator, args.Characters,
 			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
 		DesignSheet: runner.NewDesignSheetRunner(
@@ -158,7 +161,8 @@ func buildGenerationUnit(args *Args, client gemini.GenerativeModel, modelName st
 	cache.Start()
 
 	return &generationUnit{
-		imageGenerator: gen,
+		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
+		imageGenerator: &singleflightFusionGenerator{inner: gen},
 		composer:       composer,
 		model:          modelName,
 		cache:          cache,
