@@ -47,6 +47,10 @@
 * **🌍 Multi-Backend Asset Support**:
     * Gemini API モードでは **File API**、Vertex AI モードでは **Cloud Storage (GCS)** 上の画像を直接参照。
       `singleflight` による二重アップロード防止つき。
+* **🔂 AI 呼び出しの重複排除**:
+    * 同一内容のテキスト/画像生成リクエストの同時実行は `singleflight` で1回の API 呼び出しにまとめられます
+      （Cloud Tasks の at-least-once 配信やリトライによる重複対策。プロセス内の in-flight が対象で、
+      恒久的な冪等性は `GenerationRecord` を用いたアプリ側の判断で行います）。
 
 ---
 
