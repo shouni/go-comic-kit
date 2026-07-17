@@ -3,7 +3,18 @@
 // 更新済みの MangaState を返す冪等な契約（ports パッケージ参照）に従います。
 package runner
 
-import "strings"
+import (
+	"context"
+	"strings"
+
+	imagePorts "github.com/shouni/gemini-image-kit/ports"
+)
+
+// ImageFusionGenerator は、複数参照画像を融合して画像を生成する依存インターフェースです。
+// デザインシート（複数キャラの合成）とパネル（複数キャラの同席コマ）の両方で使います。
+type ImageFusionGenerator interface {
+	GenerateFusedImage(ctx context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error)
+}
 
 // defaultCacheControl は生成物を保存する際の既定の Cache-Control です。
 const defaultCacheControl = "public, max-age=1800"
