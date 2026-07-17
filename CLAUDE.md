@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-go-comic-kit is a Go library for AI manga/comic generation with character-identity consistency. It is the successor to [go-manga-kit](https://github.com/shouni/go-manga-kit) (now frozen, kept only for the ap-manga-web showcase) and is being built as the core library for **ap-comic**, a planned MCP-enabled orchestrator service. Proven infrastructure code is ported from go-manga-kit package by package while the contracts are redesigned.
+go-comic-kit is a Go library for AI manga/comic generation with character-identity consistency. It is the successor to [go-manga-kit](https://github.com/shouni/go-manga-kit) (now frozen, kept only for the ap-manga-web showcase) and is the core library for **ap-comic**, an MCP-enabled orchestrator service.
 
-**`docs/comic-kit-design.md` is the authoritative design document** — schema, operation set, MCP tool mapping, and migration policy. Read it before making non-trivial changes, and keep it in sync when changing contracts.
+**`README.md` is the authoritative reference** — schema, operation set, and MCP tool mapping. Read it before making non-trivial changes, and keep it in sync when changing contracts.
 
 ## Common commands
 

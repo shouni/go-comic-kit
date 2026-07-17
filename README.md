@@ -2,20 +2,14 @@
 
 [![CI](https://github.com/shouni/go-comic-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/go-comic-kit/actions/workflows/ci.yml)
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-comic-kit)](https://golang.org/)
+[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-comic-kit)](https://github.com/shouni/go-comic-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Status](https://img.shields.io/badge/Status-In%20Development-orange)](#)
+[![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-comic-kit.svg)](https://pkg.go.dev/github.com/shouni/go-comic-kit)
 
 ## 🚀 概要 (About)
 
 **Go Comic Kit** は、AIによる**キャラクターの一貫性を維持した漫画生成**のためのツールキットです。
-[go-manga-kit](https://github.com/shouni/go-manga-kit) の後継として、MCP 対応オーケストレータ **ap-comic** を第一の利用者に想定し、契約（データモデル・API）を刷新して開発しています。
-
-> **go-manga-kit との関係**: go-manga-kit は ap-manga-web（ショーケース）専用として凍結し、
-> 新機能はすべて本リポジトリで開発します。実証済みの基盤コード
-> （singleflight による File API アップロード重複排除、Vertex AI / Gemini API バックエンド分岐、
-> 合成デザインシート等）は移植済みです。
-
-📐 **設計文書**: [docs/comic-kit-design.md](docs/comic-kit-design.md) — スキーマ・操作セット・移行方針の詳細はこちら。
 
 ---
 
@@ -51,6 +45,75 @@
     * 同一内容のテキスト/画像生成リクエストの同時実行は `singleflight` で1回の API 呼び出しにまとめられます
       （Cloud Tasks の at-least-once 配信やリトライによる重複対策。プロセス内の in-flight が対象で、
       恒久的な冪等性は `GenerationRecord` を用いたアプリ側の判断で行います）。
+
+---
+
+## 📐 スキーマ (Schema)
+
+`ports.MangaState` が唯一の真実源です。台本は「章立て（Chapters）→ 章ごとのパネル生成」の
+2段階で組み立てられ、1コマ（`Panel`）は発話の有無と独立した**登場キャラクターの集合**
+（`Characters []PanelCharacter`）と、複数吹き出しに対応した `Dialogues []DialogueLine` を持ちます。
+
+```go
+type MangaState struct {
+	Version      int              // state スキーマバージョン
+	ID           string           // 作品/ジョブID
+	Title        string
+	Description  string
+	StyleMode    string           // 画像生成スタイルの選択
+	ScriptMode   string           // 台本プロンプトテンプレートの選択（再生成時に同一モードを使うため永続化）
+	Chapters     []Chapter        // 章立て（GenerateOutline の成果物）
+	DesignSheets []DesignSheetRef // 使用したデザインシートの記録
+	Panels       []Panel
+	Pages        []PageArtifact
+	CreatedAt, UpdatedAt time.Time
+}
+
+type Chapter struct {
+	ID            string   // 例: "ch01"
+	Title         string
+	Summary       string   // この章で扱う論点・狙い・オチ
+	SourceExcerpt string   // 元文章の該当部分（引用または要約）
+	PanelIDs      []string // GenerateChapterScript 実行後に紐づく
+}
+
+type Panel struct {
+	ID           string            // 再生成ターゲティング用の安定ID（例: "ch01-p03"）
+	ChapterID    string
+	Page         int
+	Shot         string            // "close-up" | "medium" | "wide" | "bird's-eye" 等
+	Setting      string            // 場所・時間帯（例: "放課後の音楽室、夕方"）
+	VisualAnchor string            // コマ全体の演出・構図の自由記述
+	Characters   []PanelCharacter  // 登場キャラクター（発話の有無と独立）
+	Dialogues    []DialogueLine    // 複数吹き出し対応
+	Generation   *GenerationRecord // 生成結果の記録（再生成の基礎）
+}
+
+type PanelCharacter struct {
+	CharacterID string
+	Prominence  string // "primary" | "secondary" | "background"
+	Emotion     string
+	Action      string // 関係性はここに自由記述（例: "メタンの肩を掴んで揺さぶる"）
+	Position    string
+}
+
+type DialogueLine struct {
+	SpeakerID string // 空文字はナレーション/キャプション
+	Text      string
+	Kind      string // "speech" | "thought" | "shout" | "narration" | "sfx"
+}
+
+type GenerationRecord struct {
+	ImageURL, Prompt, NegativePrompt, Model string
+	UsedSeed    int64
+	GeneratedAt time.Time
+}
+```
+
+キャラクター間の関係性（誰が誰に何をしているか）は `PanelCharacter.Action` の自由記述で表現します
+（構造化エッジより、生成AIへのプロンプトとして自然文の方が忠実に反映されるため）。
+参照画像添付・複数キャラ同時生成の同一性維持の難度から、**primary + secondary は3体まで**を
+推奨上限とし、それを超える分は `background`（参照画像なし・モブとして描画）とします。
 
 ---
 
@@ -104,16 +167,3 @@ _, _ = store.Save(ctx, writer, state, outDir)
 
 再生成の例: `ops.Panel.GeneratePanel(ctx, state, "ch01-p03", ports.GenerateOptions{Seed: &newSeed})`
 （シード振り直し）、`ports.GenerateOptions{EditPrompt: "表情を笑顔に変える"}`（既存画像の部分編集）。
-
----
-
-## 🚧 開発ステータス
-
-コア実装は完了しています（[docs/comic-kit-design.md](docs/comic-kit-design.md) 参照）:
-
-- ✅ `MangaState` データモデルと state 永続化（`store` パッケージ）
-- ✅ 操作セット5つ（章立て / 章台本 / デザインシート / パネル / ページ）+ 編集モード
-- ✅ 構造化出力（ResponseSchema）による台本 JSON の安定化
-- ✅ DI 層（`workflow.New`）と内蔵プロンプトテンプレート
-
-今後: 実環境（Gemini / Vertex AI）での E2E 検証、初回リリースタグ、ap-comic（MCP オーケストレータ）の開発。

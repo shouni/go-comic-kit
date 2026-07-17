@@ -2,7 +2,7 @@ package ports
 
 import "context"
 
-// 本ファイルは go-comic-kit の操作セット（docs/comic-kit-design.md §5）の契約を定義します。
+// 本ファイルは go-comic-kit の操作セット（README.md の操作セット節）の契約を定義します。
 // すべての操作は冪等で、MangaState を受け取り更新済み MangaState を返します。
 
 // OutlineRequest は章立て生成（GenerateOutline）への入力です。
