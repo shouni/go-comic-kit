@@ -12,6 +12,7 @@ import (
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/ports"
+	"github.com/shouni/go-comic-kit/prompts"
 )
 
 // --- Mocks ---
@@ -67,7 +68,7 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 	genMock := &mockDesignGenerator{}
 	writer := &mockWriter{}
 	resources := &mockResources{uris: map[string]string{"tsumugi": "https://file-api.google.com/tsumugi"}}
-	dr := NewDesignSheetRunner(cm, resources, genMock, writer, "test-image-model", ports.DefaultDesignStyleSuffix)
+	dr := NewDesignSheetRunner(prompts.DefaultDesignPrompt{}, cm, resources, genMock, writer, "test-image-model", ports.DefaultDesignStyleSuffix)
 	return dr, genMock, writer
 }
 
@@ -106,9 +107,9 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		t.Error("CreatedAt/UpdatedAt must be set")
 	}
 
-	// 生成リクエストの検証
-	if genMock.lastReq.SystemPrompt != designSystemPrompt {
-		t.Error("SystemPrompt not set")
+	// 生成リクエストの検証（内蔵デフォルトプロンプトの内容）
+	if !strings.Contains(genMock.lastReq.SystemPrompt, "canonical identity reference") {
+		t.Errorf("SystemPrompt = %q, want identity-consistency instructions", genMock.lastReq.SystemPrompt)
 	}
 	if !strings.Contains(genMock.lastReq.NegativePrompt, "extra fingers") {
 		t.Errorf("NegativePrompt = %q, want finger-anatomy negatives", genMock.lastReq.NegativePrompt)

@@ -53,7 +53,7 @@ Script generation is deliberately **two-stage** (outline → per-chapter panels)
 ### Packages
 
 - **`ports`** — contracts and the MangaState data model. No dependencies on other packages here; everything else imports ports.
-- **`prompts`** — kit-embedded prompt templates (`go:embed templates/{outline,chapter}/*.md`). Dropping a new `.md` file adds a new mode (filename = mode name, like ap-comp's visual_mode). Apps override by implementing `ports.OutlinePrompt` / `ports.ChapterScriptPrompt`. The outline/chapter mode used is persisted in `MangaState.ScriptMode` so regeneration uses the same prompt.
+- **`prompts`** — kit-embedded prompt implementations, all overridable via `workflow.Args` (nil = kit default): `ScriptPrompts` for outline/chapter (`go:embed templates/{outline,chapter}/*.md`; dropping a new `.md` file adds a new mode, filename = mode name, like ap-comp's visual_mode) implementing `ports.OutlinePrompt` / `ports.ChapterScriptPrompt`, and `DefaultDesignPrompt` (plain Go, no templates — subject list and layout are structural, not template-friendly) implementing `ports.DesignSheetPrompt`. The outline/chapter mode used is persisted in `MangaState.ScriptMode` so regeneration uses the same prompt.
 - **`runner`** — one file per operation. Runners depend on narrow interfaces (`CharacterResourceProvider`, `DesignImageGenerator`, `gemini.ContentGenerator`), not concrete layout types, so tests use lightweight fakes.
 - **`layout`** — `ComicComposer`: pre-upload and caching of reference images (singleflight dedup; Vertex AI + `gs://` URIs bypass the File API upload entirely and resolve to empty string). Aspect-ratio constants and normalization live in `types.go`.
 - **`asset`** — file-naming conventions and GCS/local output path resolution.

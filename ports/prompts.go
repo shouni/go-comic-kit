@@ -36,3 +36,22 @@ type OutlinePrompt interface {
 type ChapterScriptPrompt interface {
 	BuildChapterScript(mode string, data *ChapterPromptData) (string, error)
 }
+
+// DesignSheetPromptData はデザインシート生成プロンプトの組み立てに渡すデータです。
+type DesignSheetPromptData struct {
+	// Descriptions は対象キャラクターの記述（名前 + VisualCues）です。
+	// 複数キャラクター（合成デザインシート）の場合は要素数が2以上になります。
+	Descriptions []string
+	// Layout に DesignLayoutSingleView を渡すと単一ポーズレイアウト、
+	// 空文字なら3面図ターンアラウンドを意図します。
+	Layout string
+	// StyleSuffix は画風指定です（Config.DesignStyleSuffix）。
+	StyleSuffix string
+}
+
+// DesignSheetPrompt はデザインシート生成のシステム/ユーザー/ネガティブプロンプトを
+// 構築する契約です。生成物は他ワークフロー（パネル・ページ等）のキャラクター同一性
+// アンカーとして参照されるため、実装は演出よりも正確さ・一貫性を優先すべきです。
+type DesignSheetPrompt interface {
+	BuildDesignSheet(data *DesignSheetPromptData) (systemPrompt, userPrompt, negativePrompt string, err error)
+}
