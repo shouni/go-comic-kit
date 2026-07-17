@@ -42,11 +42,25 @@ type MangaState struct {
 	Title        string            `json:"title"`
 	Description  string            `json:"description"`
 	StyleMode    string            `json:"style_mode"`    // プロンプトテンプレートの選択（visual_mode 相当）
+	Chapters     []Chapter         `json:"chapters"`      // ★章立て（台本生成の第1段の成果物）
 	DesignSheets []DesignSheetRef  `json:"design_sheets"` // 使用したデザインシートの記録
 	Panels       []Panel           `json:"panels"`
 	Pages        []PageArtifact    `json:"pages"`
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
+}
+
+// Chapter は作品の1章（台本生成の単位）を表します。
+// 台本は「章立て（GenerateOutline）→ 章ごとのパネル生成（GenerateChapterScript）」の
+// 2段階で生成します。リッチな Panel スキーマを一発で大量生成すると JSON の破綻率と
+// 品質のブレが上がるため、1回の LLM 呼び出しの複雑度を章単位に抑えます。
+// 章単位の台本再生成（regenerate_chapter_script）の粒度もこれで揃います。
+type Chapter struct {
+	ID            string   `json:"id"`             // 例: "ch01"
+	Title         string   `json:"title"`
+	Summary       string   `json:"summary"`        // この章で扱う論点・狙い・オチ
+	SourceExcerpt string   `json:"source_excerpt"` // 元文章の該当部分（引用または要約）
+	PanelIDs      []string `json:"panel_ids,omitempty"` // GenerateChapterScript 実行後に紐づく
 }
 
 // DesignSheetRef は、この作品の同一性アンカーとして使ったシートの記録です。
@@ -58,7 +72,8 @@ type DesignSheetRef struct {
 
 // Panel は漫画の1コマを表します。
 type Panel struct {
-	ID           string            `json:"id"`   // 再生成ターゲティング用の安定ID（例: "p03"）
+	ID           string            `json:"id"`   // 再生成ターゲティング用の安定ID（例: "ch01-p03"）
+	ChapterID    string            `json:"chapter_id,omitempty"` // 所属する章
 	Page         int               `json:"page"`
 	Shot         string            `json:"shot,omitempty"`    // "close-up" | "medium" | "wide" | "bird's-eye" 等
 	Setting      string            `json:"setting,omitempty"` // 場所・時間帯（例: "放課後の音楽室、夕方"）
@@ -135,11 +150,18 @@ type PageArtifact struct {
 
 | 操作 | 対応する MCP ツール（ap-comic） |
 |---|---|
-| `GenerateScript(ctx, req) → *MangaState` | `compose_comic`（の第1工程） |
+| `GenerateOutline(ctx, req) → *MangaState` | `compose_comic`（の第1工程: 章立てのみ生成） |
+| `GenerateChapterScript(ctx, state, chapterID) → state` | `regenerate_chapter_script` ★（章単位の台本再生成） |
 | `GenerateDesignSheet(ctx, state, req) → state` | `generate_design_sheet` |
 | `GeneratePanel(ctx, state, panelID, opts) → state` | `regenerate_panel` ★ |
 | `ComposePage(ctx, state, page, opts) → state` | `regenerate_page` |
 | `Publish(ctx, state, dst) → *PublishResult` | `publish_comic` |
+
+`GenerateOutline` は元文章（URL またはテキスト）から Chapters のみを持つ state を作る。
+`GenerateChapterScript` は章立て全体を文脈として渡しつつ指定章のパネル群を生成し、
+既存の同章パネルを置き換える（冪等）。プロンプトはキット内蔵のテンプレート
+（go:embed、キャラクター一覧は characters.json から自動注入）を既定とし、
+アプリはプロンプトビルダーのポートを差し替えることでカスタマイズできる。
 
 `GenerateDesignSheet` の `req`（`DesignSheetRequest`）は `CharacterIDs []string` を取り、
 複数指定時は1枚の合成シート（v1 の機能を継承）として生成して各キャラクターに同じ画像を記録する。

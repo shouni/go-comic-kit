@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/shouni/gemini-image-kit v1.9.1
 	github.com/shouni/go-character-kit v1.0.7
+	github.com/shouni/go-gemini-client v1.9.1
 	github.com/shouni/go-remote-io v1.6.0
 	github.com/shouni/go-utils v1.1.0
 	golang.org/x/sync v0.22.0
@@ -49,7 +50,6 @@ require (
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/shouni/go-gemini-client v1.9.1 // indirect
 	github.com/shouni/netarmor v1.1.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
