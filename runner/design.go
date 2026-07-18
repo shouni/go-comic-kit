@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"hash/crc32"
@@ -165,10 +164,7 @@ func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imageP
 		return "", fmt.Errorf("画像保存パスの生成に失敗しました (baseDir: %s, relativePath: %s): %w", outputDir, relativePath, err)
 	}
 
-	if err = dr.writer.Write(ctx, finalPath, bytes.NewReader(resp.Data),
-		remoteio.WithContentType(resp.MimeType),
-		remoteio.WithCacheControl(defaultCacheControl),
-	); err != nil {
+	if err = writeGeneratedImage(ctx, dr.writer, finalPath, resp); err != nil {
 		return "", fmt.Errorf("画像の保存に失敗しました (path: %s): %w", finalPath, err)
 	}
 

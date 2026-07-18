@@ -99,8 +99,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/shouni/gemini-image-kit v1.10.0 h1:TAcO58J1aixU+JgQ+97YB8HjzB2jaIUvkVS89k79YPs=
 github.com/shouni/gemini-image-kit v1.10.0/go.mod h1:mflkRCSqfdME/OAqXxiISCR99nf9x54LwEPLR/6Sx9o=
-github.com/shouni/go-character-kit v1.0.10 h1:5vRF6ZkEt84B5XnxiXEfM/ehrCOeiTbMyizp8lQHU94=
-github.com/shouni/go-character-kit v1.0.10/go.mod h1:P+RtKl6YoGQrEROnjpsFHw91cwXdO12wPFDsNUsNHfA=
+github.com/shouni/go-character-kit v1.0.11 h1:c2E78azaCBRLk/KmKp7iAIWmmZS4NocwTXKldjQXhPU=
+github.com/shouni/go-character-kit v1.0.11/go.mod h1:P+RtKl6YoGQrEROnjpsFHw91cwXdO12wPFDsNUsNHfA=
 github.com/shouni/go-gemini-client v1.11.1 h1:tJPeNSXbenTJBqC/6WuGpYbstJbRlg9i2A5P+6oQmFI=
 github.com/shouni/go-gemini-client v1.11.1/go.mod h1:NjqBFYtxGoferSKQOVruNRf/WM0GNX9sNPSkIOxoRMQ=
 github.com/shouni/go-http-kit v1.6.0 h1:ZE5X6cnoakIwKeXZj+Rr0fvN+GyuFGvUKwPGB4LsHNQ=

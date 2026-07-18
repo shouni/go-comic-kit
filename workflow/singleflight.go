@@ -63,6 +63,8 @@ func (g *singleflightStructuredGenerator) GenerateWithParts(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	// NOTE: 浅いコピーで返します。呼び出し側（runner）は Text しか参照しない前提です。
+	// gemini.Response の参照型フィールドを書き換える利用が増えた場合は深いコピーに変更すること。
 	cloned := *resp
 	return &cloned, nil
 }

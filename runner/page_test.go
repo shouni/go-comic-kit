@@ -100,7 +100,14 @@ func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockW
 		charURIs:  map[string]string{"zundamon": "https://file-api/zunda", "metan": "https://file-api/metan"},
 		panelURIs: map[string]string{"gs://b/panels/p01.png": "https://file-api/p01"},
 	}
-	r := NewPageImageRunner(cm, resources, gen, writer, "page-model", "cinematic style", "", "")
+	r := NewPageImageRunner(PageImageRunnerArgs{
+		Characters:  cm,
+		Resources:   resources,
+		Generator:   gen,
+		Writer:      writer,
+		Model:       "page-model",
+		StyleSuffix: "cinematic style",
+	})
 	return r, gen, writer, resources
 }
 

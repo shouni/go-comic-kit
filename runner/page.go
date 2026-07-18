@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -61,34 +60,39 @@ type PageImageRunner struct {
 
 var _ ports.PageImageComposer = (*PageImageRunner)(nil)
 
+// PageImageRunnerArgs は PageImageRunner の構築に必要な依存と設定の集合です。
+type PageImageRunnerArgs struct {
+	Characters *ports.Characters
+	Resources  PageResourceProvider
+	Generator  ImageFusionGenerator
+	Writer     remoteio.Writer
+	// Model には高品質系モデル（ports.Config.ImageQualityModel）を渡すことを推奨します。
+	Model string
+	// StyleSuffix にはページ用の画風指定（ports.Config.StyleSuffix）を渡してください。
+	StyleSuffix string
+	// AspectRatio が空の場合は layout.PageAspectRatio を使います。
+	AspectRatio string
+	// ImageSize が空の場合は layout.ImageSize2K を使います。
+	ImageSize string
+}
+
 // NewPageImageRunner は依存関係を注入して初期化します。
-// aspectRatio / imageSize が空の場合は layout.PageAspectRatio / layout.ImageSize2K を使います。
-// model には高品質系モデル（ports.Config.ImageQualityModel）を渡すことを推奨します。
-func NewPageImageRunner(
-	characters *ports.Characters,
-	resources PageResourceProvider,
-	generator ImageFusionGenerator,
-	writer remoteio.Writer,
-	model string,
-	styleSuffix string,
-	aspectRatio string,
-	imageSize string,
-) *PageImageRunner {
-	if aspectRatio == "" {
-		aspectRatio = layout.PageAspectRatio
+func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
+	if args.AspectRatio == "" {
+		args.AspectRatio = layout.PageAspectRatio
 	}
-	if imageSize == "" {
-		imageSize = layout.ImageSize2K
+	if args.ImageSize == "" {
+		args.ImageSize = layout.ImageSize2K
 	}
 	return &PageImageRunner{
-		characters:  characters,
-		resources:   resources,
-		generator:   generator,
-		writer:      writer,
-		model:       model,
-		styleSuffix: styleSuffix,
-		aspectRatio: aspectRatio,
-		imageSize:   imageSize,
+		characters:  args.Characters,
+		resources:   args.Resources,
+		generator:   args.Generator,
+		writer:      args.Writer,
+		model:       args.Model,
+		styleSuffix: args.StyleSuffix,
+		aspectRatio: args.AspectRatio,
+		imageSize:   args.ImageSize,
 	}
 }
 
@@ -117,7 +121,11 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 		targetModel = opts.ModelOverride
 	}
 	existing := state.PageArtifactByNumber(page)
-	seed := pg.resolvePageSeed(panels, existing, opts)
+	var prevGeneration *ports.GenerationRecord
+	if existing != nil {
+		prevGeneration = existing.Generation
+	}
+	seed := resolveSeedChain(opts.Seed, prevGeneration, pg.characters, panels[0].Characters)
 
 	var prompt string
 	var images []imagePorts.ImageURI
@@ -164,10 +172,7 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 	if err != nil {
 		return nil, fmt.Errorf("ページ画像の保存パス生成に失敗しました: %w", err)
 	}
-	if err := pg.writer.Write(ctx, finalPath, bytes.NewReader(resp.Data),
-		remoteio.WithContentType(resp.MimeType),
-		remoteio.WithCacheControl(defaultCacheControl),
-	); err != nil {
+	if err := writeGeneratedImage(ctx, pg.writer, finalPath, resp); err != nil {
 		return nil, fmt.Errorf("ページ画像の保存に失敗しました (path: %s): %w", finalPath, err)
 	}
 
@@ -193,29 +198,6 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 
 	slog.Info("Page composition completed", "page", page, "path", finalPath)
 	return state, nil
-}
-
-// resolvePageSeed は「明示指定 > 前回の UsedSeed > 先頭パネルの主役キャラの Seed > なし」の
-// 順で生成シードを決定します。
-func (pg *PageImageRunner) resolvePageSeed(panels []ports.Panel, existing *ports.PageArtifact, opts ports.GenerateOptions) *int64 {
-	if opts.Seed != nil {
-		return opts.Seed
-	}
-	if existing != nil && existing.Generation != nil && existing.Generation.UsedSeed != 0 {
-		seed := existing.Generation.UsedSeed
-		return &seed
-	}
-	if pg.characters != nil {
-		for _, pc := range panels[0].Characters {
-			if pc.Prominence != ports.ProminencePrimary {
-				continue
-			}
-			if char := pg.characters.GetCharacter(pc.CharacterID); char != nil && char.Seed != nil {
-				return char.Seed
-			}
-		}
-	}
-	return nil
 }
 
 // buildEditRequest は編集モード（既存ページ画像への指示ベースの変更）を構築します。
@@ -418,13 +400,10 @@ func (pg *PageImageRunner) writePanelScene(sb *strings.Builder, panel *ports.Pan
 
 // writePanelCharacters は登場キャラクターの同一性・演出指示を出力します。
 func (pg *PageImageRunner) writePanelCharacters(sb *strings.Builder, panel *ports.Panel, res *pageResources) {
-	for _, pc := range panel.Characters {
+	for i := range panel.Characters {
+		pc := &panel.Characters[i]
 		if pc.Prominence == ports.ProminenceBackground {
-			desc := pc.CharacterID
-			if pc.Action != "" {
-				desc += " (" + pc.Action + ")"
-			}
-			fmt.Fprintf(sb, "- BACKGROUND_EXTRA: %s (generic, no reference)\n", desc)
+			fmt.Fprintf(sb, "- BACKGROUND_EXTRA: %s (generic, no reference)\n", backgroundExtraDesc(pc))
 			continue
 		}
 		char := pg.characters.GetCharacter(pc.CharacterID)
@@ -469,7 +448,12 @@ func writePanelDialogues(sb *strings.Builder, panel *ports.Panel, characters *po
 		case ports.DialogueKindSFX:
 			sb.WriteString("- SFX: Stylized sound-effect lettering integrated into the artwork.\n")
 		default:
-			fmt.Fprintf(sb, "- SPEECH: Speech bubble for [%s].\n", speakerName(characters, line.SpeakerID))
+			// SpeakerID が空のセリフはナレーション/キャプション扱い（ports.DialogueLine 参照）
+			if strings.TrimSpace(line.SpeakerID) == "" {
+				sb.WriteString("- NARRATION: Rectangular caption box.\n")
+			} else {
+				fmt.Fprintf(sb, "- SPEECH: Speech bubble for [%s].\n", speakerName(characters, line.SpeakerID))
+			}
 		}
 		fmt.Fprintf(sb, "  - TEXT_TO_RENDER: %q\n", text)
 

@@ -119,14 +119,22 @@ func New(args Args) (*ports.Operations, error) {
 			designPrompt, args.Characters, quality.composer, quality.imageGenerator, args.Writer,
 			quality.model, cfg.DesignStyleSuffix,
 		),
-		Panel: runner.NewPanelImageRunner(
-			args.Characters, standard.composer, standard.imageGenerator, args.Writer,
-			standard.model, cfg.StyleSuffix, "", "",
-		),
-		Page: runner.NewPageImageRunner(
-			args.Characters, quality.composer, quality.imageGenerator, args.Writer,
-			quality.model, cfg.StyleSuffix, "", "",
-		),
+		Panel: runner.NewPanelImageRunner(runner.PanelImageRunnerArgs{
+			Characters:  args.Characters,
+			Resources:   standard.composer,
+			Generator:   standard.imageGenerator,
+			Writer:      args.Writer,
+			Model:       standard.model,
+			StyleSuffix: cfg.StyleSuffix,
+		}),
+		Page: runner.NewPageImageRunner(runner.PageImageRunnerArgs{
+			Characters:  args.Characters,
+			Resources:   quality.composer,
+			Generator:   quality.imageGenerator,
+			Writer:      args.Writer,
+			Model:       quality.model,
+			StyleSuffix: cfg.StyleSuffix,
+		}),
 		CloseFunc: func() {
 			standard.stop()
 			quality.stop()
