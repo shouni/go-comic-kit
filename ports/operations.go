@@ -45,9 +45,16 @@ type DesignOverride struct {
 type DesignSheetRequest struct {
 	// CharacterIDs は対象キャラクターです。複数指定すると1枚の合成シートになります。
 	CharacterIDs []string
+	// JobID は、この生成呼び出しを一意に識別する ID です（呼び出し側が採番）。
+	// 保存パス（OutputDir 配下の character/{tag}/{JobID}.ext）に使われ、同一キャラクターへの
+	// 複数回の生成を上書きせず履歴として残すためのものです。空文字は許可しません。
+	JobID string
 	// Seed は生成シードです。0 の場合はモデル側に委ねます。
 	Seed int64
 	// OutputDir はシート画像の保存先ベースディレクトリ（ローカルまたは gs://）です。
+	// キャラクターはジョブ（作品）非依存の共有アセットのため、通常はバケットのルート
+	// （例: "gs://bucket"）を渡します。相対パスは OutputDir に対して
+	// "character/{tag}/{JobID}.ext" として解決されます。
 	OutputDir string
 	// AspectRatio は "1:1" / "9:16" / "16:9" のいずれかで、未サポート値や空文字の場合は
 	// 既定値（16:9）にフォールバックします。

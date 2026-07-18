@@ -68,6 +68,10 @@ func NewDesignSheetRunner(
 // state が nil の場合は新しい MangaState を作成します。複数キャラクター指定時は1枚の
 // 合成シートを生成し、各キャラクターに同じ画像の DesignSheetRef を記録します。
 func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *ports.MangaState, req ports.DesignSheetRequest) (*ports.MangaState, error) {
+	if strings.TrimSpace(req.JobID) == "" {
+		return nil, fmt.Errorf("job_id is required to generate a design sheet")
+	}
+
 	// 1. 複数キャラの情報を集約
 	imageURIs, descriptions, err := dr.collectCharacterURIs(req.CharacterIDs, req.Override)
 	if err != nil {
@@ -112,7 +116,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	}
 
 	// 5. 画像の保存
-	outputPath, err := dr.saveResponseImage(ctx, resp, req.CharacterIDs, req.OutputDir)
+	outputPath, err := dr.saveResponseImage(ctx, resp, req.CharacterIDs, req.JobID, req.OutputDir)
 	if err != nil {
 		return nil, fmt.Errorf("画像の保存に失敗しました: %w", err)
 	}
@@ -143,11 +147,15 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 const maxDesignFileTagBytes = 100
 
 // saveResponseImage は、生成された画像データを指定されたディレクトリに保存します。
-func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imagePorts.ImageResponse, charIDs []string, outputDir string) (string, error) {
+// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
+// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
+// 上書きせず履歴として残します。
+func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imagePorts.ImageResponse, charIDs []string, jobID string, outputDir string) (string, error) {
 	charTags := designFileTag(charIDs)
+	safeJobID := fileNameSanitizer.Replace(jobID)
 
 	extension := getPreferredExtension(resp.MimeType)
-	relativePath := path.Join(asset.CharacterDesignDir, fmt.Sprintf("design_%s%s", charTags, extension))
+	relativePath := path.Join(asset.CharacterDesignDir, charTags, safeJobID+extension)
 	finalPath, err := asset.ResolveOutputPath(outputDir, relativePath)
 	if err != nil {
 		return "", fmt.Errorf("画像保存パスの生成に失敗しました (baseDir: %s, relativePath: %s): %w", outputDir, relativePath, err)
