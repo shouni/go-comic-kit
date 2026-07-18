@@ -96,9 +96,13 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	}
 
 	// 3. 生成リクエスト
+	targetModel := dr.model
+	if req.ModelOverride != "" {
+		targetModel = req.ModelOverride
+	}
 	fusionReq := imagePorts.ImageFusionRequest{
 		GenerationOptions: imagePorts.GenerationOptions{
-			Model:          dr.model,
+			Model:          targetModel,
 			Prompt:         userPrompt,
 			SystemPrompt:   systemPrompt,
 			NegativePrompt: negativePrompt,

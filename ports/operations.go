@@ -64,6 +64,9 @@ type DesignSheetRequest struct {
 	Layout string
 	// Override は単一キャラクター指定時のみ適用されるその場限りの上書きです。
 	Override DesignOverride
+	// ModelOverride は設定済みモデル（DesignSheetRunner 構築時の model）を差し替えます。
+	// 空文字なら既定のモデルを使います。
+	ModelOverride string
 }
 
 // DesignLayoutSingleView は DesignSheetRequest.Layout に渡す、単一ポーズレイアウトの指定値です。

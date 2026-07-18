@@ -263,6 +263,43 @@ func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 	}
 }
 
+func TestGenerateDesignSheetAppliesModelOverride(t *testing.T) {
+	t.Parallel()
+	dr, genMock, _ := newTestRunner(t)
+
+	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
+		CharacterIDs:  []string{"tsumugi"},
+		JobID:         "job-model",
+		OutputDir:     "gs://bucket/out",
+		ModelOverride: "gemini-override-model",
+	})
+	if err != nil {
+		t.Fatalf("GenerateDesignSheet failed: %v", err)
+	}
+
+	if genMock.lastReq.Model != "gemini-override-model" {
+		t.Errorf("Model = %q, want overridden model", genMock.lastReq.Model)
+	}
+}
+
+func TestGenerateDesignSheetUsesDefaultModelWithoutOverride(t *testing.T) {
+	t.Parallel()
+	dr, genMock, _ := newTestRunner(t)
+
+	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
+		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-model-default",
+		OutputDir:    "gs://bucket/out",
+	})
+	if err != nil {
+		t.Fatalf("GenerateDesignSheet failed: %v", err)
+	}
+
+	if genMock.lastReq.Model != "test-image-model" {
+		t.Errorf("Model = %q, want default model from runner construction", genMock.lastReq.Model)
+	}
+}
+
 func TestDesignFileTagTruncatesLongIDs(t *testing.T) {
 	t.Parallel()
 
