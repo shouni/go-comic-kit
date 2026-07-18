@@ -112,8 +112,8 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	if !strings.Contains(genMock.lastReq.SystemPrompt, "canonical identity reference") {
 		t.Errorf("SystemPrompt = %q, want identity-consistency instructions", genMock.lastReq.SystemPrompt)
 	}
-	if !strings.Contains(genMock.lastReq.NegativePrompt, "extra fingers") {
-		t.Errorf("NegativePrompt = %q, want finger-anatomy negatives", genMock.lastReq.NegativePrompt)
+	if !strings.Contains(genMock.lastReq.NegativePrompt, "Do not include") {
+		t.Errorf("NegativePrompt = %q, want instruction-style exclusion list", genMock.lastReq.NegativePrompt)
 	}
 	if !strings.Contains(genMock.lastReq.Prompt, "flat even neutral lighting") {
 		t.Errorf("Prompt = %q, want flat lighting constraint", genMock.lastReq.Prompt)
