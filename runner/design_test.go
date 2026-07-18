@@ -80,6 +80,7 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-1",
 		Seed:         42,
 		OutputDir:    "gs://bucket/out",
 	})
@@ -100,8 +101,8 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	if ref.CharacterID != "tsumugi" || ref.UsedSeed != 123 || ref.ImageURL != writer.lastPath {
 		t.Errorf("DesignSheetRef = %+v, want tsumugi / seed 123 / path %q", ref, writer.lastPath)
 	}
-	if !strings.Contains(writer.lastPath, "character/design_tsumugi.png") {
-		t.Errorf("saved path = %q, want it under character/design_tsumugi.png", writer.lastPath)
+	if !strings.Contains(writer.lastPath, "character/tsumugi/job-1.png") {
+		t.Errorf("saved path = %q, want it under character/tsumugi/job-1.png", writer.lastPath)
 	}
 	if state.CreatedAt.IsZero() || state.UpdatedAt.IsZero() {
 		t.Error("CreatedAt/UpdatedAt must be set")
@@ -142,6 +143,7 @@ func TestGenerateDesignSheetUpsertsExistingRef(t *testing.T) {
 
 	state, err := dr.GenerateDesignSheet(context.Background(), state, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-2",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {
@@ -162,6 +164,7 @@ func TestGenerateDesignSheetMultiCharacterFusion(t *testing.T) {
 
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi", "metan"},
+		JobID:        "job-3",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {
@@ -190,6 +193,7 @@ func TestGenerateDesignSheetAppliesOverrideForSingleCharacter(t *testing.T) {
 	}
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-4",
 		OutputDir:    "gs://bucket/out",
 		Override:     override,
 	})
@@ -218,6 +222,7 @@ func TestGenerateDesignSheetIgnoresOverrideForMultipleCharacters(t *testing.T) {
 	override := ports.DesignOverride{ReferenceURL: "gs://bucket/should-be-ignored.png"}
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi", "metan"},
+		JobID:        "job-5",
 		OutputDir:    "gs://bucket/out",
 		Override:     override,
 	})
@@ -238,6 +243,7 @@ func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-6",
 		OutputDir:    "gs://bucket/out",
 		Layout:       ports.DesignLayoutSingleView,
 		AspectRatio:  "9:16",
@@ -298,9 +304,23 @@ func TestGenerateDesignSheetUnknownCharacterFails(t *testing.T) {
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"unknown"},
+		JobID:        "job-7",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Errorf("err = %v, want unknown-character error", err)
+	}
+}
+
+func TestGenerateDesignSheetRequiresJobID(t *testing.T) {
+	t.Parallel()
+	dr, _, _ := newTestRunner(t)
+
+	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
+		CharacterIDs: []string{"tsumugi"},
+		OutputDir:    "gs://bucket/out",
+	})
+	if err == nil || !strings.Contains(err.Error(), "job_id") {
+		t.Errorf("err = %v, want job_id-required error", err)
 	}
 }
