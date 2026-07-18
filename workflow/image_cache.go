@@ -53,6 +53,11 @@ func (c *imageCache) Set(key string, value any, ttl time.Duration) {
 	c.cache.Set(key, value, ttl)
 }
 
+// Delete は指定キーに紐づくアイテムを削除します。存在しないキーは無視します。
+func (c *imageCache) Delete(key string) {
+	c.cache.Delete(key)
+}
+
 // Stop は TTL 失効処理を停止します（未開始・多重停止は無視されます）。
 func (c *imageCache) Stop() {
 	if c == nil || c.cache == nil {
