@@ -88,7 +88,14 @@ func newPanelRunner(t *testing.T) (*PanelImageRunner, *mockFusionGenerator, *moc
 		"zundamon": "https://file-api.google.com/zunda",
 		"metan":    "https://file-api.google.com/metan",
 	}}
-	r := NewPanelImageRunner(cm, resources, gen, writer, "panel-model", ports.DefaultStyleSuffix, "", "")
+	r := NewPanelImageRunner(PanelImageRunnerArgs{
+		Characters:  cm,
+		Resources:   resources,
+		Generator:   gen,
+		Writer:      writer,
+		Model:       "panel-model",
+		StyleSuffix: ports.DefaultStyleSuffix,
+	})
 	return r, gen, writer, resources
 }
 

@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -58,34 +57,39 @@ type PanelImageRunner struct {
 
 var _ ports.PanelImageGenerator = (*PanelImageRunner)(nil)
 
+// PanelImageRunnerArgs は PanelImageRunner の構築に必要な依存と設定の集合です。
+type PanelImageRunnerArgs struct {
+	Characters *ports.Characters
+	Resources  PanelResourceProvider
+	Generator  ImageFusionGenerator
+	Writer     remoteio.Writer
+	// Model は画像生成に使うモデル名です（標準系: ports.Config.ImageStandardModel 推奨）。
+	Model string
+	// StyleSuffix にはパネル用の画風指定（ports.Config.StyleSuffix）を渡してください。
+	StyleSuffix string
+	// AspectRatio が空の場合は layout.PanelAspectRatio を使います。
+	AspectRatio string
+	// ImageSize が空の場合は layout.ImageSize1K を使います。
+	ImageSize string
+}
+
 // NewPanelImageRunner は依存関係を注入して初期化します。
-// aspectRatio / imageSize が空の場合は layout.PanelAspectRatio / layout.ImageSize1K を使います。
-// styleSuffix にはパネル用の画風指定（ports.Config.StyleSuffix）を渡してください。
-func NewPanelImageRunner(
-	characters *ports.Characters,
-	resources PanelResourceProvider,
-	generator ImageFusionGenerator,
-	writer remoteio.Writer,
-	model string,
-	styleSuffix string,
-	aspectRatio string,
-	imageSize string,
-) *PanelImageRunner {
-	if aspectRatio == "" {
-		aspectRatio = layout.PanelAspectRatio
+func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
+	if args.AspectRatio == "" {
+		args.AspectRatio = layout.PanelAspectRatio
 	}
-	if imageSize == "" {
-		imageSize = layout.ImageSize1K
+	if args.ImageSize == "" {
+		args.ImageSize = layout.ImageSize1K
 	}
 	return &PanelImageRunner{
-		characters:  characters,
-		resources:   resources,
-		generator:   generator,
-		writer:      writer,
-		model:       model,
-		styleSuffix: styleSuffix,
-		aspectRatio: aspectRatio,
-		imageSize:   imageSize,
+		characters:  args.Characters,
+		resources:   args.Resources,
+		generator:   args.Generator,
+		writer:      args.Writer,
+		model:       args.Model,
+		styleSuffix: args.StyleSuffix,
+		aspectRatio: args.AspectRatio,
+		imageSize:   args.ImageSize,
 	}
 }
 
@@ -105,7 +109,7 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 	if opts.ModelOverride != "" {
 		targetModel = opts.ModelOverride
 	}
-	seed := pr.resolveSeed(panel, opts)
+	seed := resolveSeedChain(opts.Seed, panel.Generation, pr.characters, panel.Characters)
 
 	var prompt string
 	var images []imagePorts.ImageURI
@@ -149,49 +153,24 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 	if err != nil {
 		return nil, fmt.Errorf("パネル画像の保存パス生成に失敗しました: %w", err)
 	}
-	if err := pr.writer.Write(ctx, finalPath, bytes.NewReader(resp.Data),
-		remoteio.WithContentType(resp.MimeType),
-		remoteio.WithCacheControl(defaultCacheControl),
-	); err != nil {
+	if err := writeGeneratedImage(ctx, pr.writer, finalPath, resp); err != nil {
 		return nil, fmt.Errorf("パネル画像の保存に失敗しました (path: %s): %w", finalPath, err)
 	}
 
 	// 生成条件を記録（再生成の基礎）
+	now := time.Now().UTC()
 	panel.Generation = &ports.GenerationRecord{
 		ImageURL:       finalPath,
 		UsedSeed:       resp.UsedSeed,
 		Prompt:         prompt,
 		NegativePrompt: panelNegativePrompt,
 		Model:          targetModel,
-		GeneratedAt:    time.Now().UTC(),
+		GeneratedAt:    now,
 	}
-	state.UpdatedAt = time.Now().UTC()
+	state.UpdatedAt = now
 
 	slog.Info("Panel image generation completed", "panel", panelID, "path", finalPath)
 	return state, nil
-}
-
-// resolveSeed は「明示指定 > 前回の UsedSeed > 主役キャラクターの Seed > なし」の順で
-// 生成シードを決定します。
-func (pr *PanelImageRunner) resolveSeed(panel *ports.Panel, opts ports.GenerateOptions) *int64 {
-	if opts.Seed != nil {
-		return opts.Seed
-	}
-	if panel.Generation != nil && panel.Generation.UsedSeed != 0 {
-		seed := panel.Generation.UsedSeed
-		return &seed
-	}
-	if pr.characters != nil {
-		for _, pc := range panel.Characters {
-			if pc.Prominence != ports.ProminencePrimary {
-				continue
-			}
-			if char := pr.characters.GetCharacter(pc.CharacterID); char != nil && char.Seed != nil {
-				return char.Seed
-			}
-		}
-	}
-	return nil
 }
 
 // buildGenerateRequest は通常生成のプロンプトと参照画像リストを構築します。
@@ -204,7 +183,6 @@ func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *por
 
 	var images []imagePorts.ImageURI
 	var subjects []string
-	subjectIndex := 0
 	for _, id := range panel.ReferencedCharacterIDs() {
 		char := pr.characters.GetCharacter(id)
 		if char == nil {
@@ -223,8 +201,7 @@ func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *por
 			ReferenceURL: referenceURL,
 			FileAPIURI:   pr.resources.GetCharacterResourceURIFor(id, pr.aspectRatio),
 		})
-		subjectIndex++
-		subjects = append(subjects, subjectLine(subjectIndex, char, findPanelCharacter(panel, id)))
+		subjects = append(subjects, subjectLine(len(images), char, findPanelCharacter(panel, id)))
 	}
 
 	if opts.PromptOverride != "" {
@@ -310,15 +287,11 @@ func findPanelCharacter(panel *ports.Panel, charID string) *ports.PanelCharacter
 // backgroundExtras は background（モブ）キャラクターの記述をまとめます。
 func backgroundExtras(panel *ports.Panel) string {
 	var parts []string
-	for _, pc := range panel.Characters {
-		if pc.Prominence != ports.ProminenceBackground {
+	for i := range panel.Characters {
+		if panel.Characters[i].Prominence != ports.ProminenceBackground {
 			continue
 		}
-		desc := pc.CharacterID
-		if pc.Action != "" {
-			desc += " (" + pc.Action + ")"
-		}
-		parts = append(parts, desc)
+		parts = append(parts, backgroundExtraDesc(&panel.Characters[i]))
 	}
 	return strings.Join(parts, ", ")
 }

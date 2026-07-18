@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"golang.org/x/sync/errgroup"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/shouni/go-comic-kit/ports"
 )
+
+// uploadExecTimeout は、singleflight で共有されるアップロード1回あたりの実行タイムアウトです。
+// 呼び出し元の context から切り離した実行用 context に適用されます。
+const uploadExecTimeout = 5 * time.Minute
 
 // ComicComposer は、キャラクター・パネル等の参照アセットの事前アップロードと
 // アップロード済み URI の解決を担います。
@@ -200,8 +205,11 @@ func (mc *ComicComposer) getOrUploadResource(ctx context.Context, key, reference
 		return uri, nil
 	}
 
-	// 同一キーに対する同時リクエストを1つに集約（HTTP URL等の場合のみ）
-	val, err, _ := mc.uploadGroup.Do(key, func() (interface{}, error) {
+	// 同一キーに対する同時リクエストを1つに集約（HTTP URL等の場合のみ）。
+	// 共有実行は呼び出し元の context から切り離す（WithoutCancel）ため、どの呼び出し元が
+	// キャンセルしても相乗りしている他の呼び出し元は巻き添えになりません
+	// （workflow/singleflight.go の doSingleflight と同方式）。
+	ch := mc.uploadGroup.DoChan(key, func() (any, error) {
 		mc.mu.RLock()
 		existingURI, ok := resourceMap[key]
 		mc.mu.RUnlock()
@@ -209,8 +217,11 @@ func (mc *ComicComposer) getOrUploadResource(ctx context.Context, key, reference
 			return existingURI, nil
 		}
 
+		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadExecTimeout)
+		defer cancel()
+
 		// ここで実際に File API (Google AI Studio) へアップロードされる
-		uploadedURI, uploadErr := mc.AssetManager.UploadFile(ctx, referenceURL)
+		uploadedURI, uploadErr := mc.AssetManager.UploadFile(execCtx, referenceURL)
 		if uploadErr != nil {
 			return nil, uploadErr
 		}
@@ -221,9 +232,13 @@ func (mc *ComicComposer) getOrUploadResource(ctx context.Context, key, reference
 		return uploadedURI, nil
 	})
 
-	if err != nil {
-		return "", err
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return "", result.Err
+		}
+		return result.Val.(string), nil
 	}
-
-	return val.(string), nil
 }

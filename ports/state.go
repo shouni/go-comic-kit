@@ -294,13 +294,13 @@ func (s *MangaState) ReplaceChapterPanels(chapterID string, newPanels []Panel) b
 
 // Repaginate は全パネルの Page 番号を先頭から maxPerPage 区切りで振り直します。
 // 章の生成・再生成後に呼ぶことで、ページ割りを常に決定的に保ちます。
-// maxPerPage が 0 以下の場合は 6 を使います。
+// maxPerPage が 0 以下の場合は DefaultMaxPanelsPerPage を使います。
 func (s *MangaState) Repaginate(maxPerPage int) {
 	if s == nil {
 		return
 	}
 	if maxPerPage <= 0 {
-		maxPerPage = 6
+		maxPerPage = DefaultMaxPanelsPerPage
 	}
 	for i := range s.Panels {
 		s.Panels[i].Page = i/maxPerPage + 1
