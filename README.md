@@ -6,6 +6,7 @@
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-comic-kit)](https://github.com/shouni/go-comic-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-comic-kit.svg)](https://pkg.go.dev/github.com/shouni/go-comic-kit)
+[![Status](https://img.shields.io/badge/Status-In%20Development-yellow)](#)
 
 ## 🚀 概要 (About)
 
@@ -164,7 +165,7 @@ state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{SourceURL: "gs
 state.ID = workID // 作品IDはキットが設定しないため、アプリ側で採番して設定する
 state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01")
 state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequest{
-	CharacterIDs: []string{"zundamon"}, OutputDir: outDir,
+	CharacterIDs: []string{"zundamon"}, JobID: jobID, OutputDir: outDir,
 })
 state, _ = ops.Panel.GeneratePanel(ctx, state, "ch01-p01", ports.GenerateOptions{OutputDir: outDir})
 state, _ = ops.Page.ComposePage(ctx, state, 1, ports.GenerateOptions{OutputDir: outDir})
@@ -175,3 +176,18 @@ _, _ = store.Save(ctx, writer, state, outDir)
 
 再生成の例: `ops.Panel.GeneratePanel(ctx, state, "ch01-p03", ports.GenerateOptions{Seed: &newSeed})`
 （シード振り直し）、`ports.GenerateOptions{EditPrompt: "表情を笑顔に変える"}`（既存画像の部分編集）。
+
+---
+
+### 🤝 依存関係 (Dependencies)
+
+* [shouni/gemini-image-kit](https://github.com/shouni/gemini-image-kit) - Gemini画像生成コア
+* [shouni/go-character-kit](https://github.com/shouni/go-character-kit) - キャラクター資産（characters.json）管理
+* [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API/Vertex AI クライアント（構造化出力対応）
+* [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - GCS/ローカル/HTTP 対応の読み書き抽象化
+* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - HTTP クライアント抽象化
+* [shouni/go-utils](https://github.com/shouni/go-utils) - 共通ユーティリティ
+
+### 📜 ライセンス (License)
+
+このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
