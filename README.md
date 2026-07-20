@@ -22,7 +22,7 @@
 * **🔁 冪等・工程単位の操作**:
     * `GenerateOutline` が原稿から state を新規作成し、`GenerateChapterScript` /
       `GenerateDesignSheet` / `GeneratePanel` / `ComposePage` は以降 state を受け取って
-      更新済み state を返します。**「12パネル中3番だけシードを振り直して再生成」**が
+      更新済み state を返します。「12パネル中3番だけシードを振り直して再生成」が
       API として表現でき、MCP ツール（`regenerate_panel` 等）と1対1で対応します。
 * **👥 マルチキャラクター・パネル**:
     * パネルは「発話者1人」ではなく **登場キャラクターの集合**（`Characters []PanelCharacter`）として表現。
@@ -127,15 +127,16 @@ type GenerationRecord struct {
 ## 🔁 操作セット (Operations)
 
 すべて冪等。`GenerateOutline` は原稿から state を新規作成し、以降の操作は state を受け取って
-更新済み state を返します（state in/out）。ap-comic の MCP ツールと1対1で対応します。
+更新済み state を返します（state in/out）。ap-comic の MCP ツールに対応します
+（章台本・パネル・ページの再生成は `regenerate_comic` の `command` パラメータで分岐します）。
 
 | 操作 | 内容 | 対応する MCP ツール |
 | --- | --- | --- |
 | `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 | `compose_comic`（第1工程） |
-| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 | `regenerate_chapter_script` |
+| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 | `regenerate_comic`（`command: "regenerate_chapter_script"`） |
 | `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 | `generate_design_sheet` |
-| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） | `regenerate_panel` |
-| `ComposePage` | ページ単位で再レイアウト・合成 | `regenerate_page` |
+| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） | `regenerate_comic`（`command: "regenerate_panel"`） |
+| `ComposePage` | ページ単位で再レイアウト・合成 | `regenerate_comic`（`command: "regenerate_page"`） |
 
 HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ（ap-comic）側の責務で、
 state ドキュメントと GCS 上の画像を直接読んで表現します。
@@ -148,12 +149,13 @@ state ドキュメントと GCS 上の画像を直接読んで表現します。
 
 ```go
 ops, err := workflow.New(workflow.Args{
-	Config:     ports.Config{}, // ゼロ値は ApplyDefaults で補完される
-	HTTPClient: httpClient,     // go-http-kit
-	Reader:     reader,         // go-remote-io（GCS/ローカル/HTTP）
-	Writer:     writer,
-	AIClient:   aiClient,       // go-gemini-client (v1.11.0+)
-	Characters: characters,     // go-character-kit (characters.json)
+	Config:          ports.Config{}, // ゼロ値は ApplyDefaults で補完される
+	HTTPClient:      httpClient,     // go-http-kit
+	Reader:          reader,         // go-remote-io（GCS/ローカル/HTTP）
+	Writer:          writer,
+	AIClient:        aiClient,        // go-gemini-client (v1.11.0+)。台本生成・パネル画像（標準品質）に使用
+	AIClientQuality: aiClientQuality, // 省略可（nil なら AIClient を使用）。デザインシート・ページ合成（高品質）に使用
+	Characters:      characters,      // go-character-kit (characters.json)
 })
 if err != nil {
 	return err
