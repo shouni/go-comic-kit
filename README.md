@@ -127,18 +127,17 @@ type GenerationRecord struct {
 ## 🔁 操作セット (Operations)
 
 すべて冪等。`GenerateOutline` は原稿から state を新規作成し、以降の操作は state を受け取って
-更新済み state を返します（state in/out）。ap-comic の MCP ツールに対応します
-（章台本・パネル・ページの再生成は `regenerate_comic` の `command` パラメータで分岐します）。
+更新済み state を返します（state in/out）。
 
-| 操作 | 内容 | 対応する MCP ツール |
-| --- | --- | --- |
-| `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 | `compose_comic`（第1工程） |
-| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 | `regenerate_comic`（`command: "regenerate_chapter_script"`） |
-| `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 | `generate_design_sheet` |
-| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） | `regenerate_comic`（`command: "regenerate_panel"`） |
-| `ComposePage` | ページ単位で再レイアウト・合成 | `regenerate_comic`（`command: "regenerate_page"`） |
+| 操作 | 内容 |
+| --- | --- |
+| `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 |
+| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 |
+| `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 |
+| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） |
+| `ComposePage` | ページ単位で再レイアウト・合成 |
 
-HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ（ap-comic）側の責務で、
+HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ側の責務で、
 state ドキュメントと GCS 上の画像を直接読んで表現します。
 
 ---
