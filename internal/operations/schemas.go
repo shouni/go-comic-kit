@@ -1,4 +1,4 @@
-package runner
+package operations
 
 import (
 	"google.golang.org/genai"

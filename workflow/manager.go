@@ -11,10 +11,10 @@ import (
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-remote-io/remoteio"
 
-	"github.com/shouni/go-comic-kit/layout"
+	"github.com/shouni/go-comic-kit/internal/layout"
+	"github.com/shouni/go-comic-kit/internal/operations"
+	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
-	"github.com/shouni/go-comic-kit/prompts"
-	"github.com/shouni/go-comic-kit/runner"
 )
 
 const (
@@ -46,7 +46,7 @@ type Args struct {
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
 type generationUnit struct {
-	imageGenerator runner.ImageFusionGenerator
+	imageGenerator operations.ImageFusionGenerator
 	composer       *layout.ComicComposer
 	model          string
 	cache          *imageCache
@@ -107,19 +107,19 @@ func New(args Args) (*ports.Operations, error) {
 	textGenerator := &singleflightStructuredGenerator{inner: args.AIClient}
 
 	ops := &ports.Operations{
-		Outline: runner.NewOutlineRunner(
+		Outline: operations.NewOutlineRunner(
 			outlinePrompt, textGenerator, args.Reader, args.Characters,
 			cfg.GeminiModel, cfg.MaxChapters,
 		),
-		ChapterScript: runner.NewChapterScriptRunner(
+		ChapterScript: operations.NewChapterScriptRunner(
 			chapterPrompt, textGenerator, args.Characters,
 			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
-		DesignSheet: runner.NewDesignSheetRunner(
+		DesignSheet: operations.NewDesignSheetRunner(
 			designPrompt, args.Characters, quality.composer, quality.imageGenerator, args.Writer,
 			quality.model, cfg.DesignStyleSuffix,
 		),
-		Panel: runner.NewPanelImageRunner(runner.PanelImageRunnerArgs{
+		Panel: operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
 			Characters:  args.Characters,
 			Resources:   standard.composer,
 			Generator:   standard.imageGenerator,
@@ -127,7 +127,7 @@ func New(args Args) (*ports.Operations, error) {
 			Model:       standard.model,
 			StyleSuffix: cfg.StyleSuffix,
 		}),
-		Page: runner.NewPageImageRunner(runner.PageImageRunnerArgs{
+		Page: operations.NewPageImageRunner(operations.PageImageRunnerArgs{
 			Characters:  args.Characters,
 			Resources:   quality.composer,
 			Generator:   quality.imageGenerator,

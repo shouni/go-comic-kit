@@ -1,4 +1,4 @@
-package runner
+package operations
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 	"google.golang.org/genai"
 
+	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
-	"github.com/shouni/go-comic-kit/prompts"
 )
 
 // --- Mocks ---

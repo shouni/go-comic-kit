@@ -55,6 +55,26 @@
 
 ---
 
+## 📂 プロジェクト構造 (Project Structure)
+
+本ライブラリは、**ports による抽象化**を境界とし、生成の各工程を独立した戦略として入れ替え可能な設計に基づいています。公開パッケージは実際の利用実態に合わせて `ports`・`asset`・`store`・`workflow` の4つに絞り、それ以外(工程の実行実体・プロンプト・レイアウト戦略)は `internal/` 配下に置いて外部から直接参照できないようにしています。
+
+```text
+go-comic-kit/
+├── ports/                # 【契約・定義】Interface、MangaState データモデル、Config。※全ての起点。
+├── workflow/              # 【統合管理】5つの操作を組み立て、Operations インターフェースを実装。singleflight による重複排除もここ。
+├── store/                 # 【永続化】MangaState (comic_state.json) の Load/Save。
+├── asset/                 # 【アセット管理】ファイル命名規則と GCS/ローカル出力パスの解決。
+└── internal/
+    ├── operations/        # 【実行実体】Outline/Chapter/Design/Panel/Page の具体的なプロセス実装。
+    ├── prompts/           # 【プロンプト】キット内蔵のデフォルトプロンプト実装（workflow.Args で上書き可能）。
+    └── layout/            # 【生成戦略】ComicComposer によるレイアウト計算・参照画像の事前アップロード。
+```
+
+`internal/operations` 等は `workflow` からしか使われない実装の詳細であり、将来これらへの直接アクセスが必要な消費側が現れた場合は、パッケージを `internal/` の外へ移動するだけで公開できます。
+
+---
+
 ## 📐 スキーマ (Schema)
 
 `ports.MangaState` が唯一の真実源です。台本は「章立て（Chapters）→ 章ごとのパネル生成」の

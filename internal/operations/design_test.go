@@ -1,4 +1,4 @@
-package runner
+package operations
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	characterkit "github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-remote-io/remoteio"
 
+	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
-	"github.com/shouni/go-comic-kit/prompts"
 )
 
 // --- Mocks ---
