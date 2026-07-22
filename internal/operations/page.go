@@ -1,4 +1,4 @@
-package runner
+package operations
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
-	"github.com/shouni/go-comic-kit/layout"
+	"github.com/shouni/go-comic-kit/internal/layout"
 	"github.com/shouni/go-comic-kit/ports"
 )
 

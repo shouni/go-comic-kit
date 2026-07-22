@@ -1,4 +1,4 @@
-package runner
+package operations
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 
 	characterkit "github.com/shouni/go-character-kit/character"
 
+	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
-	"github.com/shouni/go-comic-kit/prompts"
 )
 
 const chapterJSON = `{
@@ -112,31 +112,6 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	// 構造化出力オプションの検証
 	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseSchema == nil {
 		t.Errorf("opts = %+v, want application/json with ResponseSchema", ai.lastOpts)
-	}
-}
-
-func TestCleanJSONResponse(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]struct {
-		input string
-		want  string
-	}{
-		"plain":          {`{"a":1}`, `{"a":1}`},
-		"fenced":         {"```json\n{\"a\":1}\n```", `{"a":1}`},
-		"trailing noise": {`{"a":1} 以上が結果です。`, `{"a":1}`},
-		"brace in string": {
-			`{"text":"セリフに } が入っても壊れない"} trailing`,
-			`{"text":"セリフに } が入っても壊れない"}`,
-		},
-		"wrong closer": {`{"a":1)`, `{"a":1}`},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			if got := cleanJSONResponse(tc.input); got != tc.want {
-				t.Errorf("cleanJSONResponse(%q) = %q, want %q", tc.input, got, tc.want)
-			}
-		})
 	}
 }
 

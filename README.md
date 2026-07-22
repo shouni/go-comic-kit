@@ -22,7 +22,7 @@
 * **🔁 冪等・工程単位の操作**:
     * `GenerateOutline` が原稿から state を新規作成し、`GenerateChapterScript` /
       `GenerateDesignSheet` / `GeneratePanel` / `ComposePage` は以降 state を受け取って
-      更新済み state を返します。**「12パネル中3番だけシードを振り直して再生成」**が
+      更新済み state を返します。「12パネル中3番だけシードを振り直して再生成」が
       API として表現でき、MCP ツール（`regenerate_panel` 等）と1対1で対応します。
 * **👥 マルチキャラクター・パネル**:
     * パネルは「発話者1人」ではなく **登場キャラクターの集合**（`Characters []PanelCharacter`）として表現。
@@ -52,6 +52,26 @@
     * 同一内容のテキスト/画像生成リクエストの同時実行は `singleflight` で1回の API 呼び出しにまとめられます
       （Cloud Tasks の at-least-once 配信やリトライによる重複対策。プロセス内の in-flight が対象で、
       恒久的な冪等性は `GenerationRecord` を用いたアプリ側の判断で行います）。
+
+---
+
+## 📂 プロジェクト構造 (Project Structure)
+
+本ライブラリは、**ports による抽象化**を境界とし、生成の各工程を独立した戦略として入れ替え可能な設計に基づいています。公開パッケージは実際の利用実態に合わせて `ports`・`asset`・`store`・`workflow` の4つに絞り、それ以外(工程の実行実体・プロンプト・レイアウト戦略)は `internal/` 配下に置いて外部から直接参照できないようにしています。
+
+```text
+go-comic-kit/
+├── ports/                # 【契約・定義】Interface、MangaState データモデル、Config。※全ての起点。
+├── workflow/              # 【統合管理】5つの操作を組み立て、Operations インターフェースを実装。singleflight による重複排除もここ。
+├── store/                 # 【永続化】MangaState (comic_state.json) の Load/Save。
+├── asset/                 # 【アセット管理】ファイル命名規則と GCS/ローカル出力パスの解決。
+└── internal/
+    ├── operations/        # 【実行実体】Outline/Chapter/Design/Panel/Page の具体的なプロセス実装。
+    ├── prompts/           # 【プロンプト】キット内蔵のデフォルトプロンプト実装（workflow.Args で上書き可能）。
+    └── layout/            # 【生成戦略】ComicComposer によるレイアウト計算・参照画像の事前アップロード。
+```
+
+`internal/operations` 等は `workflow` からしか使われない実装の詳細であり、将来これらへの直接アクセスが必要な消費側が現れた場合は、パッケージを `internal/` の外へ移動するだけで公開できます。
 
 ---
 
@@ -127,17 +147,17 @@ type GenerationRecord struct {
 ## 🔁 操作セット (Operations)
 
 すべて冪等。`GenerateOutline` は原稿から state を新規作成し、以降の操作は state を受け取って
-更新済み state を返します（state in/out）。ap-comic の MCP ツールと1対1で対応します。
+更新済み state を返します（state in/out）。
 
-| 操作 | 内容 | 対応する MCP ツール |
-| --- | --- | --- |
-| `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 | `compose_comic`（第1工程） |
-| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 | `regenerate_chapter_script` |
-| `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 | `generate_design_sheet` |
-| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） | `regenerate_panel` |
-| `ComposePage` | ページ単位で再レイアウト・合成 | `regenerate_page` |
+| 操作 | 内容 |
+| --- | --- |
+| `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 |
+| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 |
+| `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 |
+| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） |
+| `ComposePage` | ページ単位で再レイアウト・合成 |
 
-HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ（ap-comic）側の責務で、
+HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ側の責務で、
 state ドキュメントと GCS 上の画像を直接読んで表現します。
 
 ---
@@ -148,12 +168,13 @@ state ドキュメントと GCS 上の画像を直接読んで表現します。
 
 ```go
 ops, err := workflow.New(workflow.Args{
-	Config:     ports.Config{}, // ゼロ値は ApplyDefaults で補完される
-	HTTPClient: httpClient,     // go-http-kit
-	Reader:     reader,         // go-remote-io（GCS/ローカル/HTTP）
-	Writer:     writer,
-	AIClient:   aiClient,       // go-gemini-client (v1.11.0+)
-	Characters: characters,     // go-character-kit (characters.json)
+	Config:          ports.Config{}, // ゼロ値は ApplyDefaults で補完される
+	HTTPClient:      httpClient,     // go-http-kit
+	Reader:          reader,         // go-remote-io（GCS/ローカル/HTTP）
+	Writer:          writer,
+	AIClient:        aiClient,        // go-gemini-client (v1.11.0+)。台本生成・パネル画像（標準品質）に使用
+	AIClientQuality: aiClientQuality, // 省略可（nil なら AIClient を使用）。デザインシート・ページ合成（高品質）に使用
+	Characters:      characters,      // go-character-kit (characters.json)
 })
 if err != nil {
 	return err

@@ -1,4 +1,4 @@
-package runner
+package operations
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
-	"github.com/shouni/go-comic-kit/layout"
+	"github.com/shouni/go-comic-kit/internal/layout"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -186,6 +186,14 @@ func designFileTag(charIDs []string) string {
 		cut = cut[:len(cut)-1]
 	}
 	return fmt.Sprintf("%s_%08x", cut, sum)
+}
+
+// ptrInt64 は 0 を nil として扱う int64 ポインタ変換です。
+func ptrInt64(v int64) *int64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
 }
 
 // collectCharacterURIs はキャラクター情報を収集し、ImageURIスライスと説明文を返します。

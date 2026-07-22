@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/genai"
 
-	"github.com/shouni/go-comic-kit/runner"
+	"github.com/shouni/go-comic-kit/internal/operations"
 )
 
 // singleflightExecTimeout は、singleflight で共有される生成処理1回あたりの実行タイムアウトです。
@@ -26,11 +26,11 @@ const singleflightExecTimeout = 5 * time.Minute
 // 高価な画像生成 API 呼び出しを守ります。プロセス内の in-flight のみが対象で、
 // 恒久的な重複排除は state の GenerationRecord によるジョブ側の冪等性で行います。
 type singleflightFusionGenerator struct {
-	inner runner.ImageFusionGenerator
+	inner operations.ImageFusionGenerator
 	group singleflight.Group
 }
 
-var _ runner.ImageFusionGenerator = (*singleflightFusionGenerator)(nil)
+var _ operations.ImageFusionGenerator = (*singleflightFusionGenerator)(nil)
 
 // GenerateFusedImage はリクエスト内容のハッシュをキーに同時実行をまとめます。
 // 共有される応答は呼び出し元ごとに複製して返します。
@@ -48,11 +48,11 @@ func (g *singleflightFusionGenerator) GenerateFusedImage(ctx context.Context, re
 // singleflightStructuredGenerator は、同一内容のテキスト生成リクエストの同時実行を
 // 1回にまとめる StructuredGenerator のデコレータです。
 type singleflightStructuredGenerator struct {
-	inner runner.StructuredGenerator
+	inner operations.StructuredGenerator
 	group singleflight.Group
 }
 
-var _ runner.StructuredGenerator = (*singleflightStructuredGenerator)(nil)
+var _ operations.StructuredGenerator = (*singleflightStructuredGenerator)(nil)
 
 // GenerateWithParts はリクエスト内容のハッシュをキーに同時実行をまとめます。
 func (g *singleflightStructuredGenerator) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
@@ -63,7 +63,7 @@ func (g *singleflightStructuredGenerator) GenerateWithParts(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	// NOTE: 浅いコピーで返します。呼び出し側（runner）は Text しか参照しない前提です。
+	// NOTE: 浅いコピーで返します。呼び出し側（operations）は Text しか参照しない前提です。
 	// gemini.Response の参照型フィールドを書き換える利用が増えた場合は深いコピーに変更すること。
 	cloned := *resp
 	return &cloned, nil
