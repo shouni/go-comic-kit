@@ -6,12 +6,12 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/shouni/gemini-image-kit v1.10.3
 	github.com/shouni/go-character-kit v1.0.11
-	github.com/shouni/go-gemini-client v1.13.4
-	github.com/shouni/go-http-kit v1.6.0
+	github.com/shouni/go-gemini-client v1.13.5
+	github.com/shouni/go-http-kit v1.7.0
 	github.com/shouni/go-remote-io v1.6.1
 	github.com/shouni/go-utils v1.1.0
 	golang.org/x/sync v0.22.0
-	google.golang.org/genai v1.64.0
+	google.golang.org/genai v1.65.0
 )
 
 require (
