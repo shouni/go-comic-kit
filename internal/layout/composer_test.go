@@ -17,7 +17,7 @@ type mockAssetManager struct {
 	uploadFunc  func(ctx context.Context, refURL string) (string, error)
 }
 
-func (m *mockAssetManager) UploadFile(ctx context.Context, refURL string) (string, error) {
+func (m *mockAssetManager) EnsureUploaded(ctx context.Context, refURL string) (string, error) {
 	atomic.AddInt32(&m.uploadCount, 1)
 	if m.uploadFunc != nil {
 		return m.uploadFunc(ctx, refURL)

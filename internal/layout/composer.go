@@ -221,7 +221,7 @@ func (mc *ComicComposer) getOrUploadResource(ctx context.Context, key, reference
 		defer cancel()
 
 		// ここで実際に File API (Google AI Studio) へアップロードされる
-		uploadedURI, uploadErr := mc.AssetManager.UploadFile(execCtx, referenceURL)
+		uploadedURI, uploadErr := mc.AssetManager.EnsureUploaded(execCtx, referenceURL)
 		if uploadErr != nil {
 			return nil, uploadErr
 		}

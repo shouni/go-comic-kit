@@ -30,8 +30,8 @@ func (f *fakeAIClient) GenerateWithParts(_ context.Context, _ string, _ []*genai
 
 func (f *fakeAIClient) IsVertexAI() bool { return true }
 
-func (f *fakeAIClient) UploadFile(_ context.Context, _ io.Reader, _, _ string) (string, string, error) {
-	return "file-uri", "file-name", nil
+func (f *fakeAIClient) UploadFile(_ context.Context, _ io.Reader, _, _ string) (gemini.UploadedFile, error) {
+	return gemini.UploadedFile{URI: "file-uri", Name: "file-name"}, nil
 }
 
 func (f *fakeAIClient) DeleteFile(_ context.Context, _ string) error { return nil }

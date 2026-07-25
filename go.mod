@@ -4,10 +4,10 @@ go 1.26
 
 require (
 	github.com/jellydator/ttlcache/v3 v3.4.1
-	github.com/shouni/gemini-image-kit v1.10.3
+	github.com/shouni/gemini-image-kit v1.11.0
 	github.com/shouni/go-character-kit v1.0.11
-	github.com/shouni/go-gemini-client v1.13.5
-	github.com/shouni/go-http-kit v1.7.0
+	github.com/shouni/go-gemini-client v1.13.8
+	github.com/shouni/go-http-kit v1.7.2
 	github.com/shouni/go-remote-io v1.6.1
 	github.com/shouni/go-utils v1.1.0
 	golang.org/x/sync v0.22.0
@@ -37,7 +37,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.31 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.105.2 // indirect
 	github.com/aws/smithy-go v1.27.3 // indirect
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
@@ -53,7 +53,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.23.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/shouni/netarmor v1.1.0 // indirect
+	github.com/shouni/netarmor v1.2.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.43.0 // indirect
