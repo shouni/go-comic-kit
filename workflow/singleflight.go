@@ -11,7 +11,6 @@ import (
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/sync/singleflight"
-	"google.golang.org/genai"
 
 	"github.com/shouni/go-comic-kit/internal/operations"
 )
@@ -54,11 +53,11 @@ type singleflightStructuredGenerator struct {
 
 var _ operations.StructuredGenerator = (*singleflightStructuredGenerator)(nil)
 
-// GenerateWithParts はリクエスト内容のハッシュをキーに同時実行をまとめます。
-func (g *singleflightStructuredGenerator) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
-	key := structuredRequestKey(modelName, parts, &opts)
+// GenerateWithAttachments はリクエスト内容のハッシュをキーに同時実行をまとめます。
+func (g *singleflightStructuredGenerator) GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
+	key := structuredRequestKey(modelName, prompt, attachments, &opts)
 	resp, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*gemini.Response, error) {
-		return g.inner.GenerateWithParts(execCtx, modelName, parts, opts)
+		return g.inner.GenerateWithAttachments(execCtx, modelName, prompt, attachments, opts)
 	})
 	if err != nil {
 		return nil, err
@@ -87,11 +86,16 @@ func fusionRequestKey(req *imagePorts.ImageFusionRequest) string {
 }
 
 // structuredRequestKey はテキスト生成リクエストの内容から singleflight 用キーを作ります。
-func structuredRequestKey(modelName string, parts []*genai.Part, opts *gemini.GenerateOptions) string {
-	keyParts := []string{modelName, opts.ResponseMIMEType, singleflightSeedKey(opts.Seed)}
-	for _, part := range parts {
-		if part != nil {
-			keyParts = append(keyParts, part.Text)
+//
+// 添付は URI かバイト列のどちらかなので、URI はそのまま、バイト列は中身のハッシュを
+// キーに含めます。長さだけで代用すると、同じサイズの別画像が同じキーになります。
+func structuredRequestKey(modelName string, prompt string, attachments []gemini.Attachment, opts *gemini.GenerateOptions) string {
+	keyParts := []string{modelName, opts.ResponseMIMEType, singleflightSeedKey(opts.Seed), prompt}
+	for _, attachment := range attachments {
+		keyParts = append(keyParts, attachment.MIMEType, attachment.URI)
+		if len(attachment.Data) > 0 {
+			sum := sha256.Sum256(attachment.Data)
+			keyParts = append(keyParts, hex.EncodeToString(sum[:]))
 		}
 	}
 	return singleflightKey("structured", keyParts...)

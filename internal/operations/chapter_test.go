@@ -110,8 +110,8 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 		t.Error("prompt does not contain character roster")
 	}
 	// 構造化出力オプションの検証
-	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseSchema == nil {
-		t.Errorf("opts = %+v, want application/json with ResponseSchema", ai.lastOpts)
+	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseJSONSchema == nil {
+		t.Errorf("opts = %+v, want application/json with ResponseJSONSchema", ai.lastOpts)
 	}
 }
 

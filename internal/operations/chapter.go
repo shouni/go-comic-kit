@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/genai"
-
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -90,8 +88,7 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 	// 2. 生成（構造化出力: スキーマで文法レベルに制約する）
 	slog.Info("ChapterScriptRunner: Gemini APIを呼び出し中",
 		"model", r.model, "chapter", chapterID)
-	parts := []*genai.Part{{Text: finalPrompt}}
-	resp, err := r.aiClient.GenerateWithParts(ctx, r.model, parts, buildJSONGenerateOptions(chapterScriptSchema()))
+	resp, err := r.aiClient.GenerateWithAttachments(ctx, r.model, finalPrompt, nil, buildJSONGenerateOptions(chapterScriptSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("章 %q の台本生成に失敗しました: %w", chapterID, err)
 	}
