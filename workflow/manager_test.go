@@ -11,7 +11,6 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-remote-io/remoteio"
-	"google.golang.org/genai"
 
 	"github.com/shouni/go-comic-kit/ports"
 )
@@ -24,7 +23,7 @@ func (f *fakeAIClient) GenerateContent(_ context.Context, _, _ string) (*gemini.
 	return &gemini.Response{Text: "{}"}, nil
 }
 
-func (f *fakeAIClient) GenerateWithParts(_ context.Context, _ string, _ []*genai.Part, _ gemini.GenerateOptions) (*gemini.Response, error) {
+func (f *fakeAIClient) GenerateWithAttachments(_ context.Context, _ string, _ string, _ []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
 	return &gemini.Response{Text: "{}"}, nil
 }
 

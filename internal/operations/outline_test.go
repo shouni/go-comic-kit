@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 
 	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
@@ -24,11 +23,9 @@ type fakeContentGenerator struct {
 	lastOpts   gemini.GenerateOptions
 }
 
-func (f *fakeContentGenerator) GenerateWithParts(_ context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
+func (f *fakeContentGenerator) GenerateWithAttachments(_ context.Context, model string, prompt string, _ []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
 	f.lastModel = model
-	if len(parts) > 0 && parts[0] != nil {
-		f.lastPrompt = parts[0].Text
-	}
+	f.lastPrompt = prompt
 	f.lastOpts = opts
 	if f.err != nil {
 		return nil, f.err
@@ -102,15 +99,15 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 		t.Error("CreatedAt/UpdatedAt must be set")
 	}
 	// 構造化出力オプションの検証
-	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseSchema == nil {
-		t.Errorf("opts = %+v, want application/json with ResponseSchema", ai.lastOpts)
+	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseJSONSchema == nil {
+		t.Errorf("opts = %+v, want application/json with ResponseJSONSchema", ai.lastOpts)
 	}
 	// セーフティブロックによる生成失敗を抑えるため BlockNone を指定する
 	if len(ai.lastOpts.SafetySettings) != 4 {
 		t.Errorf("SafetySettings = %+v, want 4 categories with BlockNone", ai.lastOpts.SafetySettings)
 	}
 	for _, s := range ai.lastOpts.SafetySettings {
-		if s.Threshold != genai.HarmBlockThresholdBlockNone {
+		if s.Threshold != gemini.SafetyBlockNone {
 			t.Errorf("SafetySettings[%s] = %v, want BlockNone", s.Category, s.Threshold)
 		}
 	}

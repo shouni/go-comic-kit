@@ -22,7 +22,9 @@ golangci-lint run    # config in .golangci.yml (v2 format; errcheck, staticcheck
 
 CI (`.github/workflows/ci.yml`) runs exactly: `go build`, `go vet`, gofmt check, `go test -race`, golangci-lint, and govulncheck. revive requires doc comments on all exported symbols (this repo's comments are written in Japanese).
 
-Dependencies (`gemini-image-kit`, `go-character-kit`, `go-remote-io`, `go-utils`) are pinned to the versions proven in go-manga-kit — don't bump casually. `go-gemini-client` is at v1.13.4+ on purpose: script generation relies on its `GenerateOptions.ResponseSchema` (structured output / constrained decoding, same approach as its `lyria` package) so the model's JSON is grammar-constrained instead of regex-repaired. `internal/operations/json_response.go`'s `parseJSONResponse` calls `gemini.CleanJSONResponse` (go-gemini-client) as a defensive layer against trailing noise the model still occasionally emits despite constrained decoding.
+Dependencies (`gemini-image-kit`, `go-character-kit`, `go-remote-io`, `go-utils`) are pinned to the versions proven in go-manga-kit — don't bump casually. `go-gemini-client` is at v1.15.1+ on purpose: script generation relies on its `GenerateOptions.ResponseJSONSchema` (structured output / constrained decoding, same approach as its `lyria` package) so the model's JSON is grammar-constrained instead of regex-repaired.
+
+**Nothing in this repo imports `google.golang.org/genai`.** The SDK stays inside `go-gemini-client`: `operations.StructuredGenerator` is an alias of `gemini.MultimodalGenerator` (prompt + attachments, no `genai.Part`), schemas in `internal/operations/schemas.go` are plain `map[string]any` JSON Schema, safety thresholds come from `gemini.SafetyBlockNone`, and the image core takes `gemini.MultimodalModel`. Re-introducing `genai.Schema` or `GenerateWithParts` would pull the SDK back into this kit's signatures and into every mock that implements them. `internal/operations/json_response.go`'s `parseJSONResponse` calls `gemini.CleanJSONResponse` (go-gemini-client) as a defensive layer against trailing noise the model still occasionally emits despite constrained decoding.
 
 ## Architecture
 

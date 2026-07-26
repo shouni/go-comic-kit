@@ -34,7 +34,7 @@
       キャラクターの一貫性を制御。パネル・ページの生成条件は `GenerationRecord` として
       state に永続化されます。
 * **📐 構造化出力（Constrained Decoding）**:
-    * 台本生成は `ResponseSchema` によりモデル出力が**文法レベルでスキーマに制約**されます。
+    * 台本生成は `ResponseJSONSchema`（素の JSON Schema）によりモデル出力が**文法レベルでスキーマに制約**されます。
       JSON の破綻を事後修復ではなく発生源で防ぎ、`prominence` や `kind` は Enum 制約で不正値を排除します。
 * **✏️ 編集モードによる再生成**:
     * シードの振り直しに加え、既存の生成済み画像に対する**指示ベースの部分編集**（`EditPrompt`）に対応。

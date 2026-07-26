@@ -31,10 +31,10 @@ type Args struct {
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
 	// AIClient はテキスト生成（台本）と標準画質の画像生成（パネル）に使います。
-	AIClient gemini.GenerativeModel
+	AIClient gemini.MultimodalModel
 	// AIClientQuality は高品質系の画像生成（デザインシート・ページ合成）に使います。
 	// nil の場合は AIClient を使います。
-	AIClientQuality gemini.GenerativeModel
+	AIClientQuality gemini.MultimodalModel
 	Characters      *ports.Characters
 
 	// OutlinePrompt / ChapterScriptPrompt / DesignSheetPrompt を指定するとプロンプト構築を
@@ -144,17 +144,16 @@ func New(args Args) (*ports.Operations, error) {
 }
 
 // buildGenerationUnit は、指定クライアント・モデルの画像生成一式（core・composer・generator）を構築します。
-func buildGenerationUnit(args *Args, client gemini.GenerativeModel, modelName string) (*generationUnit, error) {
+func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName string) (*generationUnit, error) {
 	cache := newImageCache(defaultCacheExpiration)
 
-	core, err := generator.NewGeminiImageCore(
-		client,
-		args.Reader,
-		args.HTTPClient,
-		cache,
-		defaultTTL,
-		false,
-	)
+	core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
+		AIClient:   client,
+		Reader:     args.Reader,
+		HTTPClient: args.HTTPClient,
+		Cache:      cache,
+		CacheTTL:   defaultTTL,
+	})
 	if err != nil {
 		cache.Stop()
 		return nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)

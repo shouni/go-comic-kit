@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"google.golang.org/genai"
-
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -85,8 +83,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 
 	// 3. 生成（構造化出力: スキーマで文法レベルに制約する）
 	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", r.model, "max_chapters", maxChapters)
-	parts := []*genai.Part{{Text: finalPrompt}}
-	resp, err := r.aiClient.GenerateWithParts(ctx, r.model, parts, buildJSONGenerateOptions(outlineSchema()))
+	resp, err := r.aiClient.GenerateWithAttachments(ctx, r.model, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("章立ての生成に失敗しました: %w", err)
 	}

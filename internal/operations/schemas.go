@@ -1,78 +1,79 @@
 package operations
 
 import (
-	"google.golang.org/genai"
-
 	"github.com/shouni/go-comic-kit/ports"
 )
 
 // outlineSchema は章立て生成（GenerateOutline）の構造化出力スキーマです。
 // ResponseMIMEType "application/json" と併用することで、モデル出力がこのスキーマに
 // 文法レベルで制約されます。章の ID はシステム側で採番するため含めていません。
-func outlineSchema() *genai.Schema {
-	return &genai.Schema{
-		Type: genai.TypeObject,
-		Properties: map[string]*genai.Schema{
-			"title":       {Type: genai.TypeString},
-			"description": {Type: genai.TypeString},
-			"chapters": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"title":          {Type: genai.TypeString},
-						"summary":        {Type: genai.TypeString},
-						"source_excerpt": {Type: genai.TypeString},
+//
+// 素の JSON Schema を返します。genai.Schema で組み立てると、スキーマを書くだけの
+// コードが SDK の型に縛られ、go-gemini-client を挟んでいる意味が薄れます。
+func outlineSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title":       map[string]any{"type": "string"},
+			"description": map[string]any{"type": "string"},
+			"chapters": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"title":          map[string]any{"type": "string"},
+						"summary":        map[string]any{"type": "string"},
+						"source_excerpt": map[string]any{"type": "string"},
 					},
-					Required: []string{"title", "summary", "source_excerpt"},
+					"required": []string{"title", "summary", "source_excerpt"},
 				},
 			},
 		},
-		Required: []string{"title", "description", "chapters"},
+		"required": []string{"title", "description", "chapters"},
 	}
 }
 
 // chapterScriptSchema は章単位の台本生成（GenerateChapterScript）の構造化出力スキーマです。
 // パネルの ID / ChapterID / Page はシステム側で採番するため含めていません。
-func chapterScriptSchema() *genai.Schema {
-	return &genai.Schema{
-		Type: genai.TypeObject,
-		Properties: map[string]*genai.Schema{
-			"panels": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"shot":          {Type: genai.TypeString},
-						"setting":       {Type: genai.TypeString},
-						"visual_anchor": {Type: genai.TypeString},
-						"characters": {
-							Type: genai.TypeArray,
-							Items: &genai.Schema{
-								Type: genai.TypeObject,
-								Properties: map[string]*genai.Schema{
-									"character_id": {Type: genai.TypeString},
-									"prominence": {
-										Type: genai.TypeString,
-										Enum: []string{ports.ProminencePrimary, ports.ProminenceSecondary, ports.ProminenceBackground},
+func chapterScriptSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"panels": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"shot":          map[string]any{"type": "string"},
+						"setting":       map[string]any{"type": "string"},
+						"visual_anchor": map[string]any{"type": "string"},
+						"characters": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"character_id": map[string]any{"type": "string"},
+									"prominence": map[string]any{
+										"type": "string",
+										"enum": []string{ports.ProminencePrimary, ports.ProminenceSecondary, ports.ProminenceBackground},
 									},
-									"emotion":  {Type: genai.TypeString},
-									"action":   {Type: genai.TypeString},
-									"position": {Type: genai.TypeString},
+									"emotion":  map[string]any{"type": "string"},
+									"action":   map[string]any{"type": "string"},
+									"position": map[string]any{"type": "string"},
 								},
-								Required: []string{"character_id", "prominence"},
+								"required": []string{"character_id", "prominence"},
 							},
 						},
-						"dialogues": {
-							Type: genai.TypeArray,
-							Items: &genai.Schema{
-								Type: genai.TypeObject,
-								Properties: map[string]*genai.Schema{
-									"speaker_id": {Type: genai.TypeString},
-									"text":       {Type: genai.TypeString},
-									"kind": {
-										Type: genai.TypeString,
-										Enum: []string{
+						"dialogues": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"speaker_id": map[string]any{"type": "string"},
+									"text":       map[string]any{"type": "string"},
+									"kind": map[string]any{
+										"type": "string",
+										"enum": []string{
 											ports.DialogueKindSpeech,
 											ports.DialogueKindThought,
 											ports.DialogueKindShout,
@@ -81,14 +82,14 @@ func chapterScriptSchema() *genai.Schema {
 										},
 									},
 								},
-								Required: []string{"text", "kind"},
+								"required": []string{"text", "kind"},
 							},
 						},
 					},
-					Required: []string{"visual_anchor", "characters", "dialogues"},
+					"required": []string{"visual_anchor", "characters", "dialogues"},
 				},
 			},
 		},
-		Required: []string{"panels"},
+		"required": []string{"panels"},
 	}
 }

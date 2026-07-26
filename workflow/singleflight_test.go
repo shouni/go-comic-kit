@@ -9,7 +9,6 @@ import (
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 )
 
 // blockingFusionGenerator は release されるまで応答を返さない fake です。
@@ -148,7 +147,7 @@ type countingStructuredGenerator struct {
 	release chan struct{}
 }
 
-func (g *countingStructuredGenerator) GenerateWithParts(ctx context.Context, _ string, _ []*genai.Part, _ gemini.GenerateOptions) (*gemini.Response, error) {
+func (g *countingStructuredGenerator) GenerateWithAttachments(ctx context.Context, _ string, _ string, _ []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
 	atomic.AddInt32(&g.calls, 1)
 	select {
 	case <-g.release:
@@ -164,7 +163,7 @@ func TestSingleflightStructuredDeduplicatesConcurrentCalls(t *testing.T) {
 	inner := &countingStructuredGenerator{release: make(chan struct{})}
 	g := &singleflightStructuredGenerator{inner: inner}
 
-	parts := []*genai.Part{{Text: "same prompt"}}
+	const prompt = "same prompt"
 	opts := gemini.GenerateOptions{ResponseMIMEType: "application/json"}
 
 	var wg sync.WaitGroup
@@ -172,8 +171,8 @@ func TestSingleflightStructuredDeduplicatesConcurrentCalls(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := g.GenerateWithParts(context.Background(), "m", parts, opts); err != nil {
-				t.Errorf("GenerateWithParts failed: %v", err)
+			if _, err := g.GenerateWithAttachments(context.Background(), "m", prompt, nil, opts); err != nil {
+				t.Errorf("GenerateWithAttachments failed: %v", err)
 			}
 		}()
 	}
