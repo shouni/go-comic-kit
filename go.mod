@@ -9,7 +9,7 @@ require (
 	github.com/shouni/go-gemini-client v1.13.8
 	github.com/shouni/go-http-kit v1.7.2
 	github.com/shouni/go-remote-io v1.6.1
-	github.com/shouni/go-utils v1.1.0
+	github.com/shouni/go-utils v1.3.0
 	golang.org/x/sync v0.22.0
 	google.golang.org/genai v1.65.0
 )
