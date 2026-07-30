@@ -3,12 +3,9 @@ package operations
 import (
 	"context"
 	"fmt"
-	"hash/crc32"
 	"log/slog"
-	"path"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-remote-io/remoteio"
@@ -68,7 +65,7 @@ func NewDesignSheetRunner(
 // 合成シートを生成し、各キャラクターに同じ画像の DesignSheetRef を記録します。
 func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *ports.MangaState, req ports.DesignSheetRequest) (*ports.MangaState, error) {
 	if strings.TrimSpace(req.JobID) == "" {
-		return nil, fmt.Errorf("job_id is required to generate a design sheet")
+		return nil, fmt.Errorf("%w: デザインシート生成には job_id が必要です", ports.ErrInvalidRequest)
 	}
 
 	// 1. 複数キャラの情報を集約
@@ -91,7 +88,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 		StyleSuffix:  dr.styleSuffix,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("デザインシートプロンプトの構築に失敗しました: %w", err)
+		return nil, fmt.Errorf("%w: デザインシートプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
 	// 3. 生成リクエスト
@@ -115,7 +112,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	// 4. 生成実行
 	resp, err := dr.generator.GenerateFusedImage(ctx, fusionReq)
 	if err != nil {
-		return nil, fmt.Errorf("画像の生成に失敗しました: %w", err)
+		return nil, fmt.Errorf("%w: デザインシート画像の生成に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
 	// 5. 画像の保存
@@ -144,24 +141,14 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	return state, nil
 }
 
-// maxDesignFileTagBytes はファイル名に埋め込むキャラクタータグの最大バイト長です。
-// ファイルシステムのファイル名長制限（一般に255バイト）に、ディレクトリや接頭辞・拡張子を
-// 加えても収まる余裕を持たせた値です。
-const maxDesignFileTagBytes = 100
-
 // saveResponseImage は、生成された画像データを指定されたディレクトリに保存します。
 // 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
 // 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
 // 上書きせず履歴として残します。
 func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imagePorts.ImageResponse, charIDs []string, jobID string, outputDir string) (string, error) {
-	charTags := designFileTag(charIDs)
-	safeJobID := fileNameSanitizer.Replace(jobID)
-
-	extension := getPreferredExtension(resp.MimeType)
-	relativePath := path.Join(asset.CharacterDesignDir, charTags, safeJobID+extension)
-	finalPath, err := asset.ResolveOutputPath(outputDir, relativePath)
+	finalPath, err := asset.DesignSheetPath(outputDir, charIDs, jobID, getPreferredExtension(resp.MimeType))
 	if err != nil {
-		return "", fmt.Errorf("画像保存パスの生成に失敗しました (baseDir: %s, relativePath: %s): %w", outputDir, relativePath, err)
+		return "", fmt.Errorf("画像保存パスの生成に失敗しました (baseDir: %s, characters: %v): %w", outputDir, charIDs, err)
 	}
 
 	if err = writeGeneratedImage(ctx, dr.writer, finalPath, resp); err != nil {
@@ -169,23 +156,6 @@ func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imageP
 	}
 
 	return finalPath, nil
-}
-
-// designFileTag はキャラクターID群からファイル名用のタグを生成します。
-// ID が多い・長い場合でもファイルシステムのファイル名長制限に抵触しないよう、
-// 上限を超えたら rune 境界で切り詰め、組み合わせの一意性はチェックサムで担保します。
-func designFileTag(charIDs []string) string {
-	tag := fileNameSanitizer.Replace(strings.Join(charIDs, "_"))
-	if len(tag) <= maxDesignFileTagBytes {
-		return tag
-	}
-	sum := crc32.ChecksumIEEE([]byte(tag))
-	cut := tag[:maxDesignFileTagBytes]
-	// バイト位置での切り詰めがマルチバイト文字を分断した場合は末尾を除去して修復する
-	for len(cut) > 0 && !utf8.ValidString(cut) {
-		cut = cut[:len(cut)-1]
-	}
-	return fmt.Sprintf("%s_%08x", cut, sum)
 }
 
 // ptrInt64 は 0 を nil として扱う int64 ポインタ変換です。
@@ -250,11 +220,11 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ids []string, override ports.D
 	}
 
 	if len(missingIDs) > 0 {
-		return nil, nil, fmt.Errorf("一部のキャラクターIDが見つかりませんでした: %s", strings.Join(missingIDs, ", "))
+		return nil, nil, fmt.Errorf("%w: キャラクターID %s", ports.ErrNotFound, strings.Join(missingIDs, ", "))
 	}
 
 	if len(uris) == 0 {
-		return nil, nil, fmt.Errorf("有効な参照画像を持つキャラクターが1つも見つかりませんでした (対象ID: %s)", strings.Join(ids, ", "))
+		return nil, nil, fmt.Errorf("%w: 有効な参照画像を持つキャラクターが1つもありません (対象ID: %s)", ports.ErrInvalidRequest, strings.Join(ids, ", "))
 	}
 
 	return uris, descriptions, nil

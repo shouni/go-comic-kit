@@ -2,9 +2,9 @@ package operations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
-	"path"
 	"strings"
 	"time"
 
@@ -38,6 +38,10 @@ Draw a single manga panel following the scene direction, with these rules:
 // PanelResourceProvider は、PanelImageRunner が layout.ComicComposer に依存する範囲だけを
 // 切り出した契約です。参照画像の事前アップロードと、アスペクト比別のアップロード済み URI
 // 解決を提供します。
+//
+// GenerateAllPanels は複数のコマを並列に生成するため、実装は複数のゴルーチンからの
+// 同時呼び出しに耐える必要があります（layout.ComicComposer は mutex と singleflight で
+// 保護済みです）。
 type PanelResourceProvider interface {
 	PrepareCharacterResources(ctx context.Context, state *ports.MangaState) error
 	GetCharacterResourceURIFor(charID, aspectRatio string) string
@@ -45,17 +49,21 @@ type PanelResourceProvider interface {
 
 // PanelImageRunner はパネル画像の生成/再生成（GeneratePanel 操作）を実行します。
 type PanelImageRunner struct {
-	characters  *ports.Characters
-	resources   PanelResourceProvider
-	generator   ImageFusionGenerator
-	writer      remoteio.Writer
-	model       string
-	styleSuffix string
-	aspectRatio string
-	imageSize   string
+	characters     *ports.Characters
+	resources      PanelResourceProvider
+	generator      ImageFusionGenerator
+	writer         remoteio.Writer
+	model          string
+	styleSuffix    string
+	aspectRatio    string
+	imageSize      string
+	maxConcurrency int
 }
 
-var _ ports.PanelImageGenerator = (*PanelImageRunner)(nil)
+var (
+	_ ports.PanelImageGenerator = (*PanelImageRunner)(nil)
+	_ ports.PanelBatchGenerator = (*PanelImageRunner)(nil)
+)
 
 // PanelImageRunnerArgs は PanelImageRunner の構築に必要な依存と設定の集合です。
 type PanelImageRunnerArgs struct {
@@ -71,6 +79,9 @@ type PanelImageRunnerArgs struct {
 	AspectRatio string
 	// ImageSize が空の場合は layout.ImageSize1K を使います。
 	ImageSize string
+	// MaxConcurrency は GenerateAllPanels の並列数です（ports.Config.MaxConcurrency）。
+	// 0 以下の場合は 1（逐次実行）になります。
+	MaxConcurrency int
 }
 
 // NewPanelImageRunner は依存関係を注入して初期化します。
@@ -81,15 +92,19 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 	if args.ImageSize == "" {
 		args.ImageSize = layout.ImageSize1K
 	}
+	if args.MaxConcurrency <= 0 {
+		args.MaxConcurrency = 1
+	}
 	return &PanelImageRunner{
-		characters:  args.Characters,
-		resources:   args.Resources,
-		generator:   args.Generator,
-		writer:      args.Writer,
-		model:       args.Model,
-		styleSuffix: args.StyleSuffix,
-		aspectRatio: args.AspectRatio,
-		imageSize:   args.ImageSize,
+		characters:     args.Characters,
+		resources:      args.Resources,
+		generator:      args.Generator,
+		writer:         args.Writer,
+		model:          args.Model,
+		styleSuffix:    args.StyleSuffix,
+		aspectRatio:    args.AspectRatio,
+		imageSize:      args.ImageSize,
+		maxConcurrency: args.MaxConcurrency,
 	}
 }
 
@@ -98,12 +113,27 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 // opts.EditPrompt を指定すると、既存の生成済み画像を入力とした編集モードになります。
 func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.MangaState, panelID string, opts ports.GenerateOptions) (*ports.MangaState, error) {
 	if state == nil {
-		return nil, fmt.Errorf("state が nil です")
+		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
 	panel := state.PanelByID(panelID)
 	if panel == nil {
-		return nil, fmt.Errorf("パネル %q が見つかりません", panelID)
+		return nil, fmt.Errorf("%w: パネル %q", ports.ErrNotFound, panelID)
 	}
+
+	record, err := pr.renderPanel(ctx, state, panel, opts)
+	if err != nil {
+		return nil, err
+	}
+	panel.Generation = record
+	state.UpdatedAt = record.GeneratedAt
+	return state, nil
+}
+
+// renderPanel は1コマ分の画像を生成・保存し、その生成記録を返します。
+// state と panel は読むだけで書き換えないため、対象が異なれば並列に呼び出せます
+// （記録の反映は呼び出し側が単独で行います。GenerateAllPanels 参照）。
+func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaState, panel *ports.Panel, opts ports.GenerateOptions) (*ports.GenerationRecord, error) {
+	panelID := panel.ID
 
 	targetModel := pr.model
 	if opts.ModelOverride != "" {
@@ -144,12 +174,11 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 		Images: images,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("パネル %q の画像生成に失敗しました: %w", panelID, err)
+		return nil, fmt.Errorf("%w: パネル %q の画像生成に失敗しました: %w", ports.ErrGeneration, panelID, err)
 	}
 
 	// 保存（パネルIDに紐づく安定したパスに上書きする）
-	fileName := fmt.Sprintf("panel_%s%s", fileNameSanitizer.Replace(panelID), getPreferredExtension(resp.MimeType))
-	finalPath, err := asset.ResolveOutputPath(opts.OutputDir, path.Join(asset.DefaultImageDir, fileName))
+	finalPath, err := asset.PanelImagePath(opts.OutputDir, panelID, getPreferredExtension(resp.MimeType))
 	if err != nil {
 		return nil, fmt.Errorf("パネル画像の保存パス生成に失敗しました: %w", err)
 	}
@@ -157,20 +186,71 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 		return nil, fmt.Errorf("パネル画像の保存に失敗しました (path: %s): %w", finalPath, err)
 	}
 
+	slog.Info("Panel image generation completed", "panel", panelID, "path", finalPath)
+
 	// 生成条件を記録（再生成の基礎）
-	now := time.Now().UTC()
-	panel.Generation = &ports.GenerationRecord{
+	return &ports.GenerationRecord{
 		ImageURL:       finalPath,
 		UsedSeed:       resp.UsedSeed,
 		Prompt:         prompt,
 		NegativePrompt: panelNegativePrompt,
 		Model:          targetModel,
-		GeneratedAt:    now,
-	}
-	state.UpdatedAt = now
+		GeneratedAt:    time.Now().UTC(),
+	}, nil
+}
 
-	slog.Info("Panel image generation completed", "panel", panelID, "path", finalPath)
-	return state, nil
+// GenerateAllPanels は state 内の全パネルを maxConcurrency 並列で生成します。
+// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します
+// （ports.PanelBatchGenerator 参照）。
+func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *ports.MangaState, opts ports.BatchOptions) (*ports.MangaState, error) {
+	if state == nil {
+		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
+	}
+
+	targets := make([]int, 0, len(state.Panels))
+	for i := range state.Panels {
+		if opts.SkipGenerated && state.Panels[i].Generation != nil {
+			continue
+		}
+		targets = append(targets, i)
+	}
+	if len(targets) == 0 {
+		return state, nil
+	}
+
+	slog.Info("Starting batch panel generation",
+		"panels", len(targets), "concurrency", pr.maxConcurrency)
+
+	single := ports.GenerateOptions{
+		Seed:          opts.Seed,
+		ModelOverride: opts.ModelOverride,
+		OutputDir:     opts.OutputDir,
+	}
+	records, errs := runBatch(ctx, pr.maxConcurrency, targets,
+		func(ctx context.Context, index int) (*ports.GenerationRecord, error) {
+			panel := &state.Panels[index]
+			record, err := pr.renderPanel(ctx, state, panel, single)
+			if err != nil {
+				return nil, fmt.Errorf("パネル %q: %w", panel.ID, err)
+			}
+			return record, nil
+		})
+
+	applied := 0
+	for i, index := range targets {
+		if records[i] == nil {
+			continue
+		}
+		state.Panels[index].Generation = records[i]
+		applied++
+	}
+	if applied > 0 {
+		state.UpdatedAt = time.Now().UTC()
+	}
+
+	slog.Info("Batch panel generation completed",
+		"succeeded", applied, "failed", len(targets)-applied)
+	return state, errors.Join(errs...)
 }
 
 // buildGenerateRequest は通常生成のプロンプトと参照画像リストを構築します。
@@ -214,7 +294,7 @@ func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *por
 // 構図・ポーズ・背景を保ったまま指示箇所だけを変更します（go-veo-orchestrator の EditCut と同方式）。
 func (pr *PanelImageRunner) buildEditRequest(panel *ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
 	if panel.Generation == nil || panel.Generation.ImageURL == "" {
-		return "", nil, fmt.Errorf("パネル %q には編集対象の生成済み画像がありません", panel.ID)
+		return "", nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
 	}
 	prompt := panelEditInstruction + opts.EditPrompt
 	images := []imagePorts.ImageURI{{ReferenceURL: panel.Generation.ImageURL}}

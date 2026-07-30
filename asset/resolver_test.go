@@ -1,135 +1,141 @@
 package asset
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
-func TestDefaultPathFunctions(t *testing.T) {
-	t.Run("DefaultPanelImagePath", func(t *testing.T) {
-		expected := "images/panel.png"
-		if got := DefaultPanelImagePath(); got != expected {
-			t.Errorf("DefaultPanelImagePath() = %v, want %v", got, expected)
-		}
-	})
-
-	t.Run("DefaultPageImagePath", func(t *testing.T) {
-		expected := "images/comic_page.png"
-		if got := DefaultPageImagePath(); got != expected {
-			t.Errorf("DefaultPageImagePath() = %v, want %v", got, expected)
-		}
-	})
-}
-
-func TestResolveOutputPath(t *testing.T) {
-	tests := []struct {
-		name     string
-		baseDir  string
-		fileName string
-		want     string
-	}{
-		{"LocalPath", "output", "test.json", "output/test.json"},
-		{"GCSPath", "gs://bucket/data", "test.json", "gs://bucket/data/test.json"},
-		{"EmptyBase", "", "test.json", "test.json"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := ResolveOutputPath(tt.baseDir, tt.fileName)
-			if err != nil {
-				t.Fatalf("ResolveOutputPath() unexpected error: %v", err)
-			}
-			if got != tt.want {
-				t.Errorf("ResolveOutputPath() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestResolveBaseURL(t *testing.T) {
+func TestStatePath(t *testing.T) {
 	tests := []struct {
 		name    string
-		rawPath string
+		baseDir string
 		want    string
 	}{
-		{"URLWithFile", "https://example.com/path/to/file.md", "https://example.com/path/to/"},
-		{"GCSWithFile", "gs://my-bucket/folder/config.json", "gs://my-bucket/folder/"},
-		{"LocalPath", "docs/manual/index.html", "docs/manual/"},
-		{"TrailingSlash", "http://example.com/dir/", "http://example.com/dir/"},
+		{"LocalPath", "output", "output/comic_state.json"},
+		{"GCSPath", "gs://bucket/jobs/job-001", "gs://bucket/jobs/job-001/comic_state.json"},
+		{"EmptyBase", "", "comic_state.json"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ResolveBaseURL(tt.rawPath); got != tt.want {
-				t.Errorf("ResolveBaseURL(%v) = %v, want %v", tt.rawPath, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestGenerateIndexedPath(t *testing.T) {
-	tests := []struct {
-		name     string
-		basePath string
-		index    int
-		want     string
-		wantErr  bool
-	}{
-		{"NormalPNG", "images/panel.png", 1, "images/panel_1.png", false},
-		{"NormalJPG", "comic_page.jpg", 10, "comic_page_10.jpg", false},
-		{"PathWithDots", "my.data/image.v1.png", 5, "my.data/image.v1_5.png", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateIndexedPath(tt.basePath, tt.index)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GenerateIndexedPath() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			got, err := StatePath(tt.baseDir)
+			if err != nil {
+				t.Fatalf("StatePath() unexpected error: %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("GenerateIndexedPath() = %v, want %v", got, tt.want)
+				t.Errorf("StatePath(%q) = %q, want %q", tt.baseDir, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestRegexMatching(t *testing.T) {
-	t.Run("PanelFileRegex", func(t *testing.T) {
-		tests := []struct {
-			input string
-			want  bool
-		}{
-			{"panel_1.png", true},
-			{"panel_999.png", true},
-			{"panel_0.png", true},
-			{"panel.png", false},     // インデックスがない
-			{"other_1.png", false},   // プレフィックス違い
-			{"panel_1.jpg", false},   // 拡張子違い
-			{"panel_abc.png", false}, // 数値以外
-		}
+func TestIsStateFileName(t *testing.T) {
+	if !IsStateFileName(DefaultStateJSON) {
+		t.Errorf("IsStateFileName(%q) = false, want true", DefaultStateJSON)
+	}
+	if IsStateFileName("panel_ch01-p01.png") {
+		t.Error("IsStateFileName(パネル画像) = true, want false")
+	}
+}
 
-		for _, tt := range tests {
-			if got := PanelFileRegex.MatchString(tt.input); got != tt.want {
-				t.Errorf("PanelFileRegex.MatchString(%q) = %v, want %v", tt.input, got, tt.want)
-			}
+func TestPanelImagePath(t *testing.T) {
+	got, err := PanelImagePath("gs://bucket/job", "ch01-p03", ".png")
+	if err != nil {
+		t.Fatalf("PanelImagePath() unexpected error: %v", err)
+	}
+	want := "gs://bucket/job/images/panel_ch01-p03.png"
+	if got != want {
+		t.Errorf("PanelImagePath() = %q, want %q", got, want)
+	}
+}
+
+func TestPanelImagePathSanitizesID(t *testing.T) {
+	// パネルIDにパス区切りが混ざっても images 直下から出ないこと
+	got, err := PanelImagePath("out", "ch01/p03", ".png")
+	if err != nil {
+		t.Fatalf("PanelImagePath() unexpected error: %v", err)
+	}
+	want := "out/images/panel_ch01_p03.png"
+	if got != want {
+		t.Errorf("PanelImagePath() = %q, want %q", got, want)
+	}
+}
+
+func TestPageImagePath(t *testing.T) {
+	got, err := PageImagePath("gs://bucket/job", 3)
+	if err != nil {
+		t.Fatalf("PageImagePath() unexpected error: %v", err)
+	}
+	want := "gs://bucket/job/images/comic_page_3.png"
+	if got != want {
+		t.Errorf("PageImagePath() = %q, want %q", got, want)
+	}
+}
+
+func TestDesignSheetPath(t *testing.T) {
+	got, err := DesignSheetPath("gs://bucket", []string{"zundamon", "metan"}, "job-001", ".png")
+	if err != nil {
+		t.Fatalf("DesignSheetPath() unexpected error: %v", err)
+	}
+	want := "gs://bucket/character/zundamon_metan/job-001.png"
+	if got != want {
+		t.Errorf("DesignSheetPath() = %q, want %q", got, want)
+	}
+}
+
+func TestCharacterDesignPrefix(t *testing.T) {
+	// 前方一致での一覧・削除に使うため末尾はスラッシュで終わること
+	got, err := CharacterDesignPrefix("gs://bucket", "zundamon")
+	if err != nil {
+		t.Fatalf("CharacterDesignPrefix() unexpected error: %v", err)
+	}
+	want := "gs://bucket/character/zundamon/"
+	if got != want {
+		t.Errorf("CharacterDesignPrefix() = %q, want %q", got, want)
+	}
+
+	// 同じキャラクターの DesignSheetPath はこの接頭辞の下に入ること
+	// （一覧・削除がデザインシートを取りこぼさないための不変条件）
+	sheet, err := DesignSheetPath("gs://bucket", []string{"zundamon"}, "job-001", ".png")
+	if err != nil {
+		t.Fatalf("DesignSheetPath() unexpected error: %v", err)
+	}
+	if !strings.HasPrefix(sheet, got) {
+		t.Errorf("DesignSheetPath() = %q は CharacterDesignPrefix() = %q の下にない", sheet, got)
+	}
+}
+
+func TestDesignFileTag(t *testing.T) {
+	t.Run("ShortIDsAreJoined", func(t *testing.T) {
+		if got, want := DesignFileTag([]string{"a", "b"}), "a_b"; got != want {
+			t.Errorf("DesignFileTag() = %q, want %q", got, want)
 		}
 	})
 
-	t.Run("PageFileRegex", func(t *testing.T) {
-		tests := []struct {
-			input string
-			want  bool
-		}{
-			{"comic_page_1.png", true},
-			{"comic_page_24.png", true},
-			{"comic_page.png", false},
-			{"panel_1.png", false},
+	t.Run("LongIDsAreTruncatedAtRuneBoundary", func(t *testing.T) {
+		got := DesignFileTag([]string{strings.Repeat("ずんだもん", 40)})
+		if len(got) > maxDesignFileTagBytes+9 { // 切り詰め + "_" + 8桁のCRC32
+			t.Errorf("DesignFileTag() の長さ = %d バイト, want %d 以下", len(got), maxDesignFileTagBytes+9)
 		}
-
-		for _, tt := range tests {
-			if got := PageFileRegex.MatchString(tt.input); got != tt.want {
-				t.Errorf("PageFileRegex.MatchString(%q) = %v, want %v", tt.input, got, tt.want)
-			}
+		if !utf8.ValidString(got) {
+			t.Errorf("DesignFileTag() = %q が不正な UTF-8（rune 境界で切れていない）", got)
 		}
 	})
+
+	t.Run("DifferentLongIDsGetDifferentTags", func(t *testing.T) {
+		a := DesignFileTag([]string{strings.Repeat("x", 200) + "a"})
+		b := DesignFileTag([]string{strings.Repeat("x", 200) + "b"})
+		if a == b {
+			t.Error("長いIDの組み合わせ違いが同じタグになっている（チェックサムが効いていない）")
+		}
+	})
+}
+
+func TestSanitizeFileName(t *testing.T) {
+	got := SanitizeFileName(`a/b\c:d*e?f"g<h>i|j`)
+	want := "a_b_c_d_e_f_g_h_i_j"
+	if got != want {
+		t.Errorf("SanitizeFileName() = %q, want %q", got, want)
+	}
 }

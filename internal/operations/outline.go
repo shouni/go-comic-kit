@@ -78,14 +78,14 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	}
 	finalPrompt, err := r.prompt.BuildOutline(req.Mode, data)
 	if err != nil {
-		return nil, fmt.Errorf("章立てプロンプトの構築に失敗しました: %w", err)
+		return nil, fmt.Errorf("%w: 章立てプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
 	// 3. 生成（構造化出力: スキーマで文法レベルに制約する）
 	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", r.model, "max_chapters", maxChapters)
 	resp, err := r.aiClient.GenerateWithAttachments(ctx, r.model, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
-		return nil, fmt.Errorf("章立ての生成に失敗しました: %w", err)
+		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
 	// 4. パースと正規化
@@ -94,7 +94,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, err
 	}
 	if len(parsed.Chapters) == 0 {
-		return nil, fmt.Errorf("章立てが空です（AI応答に chapters がありません）")
+		return nil, fmt.Errorf("%w: 章立てが空です（AI応答に chapters がありません）", ports.ErrGeneration)
 	}
 	if len(parsed.Chapters) > maxChapters {
 		slog.Warn("章数が上限を超えたため切り詰めます",

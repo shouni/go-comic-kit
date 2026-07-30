@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/shouni/go-gemini-client/gemini"
+
+	"github.com/shouni/go-comic-kit/ports"
 )
 
 // maxErrorResponseLength はエラーログに含める応答抜粋の最大文字数です。
@@ -14,8 +16,8 @@ const maxErrorResponseLength = 200
 func parseJSONResponse(raw string, out any) error {
 	jsonStr := gemini.CleanJSONResponse(raw)
 	if err := json.Unmarshal([]byte(jsonStr), out); err != nil {
-		return fmt.Errorf("AI応答JSONの解析に失敗しました (抜粋: %q): %w",
-			truncateString(raw, maxErrorResponseLength), err)
+		return fmt.Errorf("%w: AI応答JSONの解析に失敗しました (抜粋: %q): %w",
+			ports.ErrGeneration, truncateString(raw, maxErrorResponseLength), err)
 	}
 	return nil
 }

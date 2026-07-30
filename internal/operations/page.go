@@ -2,8 +2,10 @@ package operations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,6 +41,10 @@ const (
 
 // PageResourceProvider は、PageImageRunner が layout.ComicComposer に依存する範囲だけを
 // 切り出した契約です。キャラクター参照とパネル画像参照の事前アップロードと URI 解決を提供します。
+//
+// ComposeAllPages は複数のページを並列に合成するため、実装は複数のゴルーチンからの
+// 同時呼び出しに耐える必要があります（layout.ComicComposer は mutex と singleflight で
+// 保護済みです）。
 type PageResourceProvider interface {
 	PrepareCharacterResources(ctx context.Context, state *ports.MangaState) error
 	PreparePanelResources(ctx context.Context, state *ports.MangaState) error
@@ -48,17 +54,21 @@ type PageResourceProvider interface {
 
 // PageImageRunner はページ画像の合成（ComposePage 操作）を実行します。
 type PageImageRunner struct {
-	characters  *ports.Characters
-	resources   PageResourceProvider
-	generator   ImageFusionGenerator
-	writer      remoteio.Writer
-	model       string
-	styleSuffix string
-	aspectRatio string
-	imageSize   string
+	characters     *ports.Characters
+	resources      PageResourceProvider
+	generator      ImageFusionGenerator
+	writer         remoteio.Writer
+	model          string
+	styleSuffix    string
+	aspectRatio    string
+	imageSize      string
+	maxConcurrency int
 }
 
-var _ ports.PageImageComposer = (*PageImageRunner)(nil)
+var (
+	_ ports.PageImageComposer = (*PageImageRunner)(nil)
+	_ ports.PageBatchComposer = (*PageImageRunner)(nil)
+)
 
 // PageImageRunnerArgs は PageImageRunner の構築に必要な依存と設定の集合です。
 type PageImageRunnerArgs struct {
@@ -74,6 +84,9 @@ type PageImageRunnerArgs struct {
 	AspectRatio string
 	// ImageSize が空の場合は layout.ImageSize2K を使います。
 	ImageSize string
+	// MaxConcurrency は ComposeAllPages の並列数です（ports.Config.MaxConcurrency）。
+	// 0 以下の場合は 1（逐次実行）になります。
+	MaxConcurrency int
 }
 
 // NewPageImageRunner は依存関係を注入して初期化します。
@@ -84,15 +97,19 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	if args.ImageSize == "" {
 		args.ImageSize = layout.ImageSize2K
 	}
+	if args.MaxConcurrency <= 0 {
+		args.MaxConcurrency = 1
+	}
 	return &PageImageRunner{
-		characters:  args.Characters,
-		resources:   args.Resources,
-		generator:   args.Generator,
-		writer:      args.Writer,
-		model:       args.Model,
-		styleSuffix: args.StyleSuffix,
-		aspectRatio: args.AspectRatio,
-		imageSize:   args.ImageSize,
+		characters:     args.Characters,
+		resources:      args.Resources,
+		generator:      args.Generator,
+		writer:         args.Writer,
+		model:          args.Model,
+		styleSuffix:    args.StyleSuffix,
+		aspectRatio:    args.AspectRatio,
+		imageSize:      args.ImageSize,
+		maxConcurrency: args.MaxConcurrency,
 	}
 }
 
@@ -109,11 +126,25 @@ type pageResources struct {
 // opts.EditPrompt を指定すると、既存のページ画像を入力とした編集モードになります。
 func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaState, page int, opts ports.GenerateOptions) (*ports.MangaState, error) {
 	if state == nil {
-		return nil, fmt.Errorf("state が nil です")
+		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
+
+	artifact, err := pg.renderPage(ctx, state, page, opts)
+	if err != nil {
+		return nil, err
+	}
+	state.SetPageArtifact(*artifact)
+	state.UpdatedAt = artifact.Generation.GeneratedAt
+	return state, nil
+}
+
+// renderPage は1ページ分の画像を合成・保存し、その記録を返します。
+// state は読むだけで書き換えないため、対象ページが異なれば並列に呼び出せます
+// （記録の反映は呼び出し側が単独で行います。ComposeAllPages 参照）。
+func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaState, page int, opts ports.GenerateOptions) (*ports.PageArtifact, error) {
 	panels := state.PanelsForPage(page)
 	if len(panels) == 0 {
-		return nil, fmt.Errorf("ページ %d にパネルがありません", page)
+		return nil, fmt.Errorf("%w: ページ %d にパネルがありません", ports.ErrNotFound, page)
 	}
 
 	targetModel := pg.model
@@ -160,15 +191,11 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 		Images: images,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ページ %d の合成に失敗しました: %w", page, err)
+		return nil, fmt.Errorf("%w: ページ %d の合成に失敗しました: %w", ports.ErrGeneration, page, err)
 	}
 
 	// 保存（ページ番号に紐づく安定したパスに上書きする）
-	basePath, err := asset.ResolveOutputPath(opts.OutputDir, asset.DefaultPageImagePath())
-	if err != nil {
-		return nil, fmt.Errorf("ページ画像の保存パス生成に失敗しました: %w", err)
-	}
-	finalPath, err := asset.GenerateIndexedPath(basePath, page)
+	finalPath, err := asset.PageImagePath(opts.OutputDir, page)
 	if err != nil {
 		return nil, fmt.Errorf("ページ画像の保存パス生成に失敗しました: %w", err)
 	}
@@ -176,13 +203,14 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 		return nil, fmt.Errorf("ページ画像の保存に失敗しました (path: %s): %w", finalPath, err)
 	}
 
-	// 記録（同一ページ番号は upsert）
+	slog.Info("Page composition completed", "page", page, "path", finalPath)
+
+	// 記録（呼び出し側が同一ページ番号に upsert する）
 	panelIDs := make([]string, len(panels))
 	for i := range panels {
 		panelIDs[i] = panels[i].ID
 	}
-	now := time.Now().UTC()
-	state.SetPageArtifact(ports.PageArtifact{
+	return &ports.PageArtifact{
 		PageNumber: page,
 		PanelIDs:   panelIDs,
 		Generation: &ports.GenerationRecord{
@@ -191,19 +219,86 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 			Prompt:         prompt,
 			NegativePrompt: pageNegativePrompt,
 			Model:          targetModel,
-			GeneratedAt:    now,
+			GeneratedAt:    time.Now().UTC(),
 		},
-	})
-	state.UpdatedAt = now
+	}, nil
+}
 
-	slog.Info("Page composition completed", "page", page, "path", finalPath)
-	return state, nil
+// ComposeAllPages は state 内の全ページを maxConcurrency 並列で合成します。
+// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します
+// （ports.PageBatchComposer 参照）。
+func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *ports.MangaState, opts ports.BatchOptions) (*ports.MangaState, error) {
+	if state == nil {
+		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
+	}
+
+	pages := uniquePageNumbers(state.Panels)
+	targets := make([]int, 0, len(pages))
+	for _, page := range pages {
+		if opts.SkipGenerated {
+			if existing := state.PageArtifactByNumber(page); existing != nil && existing.Generation != nil {
+				continue
+			}
+		}
+		targets = append(targets, page)
+	}
+	if len(targets) == 0 {
+		return state, nil
+	}
+
+	slog.Info("Starting batch page composition",
+		"pages", len(targets), "concurrency", pg.maxConcurrency)
+
+	single := ports.GenerateOptions{
+		Seed:          opts.Seed,
+		ModelOverride: opts.ModelOverride,
+		OutputDir:     opts.OutputDir,
+	}
+	artifacts, errs := runBatch(ctx, pg.maxConcurrency, targets,
+		func(ctx context.Context, page int) (*ports.PageArtifact, error) {
+			artifact, err := pg.renderPage(ctx, state, page, single)
+			if err != nil {
+				return nil, fmt.Errorf("ページ %d: %w", page, err)
+			}
+			return artifact, nil
+		})
+
+	applied := 0
+	for _, artifact := range artifacts {
+		if artifact == nil {
+			continue
+		}
+		state.SetPageArtifact(*artifact)
+		applied++
+	}
+	if applied > 0 {
+		state.UpdatedAt = time.Now().UTC()
+	}
+
+	slog.Info("Batch page composition completed",
+		"succeeded", applied, "failed", len(targets)-applied)
+	return state, errors.Join(errs...)
+}
+
+// uniquePageNumbers は、パネル群に登場するページ番号を重複なく昇順で返します。
+func uniquePageNumbers(panels []ports.Panel) []int {
+	seen := make(map[int]struct{}, len(panels))
+	pages := make([]int, 0, len(panels))
+	for i := range panels {
+		if _, ok := seen[panels[i].Page]; ok {
+			continue
+		}
+		seen[panels[i].Page] = struct{}{}
+		pages = append(pages, panels[i].Page)
+	}
+	slices.Sort(pages)
+	return pages
 }
 
 // buildEditRequest は編集モード（既存ページ画像への指示ベースの変更）を構築します。
 func (pg *PageImageRunner) buildEditRequest(page int, existing *ports.PageArtifact, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
 	if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
-		return "", nil, fmt.Errorf("ページ %d には編集対象の生成済み画像がありません", page)
+		return "", nil, fmt.Errorf("%w: ページ %d には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, page)
 	}
 	prompt := pageEditInstruction + opts.EditPrompt
 	images := []imagePorts.ImageURI{{ReferenceURL: existing.Generation.ImageURL}}

@@ -3,6 +3,7 @@
 package layout
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -19,8 +20,6 @@ const (
 	ImageSize1K = "1K"
 	// ImageSize2K は高解像度の設定（2048x2048相当）です。
 	ImageSize2K = "2K"
-	// ImageSize4K は超高解像度の設定（4096x4096相当）です。
-	ImageSize4K = "4K"
 )
 
 // IsGCSURI は、指定されたURIがGCS（Google Cloud Storage）のストレージURIであるかどうかを判定します。
@@ -38,12 +37,7 @@ var designAspectRatios = []string{"1:1", "9:16", "16:9"}
 // IsDesignAspectRatio は、value がデザインシート生成でサポート対象のアスペクト比かどうかを
 // 判定します。
 func IsDesignAspectRatio(value string) bool {
-	for _, ratio := range designAspectRatios {
-		if value == ratio {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(designAspectRatios, value)
 }
 
 // NormalizeDesignAspectRatio は、value がサポート対象でなければ DesignAspectRatio

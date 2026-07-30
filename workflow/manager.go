@@ -93,18 +93,44 @@ func New(args Args) (*ports.Operations, error) {
 		designPrompt = prompts.DefaultDesignPrompt{}
 	}
 
-	standard, err := buildGenerationUnit(&args, args.AIClient, cfg.ImageStandardModel)
+	// AI 呼び出しの発射間隔はワークフロー全体で1つのリミッターに集約する
+	// （クォータはプロジェクト単位で、操作の種類ごとではないため）。
+	guard := callGuard{
+		limiter: newRateLimiter(cfg.RateInterval),
+		timeout: cfg.RequestTimeout,
+	}
+
+	standard, err := buildGenerationUnit(&args, args.AIClient, cfg.ImageStandardModel, guard)
 	if err != nil {
 		return nil, fmt.Errorf("standard 生成ユニットの構築に失敗しました: %w", err)
 	}
-	quality, err := buildGenerationUnit(&args, aiClientQuality, cfg.ImageQualityModel)
+	quality, err := buildGenerationUnit(&args, aiClientQuality, cfg.ImageQualityModel, guard)
 	if err != nil {
 		standard.stop()
 		return nil, fmt.Errorf("quality 生成ユニットの構築に失敗しました: %w", err)
 	}
 
 	// 同一内容のテキスト生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
-	textGenerator := &singleflightStructuredGenerator{inner: args.AIClient}
+	textGenerator := &singleflightStructuredGenerator{inner: args.AIClient, guard: guard}
+
+	panelRunner := operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
+		Characters:     args.Characters,
+		Resources:      standard.composer,
+		Generator:      standard.imageGenerator,
+		Writer:         args.Writer,
+		Model:          standard.model,
+		StyleSuffix:    cfg.StyleSuffix,
+		MaxConcurrency: cfg.MaxConcurrency,
+	})
+	pageRunner := operations.NewPageImageRunner(operations.PageImageRunnerArgs{
+		Characters:     args.Characters,
+		Resources:      quality.composer,
+		Generator:      quality.imageGenerator,
+		Writer:         args.Writer,
+		Model:          quality.model,
+		StyleSuffix:    cfg.StyleSuffix,
+		MaxConcurrency: cfg.MaxConcurrency,
+	})
 
 	ops := &ports.Operations{
 		Outline: operations.NewOutlineRunner(
@@ -119,22 +145,10 @@ func New(args Args) (*ports.Operations, error) {
 			designPrompt, args.Characters, quality.composer, quality.imageGenerator, args.Writer,
 			quality.model, cfg.DesignStyleSuffix,
 		),
-		Panel: operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
-			Characters:  args.Characters,
-			Resources:   standard.composer,
-			Generator:   standard.imageGenerator,
-			Writer:      args.Writer,
-			Model:       standard.model,
-			StyleSuffix: cfg.StyleSuffix,
-		}),
-		Page: operations.NewPageImageRunner(operations.PageImageRunnerArgs{
-			Characters:  args.Characters,
-			Resources:   quality.composer,
-			Generator:   quality.imageGenerator,
-			Writer:      args.Writer,
-			Model:       quality.model,
-			StyleSuffix: cfg.StyleSuffix,
-		}),
+		Panel:      panelRunner,
+		Page:       pageRunner,
+		PanelBatch: panelRunner,
+		PageBatch:  pageRunner,
 		CloseFunc: func() {
 			standard.stop()
 			quality.stop()
@@ -144,7 +158,7 @@ func New(args Args) (*ports.Operations, error) {
 }
 
 // buildGenerationUnit は、指定クライアント・モデルの画像生成一式（core・composer・generator）を構築します。
-func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName string) (*generationUnit, error) {
+func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName string, guard callGuard) (*generationUnit, error) {
 	cache := newImageCache(defaultCacheExpiration)
 
 	core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
@@ -159,7 +173,7 @@ func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName st
 		return nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)
 	}
 
-	composer, err := layout.NewComicComposer(core, core, args.Characters)
+	composer, err := layout.NewComicComposer(core, core, args.Characters, guard.timeout)
 	if err != nil {
 		cache.Stop()
 		return nil, fmt.Errorf("ComicComposer の初期化に失敗しました: %w", err)
@@ -174,7 +188,7 @@ func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName st
 
 	return &generationUnit{
 		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
-		imageGenerator: &singleflightFusionGenerator{inner: gen},
+		imageGenerator: &singleflightFusionGenerator{inner: gen, guard: guard},
 		composer:       composer,
 		model:          modelName,
 		cache:          cache,

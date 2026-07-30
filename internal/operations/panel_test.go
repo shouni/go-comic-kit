@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
@@ -22,14 +23,21 @@ func (m *mockFusionGenerator) GenerateFusedImage(_ context.Context, req imagePor
 	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 555}, nil
 }
 
+// mockPanelResources は並列呼び出しを受けるため、状態は atomic で扱います
+// （PanelResourceProvider の実装は同時呼び出しに耐える必要があります）。
 type mockPanelResources struct {
-	prepared bool
-	uris     map[string]string
+	preparedCount atomic.Int32
+	uris          map[string]string
 }
 
 func (m *mockPanelResources) PrepareCharacterResources(_ context.Context, _ *ports.MangaState) error {
-	m.prepared = true
+	m.preparedCount.Add(1)
 	return nil
+}
+
+// prepared は PrepareCharacterResources が1回以上呼ばれたかを返します。
+func (m *mockPanelResources) prepared() bool {
+	return m.preparedCount.Load() > 0
 }
 
 func (m *mockPanelResources) GetCharacterResourceURIFor(charID, _ string) string {
@@ -111,7 +119,7 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
 
-	if !resources.prepared {
+	if !resources.prepared() {
 		t.Error("PrepareCharacterResources was not called")
 	}
 
@@ -221,7 +229,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
 	// 編集モードではキャラ参照の事前アップロードは不要
-	if resources.prepared {
+	if resources.prepared() {
 		t.Error("PrepareCharacterResources should not be called in edit mode")
 	}
 }

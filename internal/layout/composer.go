@@ -13,9 +13,9 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// uploadExecTimeout は、singleflight で共有されるアップロード1回あたりの実行タイムアウトです。
-// 呼び出し元の context から切り離した実行用 context に適用されます。
-const uploadExecTimeout = 5 * time.Minute
+// defaultUploadTimeout は、アップロード1回あたりの実行タイムアウトの既定値です。
+// NewComicComposer に 0 以下を渡した場合に使われます。
+const defaultUploadTimeout = 5 * time.Minute
 
 // ComicComposer は、キャラクター・パネル等の参照アセットの事前アップロードと
 // アップロード済み URI の解決を担います。
@@ -27,6 +27,7 @@ type ComicComposer struct {
 	AssetManager    imagePorts.AssetManager
 	BackendProvider imagePorts.Backend
 	CharactersMap   *ports.Characters
+	uploadTimeout   time.Duration
 	resourceMap     resourceMap
 	mu              sync.RWMutex
 	uploadGroup     singleflight.Group
@@ -38,10 +39,13 @@ type resourceMap struct {
 }
 
 // NewComicComposer は ComicComposer の新しいインスタンスを初期化済みの状態で生成します。
+// uploadTimeout はアップロード1回あたりの上限時間（ports.Config.RequestTimeout）です。
+// 0 以下の場合は defaultUploadTimeout を使います。
 func NewComicComposer(
 	assetMgr imagePorts.AssetManager,
 	backend imagePorts.Backend,
 	cm *ports.Characters,
+	uploadTimeout time.Duration,
 ) (*ComicComposer, error) {
 	if assetMgr == nil {
 		return nil, fmt.Errorf("assetMgr is required")
@@ -50,10 +54,15 @@ func NewComicComposer(
 		return nil, fmt.Errorf("backend is required")
 	}
 
+	if uploadTimeout <= 0 {
+		uploadTimeout = defaultUploadTimeout
+	}
+
 	return &ComicComposer{
 		AssetManager:    assetMgr,
 		BackendProvider: backend,
 		CharactersMap:   cm,
+		uploadTimeout:   uploadTimeout,
 		resourceMap: resourceMap{
 			character: make(map[string]string),
 			panel:     make(map[string]string),
@@ -217,7 +226,7 @@ func (mc *ComicComposer) getOrUploadResource(ctx context.Context, key, reference
 			return existingURI, nil
 		}
 
-		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadExecTimeout)
+		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mc.uploadTimeout)
 		defer cancel()
 
 		// ここで実際に File API (Google AI Studio) へアップロードされる
