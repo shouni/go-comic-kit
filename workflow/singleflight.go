@@ -15,9 +15,15 @@ import (
 	"github.com/shouni/go-comic-kit/internal/operations"
 )
 
-// singleflightExecTimeout は、singleflight で共有される生成処理1回あたりの実行タイムアウトです。
-// 呼び出し元の context から切り離した実行用 context に適用されます。
-const singleflightExecTimeout = 5 * time.Minute
+// callGuard は、singleflight デコレータが共有する呼び出しガードです。
+// AI API を叩く実行そのものに、発射間隔（Config.RateInterval）と1回あたりの
+// 上限時間（Config.RequestTimeout）を適用します。
+type callGuard struct {
+	// limiter は発射間隔のリミッターです。nil は制限なしを意味します。
+	limiter *rateLimiter
+	// timeout は1回の呼び出しの上限時間です。0 以下は無制限を意味します。
+	timeout time.Duration
+}
 
 // singleflightFusionGenerator は、同一内容の画像生成リクエストの同時実行を1回にまとめる
 // ImageFusionGenerator のデコレータです（go-gemini-client/lyria と同方式）。
@@ -26,6 +32,7 @@ const singleflightExecTimeout = 5 * time.Minute
 // 恒久的な重複排除は state の GenerationRecord によるジョブ側の冪等性で行います。
 type singleflightFusionGenerator struct {
 	inner operations.ImageFusionGenerator
+	guard callGuard
 	group singleflight.Group
 }
 
@@ -35,7 +42,7 @@ var _ operations.ImageFusionGenerator = (*singleflightFusionGenerator)(nil)
 // 共有される応答は呼び出し元ごとに複製して返します。
 func (g *singleflightFusionGenerator) GenerateFusedImage(ctx context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
 	key := fusionRequestKey(&req)
-	resp, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*imagePorts.ImageResponse, error) {
+	resp, err := doSingleflight(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*imagePorts.ImageResponse, error) {
 		return g.inner.GenerateFusedImage(execCtx, req)
 	})
 	if err != nil {
@@ -48,6 +55,7 @@ func (g *singleflightFusionGenerator) GenerateFusedImage(ctx context.Context, re
 // 1回にまとめる StructuredGenerator のデコレータです。
 type singleflightStructuredGenerator struct {
 	inner operations.StructuredGenerator
+	guard callGuard
 	group singleflight.Group
 }
 
@@ -56,7 +64,7 @@ var _ operations.StructuredGenerator = (*singleflightStructuredGenerator)(nil)
 // GenerateWithAttachments はリクエスト内容のハッシュをキーに同時実行をまとめます。
 func (g *singleflightStructuredGenerator) GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
 	key := structuredRequestKey(modelName, prompt, attachments, &opts)
-	resp, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*gemini.Response, error) {
+	resp, err := doSingleflight(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*gemini.Response, error) {
 		return g.inner.GenerateWithAttachments(execCtx, modelName, prompt, attachments, opts)
 	})
 	if err != nil {
@@ -126,10 +134,20 @@ func singleflightSeedKey(seed *int64) string {
 // doSingleflight は同じ key の同時実行をまとめ、呼び出し元のキャンセルも尊重します。
 // 実行用 context は共有実行のクロージャ内で呼び出し元から切り離して（WithoutCancel）
 // 生成するため、どの呼び出し元がキャンセルしても、相乗りしている他の呼び出し元が
-// 巻き添えになりません（実行の打ち切りは singleflightExecTimeout でのみ行われます）。
-func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key string, fn func(execCtx context.Context) (T, error)) (T, error) {
+// 巻き添えになりません（実行の打ち切りは guard.timeout でのみ行われます）。
+//
+// 発射間隔の待機は guard.timeout の外側で行います。待たされた時間を1回あたりの
+// 上限時間に数えると、混雑しているだけでタイムアウトしてしまうためです。
+func doSingleflight[T any](ctx context.Context, group *singleflight.Group, guard callGuard, key string, fn func(execCtx context.Context) (T, error)) (T, error) {
 	ch := group.DoChan(key, func() (any, error) {
-		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), singleflightExecTimeout)
+		baseCtx := context.WithoutCancel(ctx)
+		if err := guard.limiter.wait(baseCtx); err != nil {
+			return nil, err
+		}
+		if guard.timeout <= 0 {
+			return fn(baseCtx)
+		}
+		execCtx, cancel := context.WithTimeout(baseCtx, guard.timeout)
 		defer cancel()
 		return fn(execCtx)
 	})

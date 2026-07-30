@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	characterkit "github.com/shouni/go-character-kit/character"
@@ -12,22 +13,28 @@ import (
 
 // --- Mocks ---
 
+// mockPageResources は並列呼び出しを受けるため、状態は atomic で扱います
+// （PageResourceProvider の実装は同時呼び出しに耐える必要があります）。
 type mockPageResources struct {
-	charPrepared  bool
-	panelPrepared bool
-	charURIs      map[string]string
-	panelURIs     map[string]string
+	charPreparedCount  atomic.Int32
+	panelPreparedCount atomic.Int32
+	charURIs           map[string]string
+	panelURIs          map[string]string
 }
 
 func (m *mockPageResources) PrepareCharacterResources(_ context.Context, _ *ports.MangaState) error {
-	m.charPrepared = true
+	m.charPreparedCount.Add(1)
 	return nil
 }
 
 func (m *mockPageResources) PreparePanelResources(_ context.Context, _ *ports.MangaState) error {
-	m.panelPrepared = true
+	m.panelPreparedCount.Add(1)
 	return nil
 }
+
+// charPrepared / panelPrepared は事前準備が1回以上呼ばれたかを返します。
+func (m *mockPageResources) charPrepared() bool  { return m.charPreparedCount.Load() > 0 }
+func (m *mockPageResources) panelPrepared() bool { return m.panelPreparedCount.Load() > 0 }
 
 func (m *mockPageResources) GetCharacterResourceURIFor(charID, _ string) string {
 	return m.charURIs[charID]
@@ -123,7 +130,7 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Fatalf("ComposePage failed: %v", err)
 	}
 
-	if !resources.charPrepared || !resources.panelPrepared {
+	if !resources.charPrepared() || !resources.panelPrepared() {
 		t.Error("resource preparation was not called")
 	}
 
@@ -230,7 +237,7 @@ func TestComposePageEditMode(t *testing.T) {
 	if !strings.Contains(gen.lastReq.Prompt, pageEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
-	if resources.charPrepared || resources.panelPrepared {
+	if resources.charPrepared() || resources.panelPrepared() {
 		t.Error("resource preparation should not run in edit mode")
 	}
 }

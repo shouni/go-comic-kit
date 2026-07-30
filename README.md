@@ -64,7 +64,7 @@ go-comic-kit/
 ├── ports/                # 【契約・定義】Interface、MangaState データモデル、Config。※全ての起点。
 ├── workflow/              # 【統合管理】5つの操作を組み立て、Operations インターフェースを実装。singleflight による重複排除もここ。
 ├── store/                 # 【永続化】MangaState (comic_state.json) の Load/Save。
-├── asset/                 # 【アセット管理】ファイル命名規則と GCS/ローカル出力パスの解決。
+├── asset/                 # 【配置規約】成果物（パネル/ページ/デザインシート/state）の配置パスを決める唯一の場所。
 └── internal/
     ├── operations/        # 【実行実体】Outline/Chapter/Design/Panel/Page の具体的なプロセス実装。
     ├── prompts/           # 【プロンプト】キット内蔵のデフォルトプロンプト実装（workflow.Args で上書き可能）。
@@ -80,6 +80,10 @@ go-comic-kit/
 `ports.MangaState` が唯一の真実源です。台本は「章立て（Chapters）→ 章ごとのパネル生成」の
 2段階で組み立てられ、1コマ（`Panel`）は発話の有無と独立した**登場キャラクターの集合**
 （`Characters []PanelCharacter`）と、複数吹き出しに対応した `Dialogues []DialogueLine` を持ちます。
+
+ページ割り（`Repaginate`）は `MaxPanelsPerPage` を上限としつつ、**章の境界で必ず改ページ**します
+（前章の残りコマと次章の冒頭コマが同居したページを作らないため）。ページ構成が変わった
+`PageArtifact` は同時に破棄されるので、実体とずれた古いページ画像が state に残りません。
 
 ```go
 type MangaState struct {
@@ -139,8 +143,11 @@ type GenerationRecord struct {
 
 キャラクター間の関係性（誰が誰に何をしているか）は `PanelCharacter.Action` の自由記述で表現します
 （構造化エッジより、生成AIへのプロンプトとして自然文の方が忠実に反映されるため）。
-参照画像添付・複数キャラ同時生成の同一性維持の難度から、**primary + secondary は3体まで**を
-推奨上限とし、それを超える分は `background`（参照画像なし・モブとして描画）とします。
+参照画像添付・複数キャラ同時生成の同一性維持の難度から、**primary + secondary は3体まで**
+（`ports.MaxReferencedCharactersPerPanel`）です。台本生成の正規化で、これを超える登場者は
+`background`（参照画像なし・モブとして描画）へ自動的に降格されます（primary を優先して残し、
+コマ内の登場順は保たれます）。同じく、`characters.json` に無い `speaker_id` はナレーションに
+変換されます（生の ID が話者名として描かれるのを防ぐため）。
 
 ---
 
@@ -156,9 +163,28 @@ type GenerationRecord struct {
 | `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 |
 | `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） |
 | `ComposePage` | ページ単位で再レイアウト・合成 |
+| `GenerateAllPanels` | 全パネルを `MaxConcurrency` 並列で一括生成 |
+| `ComposeAllPages` | 全ページを `MaxConcurrency` 並列で一括合成 |
+
+一括生成（`ops.PanelBatch` / `ops.PageBatch`）は、一部が失敗しても**成功分を記録した
+state とエラーの両方**を返します。state を保存してから `BatchOptions{SkipGenerated: true}`
+で呼び直せば、未生成分だけをやり直せます（画像生成は高価なため）。
 
 HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ側の責務で、
 state ドキュメントと GCS 上の画像を直接読んで表現します。
+
+---
+
+## 🚨 エラーの分類 (Error Classification)
+
+各操作のエラーは番兵エラーで包まれているため、消費側は `errors.Is` で分類だけを見て
+応答を決められます（メッセージの文字列マッチは不要です）。
+
+| 番兵エラー | 意味 | 想定する応答 |
+| --- | --- | --- |
+| `ports.ErrNotFound` | 指定の章・パネル・ページが state に無い | 404 |
+| `ports.ErrInvalidRequest` | 必須項目の欠落、編集対象の画像が未生成 等 | 400 |
+| `ports.ErrGeneration` | AI 呼び出しまたは応答の解釈に失敗 | 502（再試行の価値あり） |
 
 ---
 
@@ -190,6 +216,10 @@ state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequ
 })
 state, _ = ops.Panel.GeneratePanel(ctx, state, "ch01-p01", ports.GenerateOptions{OutputDir: outDir})
 state, _ = ops.Page.ComposePage(ctx, state, 1, ports.GenerateOptions{OutputDir: outDir})
+
+// 全パネル・全ページの一括生成（Config.MaxConcurrency で並列化）
+state, _ = ops.PanelBatch.GenerateAllPanels(ctx, state, ports.BatchOptions{OutputDir: outDir})
+state, _ = ops.PageBatch.ComposeAllPages(ctx, state, ports.BatchOptions{OutputDir: outDir})
 
 // state を保存（これが唯一の真実源。再生成はこの state を読み直して同じ操作を呼ぶだけ）
 _, _ = store.Save(ctx, writer, state, outDir)

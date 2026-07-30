@@ -33,8 +33,8 @@ func Load(ctx context.Context, reader ports.ContentReader, statePath string) (*p
 		return nil, fmt.Errorf("state JSON のパースに失敗しました (%s): %w", statePath, err)
 	}
 	if state.Version > ports.StateSchemaVersion {
-		return nil, fmt.Errorf("state スキーマバージョン %d は未対応です（このライブラリの対応バージョン: %d）",
-			state.Version, ports.StateSchemaVersion)
+		return nil, fmt.Errorf("%w: state スキーマバージョン %d は未対応です（このライブラリの対応バージョン: %d）",
+			ports.ErrInvalidRequest, state.Version, ports.StateSchemaVersion)
 	}
 	return state, nil
 }
@@ -43,10 +43,10 @@ func Load(ctx context.Context, reader ports.ContentReader, statePath string) (*p
 // 同名ファイルは上書きされます（state は唯一の真実源であり、常に最新を保持します）。
 func Save(ctx context.Context, writer remoteio.Writer, state *ports.MangaState, outputDir string) (string, error) {
 	if state == nil {
-		return "", fmt.Errorf("state が nil です")
+		return "", fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
 
-	statePath, err := asset.ResolveOutputPath(outputDir, asset.DefaultStateJSON)
+	statePath, err := asset.StatePath(outputDir)
 	if err != nil {
 		return "", fmt.Errorf("state 保存パスの生成に失敗しました: %w", err)
 	}

@@ -108,6 +108,38 @@ type PageImageComposer interface {
 	ComposePage(ctx context.Context, state *MangaState, page int, opts GenerateOptions) (*MangaState, error)
 }
 
+// BatchOptions は一括生成系操作（GenerateAllPanels / ComposeAllPages）のオプションです。
+// GenerateOptions を埋め込まないのは、1件を狙い撃ちするための EditPrompt / PromptOverride が
+// 一括処理では意味を持たないためです（全対象に同じ編集指示を当てても無意味です）。
+type BatchOptions struct {
+	// Seed は全対象に適用する生成シードです。nil の場合は対象ごとに
+	// GenerateOptions.Seed が nil のときと同じ解決規則（前回値 → 主役キャラクター）に従います。
+	Seed *int64
+	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
+	ModelOverride string
+	// OutputDir は生成画像の保存先ベースディレクトリです。
+	OutputDir string
+	// SkipGenerated が true の場合、すでに生成済み（GenerationRecord を持つ）対象を飛ばします。
+	// 途中まで成功した一括生成を、未生成分だけやり直すときに使います。
+	SkipGenerated bool
+}
+
+// PanelBatchGenerator は、state 内の全パネルをまとめて生成する契約です。
+// 並列数は Config.MaxConcurrency に従います（既定の 1 では逐次実行と同じ挙動です）。
+//
+// 一部が失敗しても、成功した分を記録済みの state と、失敗を errors.Join でまとめた
+// エラーの両方を返します（state が nil になるのは state 自体が不正だった場合だけです）。
+// 画像生成は高価なので、成功分を保存してから SkipGenerated で残りだけ再実行できます。
+type PanelBatchGenerator interface {
+	GenerateAllPanels(ctx context.Context, state *MangaState, opts BatchOptions) (*MangaState, error)
+}
+
+// PageBatchComposer は、state 内の全ページをまとめて合成する契約です。
+// エラー時の戻り値の扱いは PanelBatchGenerator と同じです。
+type PageBatchComposer interface {
+	ComposeAllPages(ctx context.Context, state *MangaState, opts BatchOptions) (*MangaState, error)
+}
+
 // Operations は、構築済みの全操作を保持します（workflow.New が組み立てて返します）。
 type Operations struct {
 	Outline       OutlineGenerator
@@ -115,7 +147,11 @@ type Operations struct {
 	DesignSheet   DesignSheetGenerator
 	Panel         PanelImageGenerator
 	Page          PageImageComposer
-	CloseFunc     func()
+	// PanelBatch / PageBatch は一括生成の入り口です。Panel / Page と同じ実体で、
+	// Config.MaxConcurrency に従って並列に実行します。
+	PanelBatch PanelBatchGenerator
+	PageBatch  PageBatchComposer
+	CloseFunc  func()
 }
 
 // Close は、保持しているリソースの解放関数（CloseFunc）を呼び出します。

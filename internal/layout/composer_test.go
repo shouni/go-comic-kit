@@ -85,7 +85,7 @@ func TestComicComposerPrepareCharacterResources(t *testing.T) {
 	assetMgr := &mockAssetManager{}
 	backend := &mockBackend{isVertex: false}
 
-	mc, err := NewComicComposer(assetMgr, backend, newTestCharacters(t))
+	mc, err := NewComicComposer(assetMgr, backend, newTestCharacters(t), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestComicComposerVertexAIBypassesUpload(t *testing.T) {
 	assetMgr := &mockAssetManager{}
 	backend := &mockBackend{isVertex: true}
 
-	mc, err := NewComicComposer(assetMgr, backend, newTestCharacters(t))
+	mc, err := NewComicComposer(assetMgr, backend, newTestCharacters(t), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestComicComposerPreparePanelResources(t *testing.T) {
 	assetMgr := &mockAssetManager{}
 	backend := &mockBackend{isVertex: false}
 
-	mc, err := NewComicComposer(assetMgr, backend, newTestCharacters(t))
+	mc, err := NewComicComposer(assetMgr, backend, newTestCharacters(t), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestComicComposerDeduplicatesSharedReferenceURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mc, err := NewComicComposer(assetMgr, backend, cm)
+	mc, err := NewComicComposer(assetMgr, backend, cm, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

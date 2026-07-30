@@ -20,10 +20,10 @@ func resolveSourceText(ctx context.Context, reader ports.ContentReader, sourceTe
 		return sourceText, nil
 	}
 	if strings.TrimSpace(sourceURL) == "" {
-		return "", fmt.Errorf("SourceText または SourceURL のいずれかを指定してください")
+		return "", fmt.Errorf("%w: SourceText または SourceURL のいずれかを指定してください", ports.ErrInvalidRequest)
 	}
 	if reader == nil {
-		return "", fmt.Errorf("SourceURL を読み込むための ContentReader が設定されていません")
+		return "", fmt.Errorf("%w: SourceURL を読み込むための ContentReader が設定されていません", ports.ErrInvalidRequest)
 	}
 	return readContent(ctx, reader, sourceURL)
 }
