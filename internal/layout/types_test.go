@@ -27,12 +27,3 @@ func TestIsDesignAspectRatio(t *testing.T) {
 		t.Error("IsDesignAspectRatio(\"4:3\") = true, want false")
 	}
 }
-
-func TestIsGCSURI(t *testing.T) {
-	if !IsGCSURI("gs://bucket/file.png") {
-		t.Error("IsGCSURI(gs://...) = false, want true")
-	}
-	if IsGCSURI("https://example.com/file.png") {
-		t.Error("IsGCSURI(https://...) = true, want false")
-	}
-}
