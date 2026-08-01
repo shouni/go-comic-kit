@@ -3,7 +3,6 @@ package operations
 import (
 	"context"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
@@ -23,27 +22,7 @@ func (m *mockFusionGenerator) GenerateFusedImage(_ context.Context, req imagePor
 	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 555}, nil
 }
 
-// mockPanelResources は並列呼び出しを受けるため、状態は atomic で扱います
-// （PanelResourceProvider の実装は同時呼び出しに耐える必要があります）。
-type mockPanelResources struct {
-	preparedCount atomic.Int32
-	uris          map[string]string
-}
-
-func (m *mockPanelResources) PrepareCharacterResources(_ context.Context, _ *ports.MangaState) error {
-	m.preparedCount.Add(1)
-	return nil
-}
-
 // prepared は PrepareCharacterResources が1回以上呼ばれたかを返します。
-func (m *mockPanelResources) prepared() bool {
-	return m.preparedCount.Load() > 0
-}
-
-func (m *mockPanelResources) GetCharacterResourceURIFor(charID, _ string) string {
-	return m.uris[charID]
-}
-
 // --- Helpers ---
 
 func panelTestState() *ports.MangaState {
@@ -70,7 +49,7 @@ func panelTestState() *ports.MangaState {
 	}
 }
 
-func newPanelRunner(t *testing.T) (*PanelImageRunner, *mockFusionGenerator, *mockWriter, *mockPanelResources) {
+func newPanelRunner(t *testing.T) (*PanelImageRunner, *mockFusionGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
 	cm, err := characterkit.NewCharacters([]ports.Character{
@@ -92,35 +71,26 @@ func newPanelRunner(t *testing.T) (*PanelImageRunner, *mockFusionGenerator, *moc
 	}
 	gen := &mockFusionGenerator{}
 	writer := &mockWriter{}
-	resources := &mockPanelResources{uris: map[string]string{
-		"zundamon": "https://file-api.google.com/zunda",
-		"metan":    "https://file-api.google.com/metan",
-	}}
 	r := NewPanelImageRunner(PanelImageRunnerArgs{
 		Characters:  cm,
-		Resources:   resources,
 		Generator:   gen,
 		Writer:      writer,
 		Model:       "panel-model",
 		StyleSuffix: ports.DefaultStyleSuffix,
 	})
-	return r, gen, writer, resources
+	return r, gen, writer
 }
 
 // --- Tests ---
 
 func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 	t.Parallel()
-	r, gen, writer, resources := newPanelRunner(t)
+	r, gen, writer := newPanelRunner(t)
 	state := panelTestState()
 
 	state, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{OutputDir: "gs://bucket/out"})
 	if err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
-	}
-
-	if !resources.prepared() {
-		t.Error("PrepareCharacterResources was not called")
 	}
 
 	// 参照画像: primary + secondary の2枚（background は除外）
@@ -131,8 +101,10 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 	if gen.lastReq.Images[0].ReferenceURL != "gs://b/zunda-16x9.png" {
 		t.Errorf("Images[0] = %q, want aspect-specific reference", gen.lastReq.Images[0].ReferenceURL)
 	}
-	if gen.lastReq.Images[0].FileAPIURI == "" {
-		t.Error("Images[0].FileAPIURI not resolved")
+	// 参照の解決方法（GCS 直接参照 / File API へのアップロード）は gemini-image-kit の
+	// 責務なので、ここでは参照元 URL をそのまま渡していることだけを確認する。
+	if gen.lastReq.Images[0].FileAPIURI != "" {
+		t.Errorf("Images[0].FileAPIURI = %q, want it left to the image kit", gen.lastReq.Images[0].FileAPIURI)
 	}
 
 	// プロンプト: [Subject N] と演出、モブ、スタイル、文字禁止
@@ -180,7 +152,7 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 
 func TestGeneratePanelReusesPreviousSeed(t *testing.T) {
 	t.Parallel()
-	r, gen, _, _ := newPanelRunner(t)
+	r, gen, _ := newPanelRunner(t)
 	state := panelTestState()
 	state.Panels[0].Generation = &ports.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}
 
@@ -194,7 +166,7 @@ func TestGeneratePanelReusesPreviousSeed(t *testing.T) {
 
 func TestGeneratePanelExplicitSeedWins(t *testing.T) {
 	t.Parallel()
-	r, gen, _, _ := newPanelRunner(t)
+	r, gen, _ := newPanelRunner(t)
 	state := panelTestState()
 	state.Panels[0].Generation = &ports.GenerationRecord{UsedSeed: 777}
 
@@ -209,7 +181,7 @@ func TestGeneratePanelExplicitSeedWins(t *testing.T) {
 
 func TestGeneratePanelEditMode(t *testing.T) {
 	t.Parallel()
-	r, gen, _, resources := newPanelRunner(t)
+	r, gen, _ := newPanelRunner(t)
 	state := panelTestState()
 	state.Panels[0].Generation = &ports.GenerationRecord{ImageURL: "gs://bucket/out/images/panel_ch01-p01.png", UsedSeed: 777}
 
@@ -229,14 +201,11 @@ func TestGeneratePanelEditMode(t *testing.T) {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
 	// 編集モードではキャラ参照の事前アップロードは不要
-	if resources.prepared() {
-		t.Error("PrepareCharacterResources should not be called in edit mode")
-	}
 }
 
 func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
-	r, _, _, _ := newPanelRunner(t)
+	r, _, _ := newPanelRunner(t)
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
 		EditPrompt: "表情を変える",
@@ -248,7 +217,7 @@ func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {
 
 func TestGeneratePanelPromptOverride(t *testing.T) {
 	t.Parallel()
-	r, gen, _, _ := newPanelRunner(t)
+	r, gen, _ := newPanelRunner(t)
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
 		PromptOverride: "custom prompt",
@@ -267,7 +236,7 @@ func TestGeneratePanelPromptOverride(t *testing.T) {
 
 func TestGeneratePanelUnknownPanelFails(t *testing.T) {
 	t.Parallel()
-	r, _, _, _ := newPanelRunner(t)
+	r, _, _ := newPanelRunner(t)
 
 	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch99-p01", ports.GenerateOptions{}); err == nil {
 		t.Error("GeneratePanel(unknown) succeeded, want error")
@@ -279,7 +248,7 @@ func TestGeneratePanelUnknownPanelFails(t *testing.T) {
 
 func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	t.Parallel()
-	r, gen, _, _ := newPanelRunner(t)
+	r, gen, _ := newPanelRunner(t)
 	state := panelTestState()
 	state.Panels[0].Characters = nil // 風景のみのコマ
 

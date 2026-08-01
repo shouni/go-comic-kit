@@ -3,7 +3,6 @@ package operations
 import (
 	"context"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	characterkit "github.com/shouni/go-character-kit/character"
@@ -13,37 +12,7 @@ import (
 
 // --- Mocks ---
 
-// mockPageResources は並列呼び出しを受けるため、状態は atomic で扱います
-// （PageResourceProvider の実装は同時呼び出しに耐える必要があります）。
-type mockPageResources struct {
-	charPreparedCount  atomic.Int32
-	panelPreparedCount atomic.Int32
-	charURIs           map[string]string
-	panelURIs          map[string]string
-}
-
-func (m *mockPageResources) PrepareCharacterResources(_ context.Context, _ *ports.MangaState) error {
-	m.charPreparedCount.Add(1)
-	return nil
-}
-
-func (m *mockPageResources) PreparePanelResources(_ context.Context, _ *ports.MangaState) error {
-	m.panelPreparedCount.Add(1)
-	return nil
-}
-
 // charPrepared / panelPrepared は事前準備が1回以上呼ばれたかを返します。
-func (m *mockPageResources) charPrepared() bool  { return m.charPreparedCount.Load() > 0 }
-func (m *mockPageResources) panelPrepared() bool { return m.panelPreparedCount.Load() > 0 }
-
-func (m *mockPageResources) GetCharacterResourceURIFor(charID, _ string) string {
-	return m.charURIs[charID]
-}
-
-func (m *mockPageResources) GetPanelResourceURI(url string) string {
-	return m.panelURIs[url]
-}
-
 // --- Helpers ---
 
 func pageTestState() *ports.MangaState {
@@ -91,7 +60,7 @@ func pageTestState() *ports.MangaState {
 	}
 }
 
-func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockWriter, *mockPageResources) {
+func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
 	cm, err := characterkit.NewCharacters([]ports.Character{
@@ -103,35 +72,26 @@ func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockW
 	}
 	gen := &mockFusionGenerator{}
 	writer := &mockWriter{}
-	resources := &mockPageResources{
-		charURIs:  map[string]string{"zundamon": "https://file-api/zunda", "metan": "https://file-api/metan"},
-		panelURIs: map[string]string{"gs://b/panels/p01.png": "https://file-api/p01"},
-	}
 	r := NewPageImageRunner(PageImageRunnerArgs{
 		Characters:  cm,
-		Resources:   resources,
 		Generator:   gen,
 		Writer:      writer,
 		Model:       "page-model",
 		StyleSuffix: "cinematic style",
 	})
-	return r, gen, writer, resources
+	return r, gen, writer
 }
 
 // --- Tests ---
 
 func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	t.Parallel()
-	r, gen, writer, resources := newPageRunner(t)
+	r, gen, writer := newPageRunner(t)
 	state := pageTestState()
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out"})
 	if err != nil {
 		t.Fatalf("ComposePage failed: %v", err)
-	}
-
-	if !resources.charPrepared() || !resources.panelPrepared() {
-		t.Error("resource preparation was not called")
 	}
 
 	// 参照: キャラ2（zundamon, metan）+ 生成済みパネル1（p01のみ）
@@ -192,7 +152,7 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 
 func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 	t.Parallel()
-	r, gen, _, _ := newPageRunner(t)
+	r, gen, _ := newPageRunner(t)
 	state := pageTestState()
 	state.Pages = []ports.PageArtifact{
 		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
@@ -218,7 +178,7 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 
 func TestComposePageEditMode(t *testing.T) {
 	t.Parallel()
-	r, gen, _, resources := newPageRunner(t)
+	r, gen, _ := newPageRunner(t)
 	state := pageTestState()
 	state.Pages = []ports.PageArtifact{
 		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
@@ -237,14 +197,11 @@ func TestComposePageEditMode(t *testing.T) {
 	if !strings.Contains(gen.lastReq.Prompt, pageEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
-	if resources.charPrepared() || resources.panelPrepared() {
-		t.Error("resource preparation should not run in edit mode")
-	}
 }
 
 func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
-	r, _, _, _ := newPageRunner(t)
+	r, _, _ := newPageRunner(t)
 
 	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更"})
 	if err == nil || !strings.Contains(err.Error(), "編集対象") {
@@ -254,7 +211,7 @@ func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 
 func TestComposePageEmptyPageFails(t *testing.T) {
 	t.Parallel()
-	r, _, _, _ := newPageRunner(t)
+	r, _, _ := newPageRunner(t)
 
 	if _, err := r.ComposePage(context.Background(), pageTestState(), 99, ports.GenerateOptions{}); err == nil {
 		t.Error("ComposePage(empty page) succeeded, want error")
@@ -266,7 +223,7 @@ func TestComposePageEmptyPageFails(t *testing.T) {
 
 func TestComposePageFullWidthImpactForOddCount(t *testing.T) {
 	t.Parallel()
-	r, gen, _, _ := newPageRunner(t)
+	r, gen, _ := newPageRunner(t)
 	state := pageTestState()
 	// 3パネル構成にする（奇数 → 最後は全幅の見せゴマ）
 	state.Panels = append(state.Panels, ports.Panel{

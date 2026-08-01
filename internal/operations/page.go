@@ -39,23 +39,9 @@ const (
 	pageEditInstruction = "Edit the attached manga page image. Keep the panel layout, compositions, dialogue balloons, and art style unchanged. Apply ONLY this change: "
 )
 
-// PageResourceProvider は、PageImageRunner が layout.ComicComposer に依存する範囲だけを
-// 切り出した契約です。キャラクター参照とパネル画像参照の事前アップロードと URI 解決を提供します。
-//
-// ComposeAllPages は複数のページを並列に合成するため、実装は複数のゴルーチンからの
-// 同時呼び出しに耐える必要があります（layout.ComicComposer は mutex と singleflight で
-// 保護済みです）。
-type PageResourceProvider interface {
-	PrepareCharacterResources(ctx context.Context, state *ports.MangaState) error
-	PreparePanelResources(ctx context.Context, state *ports.MangaState) error
-	GetCharacterResourceURIFor(charID, aspectRatio string) string
-	GetPanelResourceURI(referenceURL string) string
-}
-
 // PageImageRunner はページ画像の合成（ComposePage 操作）を実行します。
 type PageImageRunner struct {
 	characters     *ports.Characters
-	resources      PageResourceProvider
 	generator      ImageFusionGenerator
 	writer         remoteio.Writer
 	model          string
@@ -73,7 +59,6 @@ var (
 // PageImageRunnerArgs は PageImageRunner の構築に必要な依存と設定の集合です。
 type PageImageRunnerArgs struct {
 	Characters *ports.Characters
-	Resources  PageResourceProvider
 	Generator  ImageFusionGenerator
 	Writer     remoteio.Writer
 	// Model には高品質系モデル（ports.Config.ImageQualityModel）を渡すことを推奨します。
@@ -102,7 +87,6 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	}
 	return &PageImageRunner{
 		characters:     args.Characters,
-		resources:      args.Resources,
 		generator:      args.Generator,
 		writer:         args.Writer,
 		model:          args.Model,
@@ -164,7 +148,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 	if opts.EditPrompt != "" {
 		prompt, images, err = pg.buildEditRequest(page, existing, opts)
 	} else {
-		prompt, images, err = pg.buildComposeRequest(ctx, state, panels, opts)
+		prompt, images, err = pg.buildComposeRequest(panels, opts)
 	}
 	if err != nil {
 		return nil, err
@@ -292,14 +276,10 @@ func (pg *PageImageRunner) buildEditRequest(page int, existing *ports.PageArtifa
 }
 
 // buildComposeRequest は通常合成のプロンプトと参照画像リストを構築します。
-func (pg *PageImageRunner) buildComposeRequest(ctx context.Context, state *ports.MangaState, panels []ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
-	if err := pg.resources.PrepareCharacterResources(ctx, state); err != nil {
-		return "", nil, fmt.Errorf("キャラクター参照の事前準備に失敗しました: %w", err)
-	}
-	if err := pg.resources.PreparePanelResources(ctx, state); err != nil {
-		return "", nil, fmt.Errorf("パネル参照の事前準備に失敗しました: %w", err)
-	}
-
+//
+// 参照の解決（GCS 直接参照 / File API へのアップロード）は gemini-image-kit が担うため、
+// ここは参照元 URL を並べるだけの純粋な組み立てです（context も state も要りません）。
+func (pg *PageImageRunner) buildComposeRequest(panels []ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
 	res := pg.collectPageResources(panels)
 	if opts.PromptOverride != "" {
 		return opts.PromptOverride, res.images, nil
@@ -329,10 +309,7 @@ func (pg *PageImageRunner) collectPageResources(panels []ports.Panel) *pageResou
 			if referenceURL == "" {
 				continue
 			}
-			res.images = append(res.images, imagePorts.ImageURI{
-				ReferenceURL: referenceURL,
-				FileAPIURI:   pg.resources.GetCharacterResourceURIFor(id, pg.aspectRatio),
-			})
+			res.images = append(res.images, imagePorts.ImageURI{ReferenceURL: referenceURL})
 			res.characterFile[id] = len(res.images)
 		}
 	}
@@ -343,10 +320,7 @@ func (pg *PageImageRunner) collectPageResources(panels []ports.Panel) *pageResou
 			continue
 		}
 		url := panel.Generation.ImageURL
-		res.images = append(res.images, imagePorts.ImageURI{
-			ReferenceURL: url,
-			FileAPIURI:   pg.resources.GetPanelResourceURI(url),
-		})
+		res.images = append(res.images, imagePorts.ImageURI{ReferenceURL: url})
 		res.panelFile[panel.ID] = len(res.images)
 	}
 

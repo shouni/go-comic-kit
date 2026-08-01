@@ -35,22 +35,9 @@ Draw a single manga panel following the scene direction, with these rules:
 	panelEditInstruction = "Edit the attached manga panel image. Keep the composition, character poses, background, and art style unchanged. Apply ONLY this change: "
 )
 
-// PanelResourceProvider は、PanelImageRunner が layout.ComicComposer に依存する範囲だけを
-// 切り出した契約です。参照画像の事前アップロードと、アスペクト比別のアップロード済み URI
-// 解決を提供します。
-//
-// GenerateAllPanels は複数のコマを並列に生成するため、実装は複数のゴルーチンからの
-// 同時呼び出しに耐える必要があります（layout.ComicComposer は mutex と singleflight で
-// 保護済みです）。
-type PanelResourceProvider interface {
-	PrepareCharacterResources(ctx context.Context, state *ports.MangaState) error
-	GetCharacterResourceURIFor(charID, aspectRatio string) string
-}
-
 // PanelImageRunner はパネル画像の生成/再生成（GeneratePanel 操作）を実行します。
 type PanelImageRunner struct {
 	characters     *ports.Characters
-	resources      PanelResourceProvider
 	generator      ImageFusionGenerator
 	writer         remoteio.Writer
 	model          string
@@ -68,7 +55,6 @@ var (
 // PanelImageRunnerArgs は PanelImageRunner の構築に必要な依存と設定の集合です。
 type PanelImageRunnerArgs struct {
 	Characters *ports.Characters
-	Resources  PanelResourceProvider
 	Generator  ImageFusionGenerator
 	Writer     remoteio.Writer
 	// Model は画像生成に使うモデル名です（標準系: ports.Config.ImageStandardModel 推奨）。
@@ -97,7 +83,6 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 	}
 	return &PanelImageRunner{
 		characters:     args.Characters,
-		resources:      args.Resources,
 		generator:      args.Generator,
 		writer:         args.Writer,
 		model:          args.Model,
@@ -120,7 +105,7 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 		return nil, fmt.Errorf("%w: パネル %q", ports.ErrNotFound, panelID)
 	}
 
-	record, err := pr.renderPanel(ctx, state, panel, opts)
+	record, err := pr.renderPanel(ctx, panel, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -130,9 +115,9 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 }
 
 // renderPanel は1コマ分の画像を生成・保存し、その生成記録を返します。
-// state と panel は読むだけで書き換えないため、対象が異なれば並列に呼び出せます
+// panel は読むだけで書き換えないため、対象が異なれば並列に呼び出せます
 // （記録の反映は呼び出し側が単独で行います。GenerateAllPanels 参照）。
-func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaState, panel *ports.Panel, opts ports.GenerateOptions) (*ports.GenerationRecord, error) {
+func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *ports.Panel, opts ports.GenerateOptions) (*ports.GenerationRecord, error) {
 	panelID := panel.ID
 
 	targetModel := pr.model
@@ -147,7 +132,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaS
 	if opts.EditPrompt != "" {
 		prompt, images, err = pr.buildEditRequest(panel, opts)
 	} else {
-		prompt, images, err = pr.buildGenerateRequest(ctx, state, panel, opts)
+		prompt, images, err = pr.buildGenerateRequest(panel, opts)
 	}
 	if err != nil {
 		return nil, err
@@ -212,7 +197,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *ports.
 	records, errs := runBatch(ctx, pr.maxConcurrency, targets,
 		func(ctx context.Context, index int) (*ports.GenerationRecord, error) {
 			panel := &state.Panels[index]
-			record, err := pr.renderPanel(ctx, state, panel, single)
+			record, err := pr.renderPanel(ctx, panel, single)
 			if err != nil {
 				return nil, fmt.Errorf("パネル %q: %w", panel.ID, err)
 			}
@@ -238,12 +223,10 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *ports.
 
 // buildGenerateRequest は通常生成のプロンプトと参照画像リストを構築します。
 // 参照画像とプロンプト内の [Subject N] は同じ順序で対応させます。
-func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *ports.MangaState, panel *ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
-	// 参照キャラクターの画像を事前アップロード（アップロード済みはキャッシュされる）
-	if err := pr.resources.PrepareCharacterResources(ctx, state); err != nil {
-		return "", nil, fmt.Errorf("参照画像の事前準備に失敗しました: %w", err)
-	}
-
+//
+// 参照の解決（GCS 直接参照 / File API へのアップロード）は gemini-image-kit が担うため、
+// ここは参照元 URL を並べるだけの純粋な組み立てです（context も state も要りません）。
+func (pr *PanelImageRunner) buildGenerateRequest(panel *ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
 	var images []imagePorts.ImageURI
 	var subjects []string
 	for _, id := range panel.ReferencedCharacterIDs() {
@@ -260,10 +243,7 @@ func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *por
 			slog.Warn("キャラクターに参照画像がありません", "character_id", id)
 			continue
 		}
-		images = append(images, imagePorts.ImageURI{
-			ReferenceURL: referenceURL,
-			FileAPIURI:   pr.resources.GetCharacterResourceURIFor(id, pr.aspectRatio),
-		})
+		images = append(images, imagePorts.ImageURI{ReferenceURL: referenceURL})
 		subjects = append(subjects, subjectLine(len(images), char, findPanelCharacter(panel, id)))
 	}
 
