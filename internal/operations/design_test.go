@@ -27,11 +27,12 @@ func (m *mockDesignGenerator) GenerateFusedImage(_ context.Context, req imagePor
 
 type mockWriter struct {
 	lastPath string
+	err      error // 非 nil なら保存を失敗させる
 }
 
 func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, _ ...remoteio.WriteOption) error {
 	m.lastPath = path
-	return nil
+	return m.err
 }
 
 type mockResources struct {

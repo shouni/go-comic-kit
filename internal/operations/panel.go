@@ -160,43 +160,26 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaS
 		"ref_count", len(images),
 	)
 
-	// 生成実行
-	resp, err := pr.generator.GenerateFusedImage(ctx, imagePorts.ImageFusionRequest{
-		GenerationOptions: imagePorts.GenerationOptions{
-			Model:          targetModel,
-			Prompt:         prompt,
-			SystemPrompt:   panelSystemPrompt,
-			NegativePrompt: panelNegativePrompt,
-			AspectRatio:    pr.aspectRatio,
-			ImageSize:      pr.imageSize,
-			Seed:           seed,
+	// 生成・保存・生成条件の記録（再生成の基礎）。保存先はパネルIDに紐づく安定したパスで上書きする。
+	record, err := renderImage(ctx, pr.generator, pr.writer, imageRenderRequest{
+		Model:          targetModel,
+		Prompt:         prompt,
+		SystemPrompt:   panelSystemPrompt,
+		NegativePrompt: panelNegativePrompt,
+		AspectRatio:    pr.aspectRatio,
+		ImageSize:      pr.imageSize,
+		Seed:           seed,
+		Images:         images,
+		PathFor: func(mimeType string) (string, error) {
+			return asset.PanelImagePath(opts.OutputDir, panelID, getPreferredExtension(mimeType))
 		},
-		Images: images,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: パネル %q の画像生成に失敗しました: %w", ports.ErrGeneration, panelID, err)
+		return nil, fmt.Errorf("パネル %q: %w", panelID, err)
 	}
 
-	// 保存（パネルIDに紐づく安定したパスに上書きする）
-	finalPath, err := asset.PanelImagePath(opts.OutputDir, panelID, getPreferredExtension(resp.MimeType))
-	if err != nil {
-		return nil, fmt.Errorf("パネル画像の保存パス生成に失敗しました: %w", err)
-	}
-	if err := writeGeneratedImage(ctx, pr.writer, finalPath, resp); err != nil {
-		return nil, fmt.Errorf("パネル画像の保存に失敗しました (path: %s): %w", finalPath, err)
-	}
-
-	slog.Info("Panel image generation completed", "panel", panelID, "path", finalPath)
-
-	// 生成条件を記録（再生成の基礎）
-	return &ports.GenerationRecord{
-		ImageURL:       finalPath,
-		UsedSeed:       resp.UsedSeed,
-		Prompt:         prompt,
-		NegativePrompt: panelNegativePrompt,
-		Model:          targetModel,
-		GeneratedAt:    time.Now().UTC(),
-	}, nil
+	slog.Info("Panel image generation completed", "panel", panelID, "path", record.ImageURL)
+	return record, nil
 }
 
 // GenerateAllPanels は state 内の全パネルを maxConcurrency 並列で生成します。

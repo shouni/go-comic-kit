@@ -178,32 +178,25 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 		"ref_count", len(images),
 	)
 
-	resp, err := pg.generator.GenerateFusedImage(ctx, imagePorts.ImageFusionRequest{
-		GenerationOptions: imagePorts.GenerationOptions{
-			Model:          targetModel,
-			Prompt:         prompt,
-			SystemPrompt:   pg.buildSystemPrompt(),
-			NegativePrompt: pageNegativePrompt,
-			AspectRatio:    pg.aspectRatio,
-			ImageSize:      pg.imageSize,
-			Seed:           seed,
+	// 生成・保存・生成条件の記録。保存先はページ番号に紐づく安定したパスで上書きする。
+	record, err := renderImage(ctx, pg.generator, pg.writer, imageRenderRequest{
+		Model:          targetModel,
+		Prompt:         prompt,
+		SystemPrompt:   pg.buildSystemPrompt(),
+		NegativePrompt: pageNegativePrompt,
+		AspectRatio:    pg.aspectRatio,
+		ImageSize:      pg.imageSize,
+		Seed:           seed,
+		Images:         images,
+		PathFor: func(string) (string, error) {
+			return asset.PageImagePath(opts.OutputDir, page)
 		},
-		Images: images,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: ページ %d の合成に失敗しました: %w", ports.ErrGeneration, page, err)
+		return nil, fmt.Errorf("ページ %d: %w", page, err)
 	}
 
-	// 保存（ページ番号に紐づく安定したパスに上書きする）
-	finalPath, err := asset.PageImagePath(opts.OutputDir, page)
-	if err != nil {
-		return nil, fmt.Errorf("ページ画像の保存パス生成に失敗しました: %w", err)
-	}
-	if err := writeGeneratedImage(ctx, pg.writer, finalPath, resp); err != nil {
-		return nil, fmt.Errorf("ページ画像の保存に失敗しました (path: %s): %w", finalPath, err)
-	}
-
-	slog.Info("Page composition completed", "page", page, "path", finalPath)
+	slog.Info("Page composition completed", "page", page, "path", record.ImageURL)
 
 	// 記録（呼び出し側が同一ページ番号に upsert する）
 	panelIDs := make([]string, len(panels))
@@ -213,14 +206,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 	return &ports.PageArtifact{
 		PageNumber: page,
 		PanelIDs:   panelIDs,
-		Generation: &ports.GenerationRecord{
-			ImageURL:       finalPath,
-			UsedSeed:       resp.UsedSeed,
-			Prompt:         prompt,
-			NegativePrompt: pageNegativePrompt,
-			Model:          targetModel,
-			GeneratedAt:    time.Now().UTC(),
-		},
+		Generation: record,
 	}, nil
 }
 
