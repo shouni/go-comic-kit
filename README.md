@@ -148,7 +148,31 @@ type GenerationRecord struct {
 	UsedSeed    int64
 	GeneratedAt time.Time
 }
+
+type DesignSheetRef struct {
+	CharacterID string // 1キャラクターにつき1件（同じIDへの再生成は上書き）
+	ImageURL    string
+	UsedSeed    int64
+}
+
+type PageArtifact struct {
+	PageNumber int
+	PanelIDs   []string          // このページを構成したパネル（構成が変わると破棄される）
+	Generation *GenerationRecord
+}
 ```
+
+state を読むアプリ向けに、`MangaState` は検索・更新のヘルパーを持ちます。
+
+| メソッド | 用途 |
+| --- | --- |
+| `PanelByID` / `ChapterByID` / `PageArtifactByNumber` | ID・番号での取得 |
+| `PanelsForPage` | 指定ページのパネル一覧（表示順） |
+| `UniqueCharacterIDs` / `UniqueReferencedCharacterIDs` | 登場キャラの集合（後者は参照画像添付対象のみ） |
+| `ReplaceChapterPanels` → `Repaginate` | 章のパネル差し替えとページ再割り当て（この順で呼びます） |
+| `SetPageArtifact` / `SetDesignSheet` | 同一ページ番号・同一キャラクターへの upsert |
+
+`Version` は `ports.StateSchemaVersion` です。`store.Load` はこれより新しいスキーマの state を拒否します（古いキットで新しい state を壊さないため）。
 
 キャラクター間の関係性（誰が誰に何をしているか）は `PanelCharacter.Action` の自由記述で表現します
 （構造化エッジより、生成AIへのプロンプトとして自然文の方が忠実に反映されるため）。
@@ -160,20 +184,80 @@ type GenerationRecord struct {
 
 ---
 
+## ⚙️ 設定と差し替え (Config / DI)
+
+`workflow.New(Args)` に渡す `ports.Config` はゼロ値で構いません（`ApplyDefaults` が補完します）。
+
+| 設定項目 | 役割 |
+| --- | --- |
+| `GeminiModel` | 台本生成（章立て・章台本）に使うテキストモデル |
+| `ImageStandardModel` | パネル画像に使う標準・高速モデル |
+| `ImageQualityModel` | デザインシート・ページ合成に使う高品質モデル |
+| `MaxConcurrency` | 一括生成の最大並列数（1コマ・1ページ単位の操作には影響しません） |
+| `RateInterval` | AI 呼び出しの発射間隔の下限。テキストと画像で**1つのリミッターを共有**します（クォータがプロジェクト単位のため）。**スループットの上限は `MaxConcurrency` ではなく 1/RateInterval で決まります** |
+| `RequestTimeout` | AI 呼び出し1回あたりの上限（参照画像のアップロードにも適用）。工程列全体の上限ではありません |
+| `StyleSuffix` | パネル・ページ画像の画風指定 |
+| `DesignStyleSuffix` | デザインシートの画風指定。`StyleSuffix` と**分離**されています（演出照明がアンカーに焼き付くのを防ぐため） |
+| `MaxChapters` / `MaxPanelsPerChapter` / `MaxPanelsPerPage` | 章数・章あたりのコマ数・1ページあたりのコマ数の上限 |
+
+プロンプトは5操作すべて `workflow.Args` から差し替えられます（nil でキット内蔵の既定）。
+
+| Args フィールド | インターフェース | 実装が受け取るデータ | キット内蔵の既定 |
+| --- | --- | --- | --- |
+| `OutlinePrompt` | `ports.OutlinePrompt` | `OutlinePromptData` | go:embed テンプレート（`.md` を置くだけでモード追加） |
+| `ChapterScriptPrompt` | `ports.ChapterScriptPrompt` | `ChapterPromptData` | 同上 |
+| `DesignSheetPrompt` | `ports.DesignSheetPrompt` | `DesignSheetPromptData` | 平叙な Go 実装（3面図・単一ポーズ） |
+| `PanelPrompt` | `ports.PanelPrompt` | `PanelPromptData` | **簡潔版**（参照順・文字禁止・指5本のみ） |
+| `PagePrompt` | `ports.PagePrompt` | `PagePromptData` | **簡潔版**（コマ数・読み順・参照番号のみ） |
+
+画像系の `PanelPromptData.SubjectIDs` と `PagePromptData.CharacterFile` / `PanelFile` は、
+**実際に添付される画像の順序**そのものです。プロンプト内で参照番号を書くときは必ずこれを使ってください
+（自前で数え直すと、モデルが別人の参照画像を見ながら描くことになります）。
+
+パネル・ページの既定が簡潔なのは意図的です。演出の作り込みは作品ごとに変わるため、
+アプリ側で実装してください（キットに置くと、プロンプトを1文字変えるたびにキットの
+リリースが必要になります）。実装例は ap-comic の `internal/adapters/prompts` にあります。
+
+---
+
+## 📦 成果物の配置 (asset)
+
+生成物の保存先は `asset` パッケージが**唯一の決定者**です。アプリ側で `fmt.Sprintf` や
+`path.Join` を書かず、必ずこれらを使ってください（規約が2か所に分かれると、片方の変更で
+既存の成果物が見つからなくなります）。
+
+| 関数 | 返すパス |
+| --- | --- |
+| `asset.StatePath(baseDir)` | state ドキュメント（`comic_state.json`） |
+| `asset.PanelImagePath(baseDir, panelID, ext)` | パネル画像（`images/panel_{id}{ext}`） |
+| `asset.PageImagePath(baseDir, page)` | ページ画像（`images/comic_page_{n}.png`） |
+| `asset.DesignSheetPath(baseDir, charIDs, jobID, ext)` | デザインシート（`character/{tag}/{jobID}{ext}`） |
+| `asset.CharacterDesignPrefix(baseDir, charIDs)` | 上記シートのディレクトリ（履歴の一覧に使います） |
+
+`DesignFileTag` はキャラクターID群からディレクトリ名を作る際に、ファイル名長の上限を
+超えないようルート境界で切り詰め、CRC32 を付けて衝突を避けます。`SanitizeFileName` /
+`IsStateFileName` も同じ規約の一部として公開しています。
+
+---
+
 ## 🔁 操作セット (Operations)
 
 すべて冪等。`GenerateOutline` は原稿から state を新規作成し、以降の操作は state を受け取って
 更新済み state を返します（state in/out）。
 
-| 操作 | 内容 |
-| --- | --- |
-| `GenerateOutline` | 原稿から章立て（Chapters）のみの MangaState を生成 |
-| `GenerateChapterScript` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 |
-| `GenerateDesignSheet` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 |
-| `GeneratePanel` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） |
-| `ComposePage` | ページ単位で再レイアウト・合成 |
-| `GenerateAllPanels` | 全パネルを `MaxConcurrency` 並列で一括生成 |
-| `ComposeAllPages` | 全ページを `MaxConcurrency` 並列で一括合成 |
+| 操作 (`ops.` フィールド) | インターフェース | 内容 |
+| --- | --- | --- |
+| `Outline.GenerateOutline` | `ports.OutlineGenerator` | 原稿から章立て（Chapters）のみの MangaState を生成 |
+| `ChapterScript.GenerateChapterScript` | `ports.ChapterScriptGenerator` | 指定章のネーム（登場キャラ・セリフ・構図）を生成・置換 |
+| `DesignSheet.GenerateDesignSheet` | `ports.DesignSheetGenerator` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 |
+| `Panel.GeneratePanel` | `ports.PanelImageGenerator` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） |
+| `Page.ComposePage` | `ports.PageImageComposer` | ページ単位で再レイアウト・合成 |
+| `PanelBatch.GenerateAllPanels` | `ports.PanelBatchGenerator` | 全パネルを `MaxConcurrency` 並列で一括生成 |
+| `PageBatch.ComposeAllPages` | `ports.PageBatchComposer` | 全ページを `MaxConcurrency` 並列で一括合成 |
+
+`DesignSheetRequest.Override`（`ports.DesignOverride`）を使うと、その呼び出しに限って
+キャラクターの参照画像・`visual_cues` を差し替えられます（`characters.json` は変更しません）。
+単一キャラクター指定時のみ有効です。
 
 一括生成（`ops.PanelBatch` / `ops.PageBatch`）は、一部が失敗しても**成功分を記録した
 state とエラーの両方**を返します。state を保存してから `BatchOptions{SkipGenerated: true}`
@@ -193,7 +277,11 @@ state ドキュメントと GCS 上の画像を直接読んで表現します。
 | --- | --- | --- |
 | `ports.ErrNotFound` | 指定の章・パネル・ページが state に無い | 404 |
 | `ports.ErrInvalidRequest` | 必須項目の欠落、編集対象の画像が未生成 等 | 400 |
-| `ports.ErrGeneration` | AI 呼び出しまたは応答の解釈に失敗 | 502（再試行の価値あり） |
+| `ports.ErrGeneration` | AI 呼び出しまたは応答の解釈に失敗、生成画像の保存に失敗 | 502（再試行の価値あり） |
+
+画像の保存先パス生成の失敗（不正な `OutputDir`、ページ番号など）は引数が原因で再試行しても
+直らないため `ErrInvalidRequest` に分類されます。保存そのものの失敗は一時的なことが多いので
+`ErrGeneration` です。
 
 ---
 
@@ -205,9 +293,9 @@ state ドキュメントと GCS 上の画像を直接読んで表現します。
 ops, err := workflow.New(workflow.Args{
 	Config:          ports.Config{}, // ゼロ値は ApplyDefaults で補完される
 	HTTPClient:      httpClient,     // go-http-kit
-	Reader:          reader,         // go-remote-io（GCS/ローカル/HTTP）
+	Reader:          reader,         // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
 	Writer:          writer,
-	AIClient:        aiClient,        // go-gemini-client (v1.11.0+)。台本生成・パネル画像（標準品質）に使用
+	AIClient:        aiClient,        // go-gemini-client。台本生成・パネル画像（標準品質）に使用
 	AIClientQuality: aiClientQuality, // 省略可（nil なら AIClient を使用）。デザインシート・ページ合成（高品質）に使用
 	Characters:      characters,      // go-character-kit (characters.json)
 })
