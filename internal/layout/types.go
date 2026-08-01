@@ -4,7 +4,6 @@ package layout
 
 import (
 	"slices"
-	"strings"
 )
 
 const (
@@ -21,12 +20,6 @@ const (
 	// ImageSize2K は高解像度の設定（2048x2048相当）です。
 	ImageSize2K = "2K"
 )
-
-// IsGCSURI は、指定されたURIがGCS（Google Cloud Storage）のストレージURIであるかどうかを判定します。
-func IsGCSURI(uri string) bool {
-	const prefixGCS = "gs://"
-	return strings.HasPrefix(uri, prefixGCS)
-}
 
 // designAspectRatios は GenerateDesignSheet が受け付けるデザインシートのアスペクト比です。
 // キャラクターの参照画像（go-character-kit の ReferenceURLs）を、実際にその画像を使う先
