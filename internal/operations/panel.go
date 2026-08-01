@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
@@ -13,44 +12,14 @@ import (
 
 	"github.com/shouni/go-comic-kit/asset"
 	"github.com/shouni/go-comic-kit/internal/layout"
+	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
-
-const (
-	// panelSystemPrompt はパネル画像生成時にモデルへ与えるシステム指示です。
-	// 添付される参照画像とプロンプト内の [Subject N] は同じ順序で対応します。
-	panelSystemPrompt = `You are a professional manga panel illustrator.
-Draw a single manga panel following the scene direction, with these rules:
-- Attached reference images correspond to [Subject N] in the prompt, in the same order. Strictly preserve each subject's identity from its reference image: hairstyle, hair color, eye color, outfit, and accessories. Never mix identities between subjects.
-- Translate each subject's stated emotion and action into expression, gaze, and pose. Place subjects according to their stated positions.
-- Anatomical correctness is critical: draw every hand with exactly five fingers and correct limb proportions.
-- Render absolutely no text, speech bubbles, sound effects lettering, or logos — dialogue is composited separately.`
-
-	// panelNegativePrompt はパネル画像に含めたくない要素を指定する負のプロンプトです。
-	// フキダシ・文字の排除（go-manga-kit / go-veo-orchestrator で実証済みの語彙）に加え、
-	// 手・指の崩れ対策を含みます。
-	panelNegativePrompt = "speech bubble, dialogue balloon, text, alphabet, letters, words, signatures, watermark, username, malformed hands, fused fingers, extra fingers, missing fingers, extra limbs, deformed anatomy, low quality, distorted, bad anatomy, monochrome, black and white, greyscale"
-
-	// panelEditInstruction は編集モードで構図の維持を指示する共通プレフィックスです。
-	panelEditInstruction = "Edit the attached manga panel image. Keep the composition, character poses, background, and art style unchanged. Apply ONLY this change: "
-)
-
-// PanelResourceProvider は、PanelImageRunner が layout.ComicComposer に依存する範囲だけを
-// 切り出した契約です。参照画像の事前アップロードと、アスペクト比別のアップロード済み URI
-// 解決を提供します。
-//
-// GenerateAllPanels は複数のコマを並列に生成するため、実装は複数のゴルーチンからの
-// 同時呼び出しに耐える必要があります（layout.ComicComposer は mutex と singleflight で
-// 保護済みです）。
-type PanelResourceProvider interface {
-	PrepareCharacterResources(ctx context.Context, state *ports.MangaState) error
-	GetCharacterResourceURIFor(charID, aspectRatio string) string
-}
 
 // PanelImageRunner はパネル画像の生成/再生成（GeneratePanel 操作）を実行します。
 type PanelImageRunner struct {
 	characters     *ports.Characters
-	resources      PanelResourceProvider
+	prompt         ports.PanelPrompt
 	generator      ImageFusionGenerator
 	writer         remoteio.Writer
 	model          string
@@ -68,9 +37,10 @@ var (
 // PanelImageRunnerArgs は PanelImageRunner の構築に必要な依存と設定の集合です。
 type PanelImageRunnerArgs struct {
 	Characters *ports.Characters
-	Resources  PanelResourceProvider
-	Generator  ImageFusionGenerator
-	Writer     remoteio.Writer
+	// Prompt はパネル生成プロンプトの構築器です（nil ならキット内蔵の簡潔な既定）。
+	Prompt    ports.PanelPrompt
+	Generator ImageFusionGenerator
+	Writer    remoteio.Writer
 	// Model は画像生成に使うモデル名です（標準系: ports.Config.ImageStandardModel 推奨）。
 	Model string
 	// StyleSuffix にはパネル用の画風指定（ports.Config.StyleSuffix）を渡してください。
@@ -95,9 +65,12 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
 	}
+	if args.Prompt == nil {
+		args.Prompt = prompts.DefaultPanelPrompt{}
+	}
 	return &PanelImageRunner{
 		characters:     args.Characters,
-		resources:      args.Resources,
+		prompt:         args.Prompt,
 		generator:      args.Generator,
 		writer:         args.Writer,
 		model:          args.Model,
@@ -120,7 +93,7 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 		return nil, fmt.Errorf("%w: パネル %q", ports.ErrNotFound, panelID)
 	}
 
-	record, err := pr.renderPanel(ctx, state, panel, opts)
+	record, err := pr.renderPanel(ctx, panel, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -130,9 +103,9 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *ports.Mang
 }
 
 // renderPanel は1コマ分の画像を生成・保存し、その生成記録を返します。
-// state と panel は読むだけで書き換えないため、対象が異なれば並列に呼び出せます
+// panel は読むだけで書き換えないため、対象が異なれば並列に呼び出せます
 // （記録の反映は呼び出し側が単独で行います。GenerateAllPanels 参照）。
-func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaState, panel *ports.Panel, opts ports.GenerateOptions) (*ports.GenerationRecord, error) {
+func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *ports.Panel, opts ports.GenerateOptions) (*ports.GenerationRecord, error) {
 	panelID := panel.ID
 
 	targetModel := pr.model
@@ -141,14 +114,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaS
 	}
 	seed := resolveSeedChain(opts.Seed, panel.Generation, pr.characters, panel.Characters)
 
-	var prompt string
-	var images []imagePorts.ImageURI
-	var err error
-	if opts.EditPrompt != "" {
-		prompt, images, err = pr.buildEditRequest(panel, opts)
-	} else {
-		prompt, images, err = pr.buildGenerateRequest(ctx, state, panel, opts)
-	}
+	set, images, err := pr.buildRequest(panel, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -163,9 +129,9 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, state *ports.MangaS
 	// 生成・保存・生成条件の記録（再生成の基礎）。保存先はパネルIDに紐づく安定したパスで上書きする。
 	record, err := renderImage(ctx, pr.generator, pr.writer, imageRenderRequest{
 		Model:          targetModel,
-		Prompt:         prompt,
-		SystemPrompt:   panelSystemPrompt,
-		NegativePrompt: panelNegativePrompt,
+		Prompt:         set.user,
+		SystemPrompt:   set.system,
+		NegativePrompt: set.negative,
 		AspectRatio:    pr.aspectRatio,
 		ImageSize:      pr.imageSize,
 		Seed:           seed,
@@ -212,7 +178,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *ports.
 	records, errs := runBatch(ctx, pr.maxConcurrency, targets,
 		func(ctx context.Context, index int) (*ports.GenerationRecord, error) {
 			panel := &state.Panels[index]
-			record, err := pr.renderPanel(ctx, state, panel, single)
+			record, err := pr.renderPanel(ctx, panel, single)
 			if err != nil {
 				return nil, fmt.Errorf("パネル %q: %w", panel.ID, err)
 			}
@@ -236,16 +202,23 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *ports.
 	return state, errors.Join(errs...)
 }
 
-// buildGenerateRequest は通常生成のプロンプトと参照画像リストを構築します。
-// 参照画像とプロンプト内の [Subject N] は同じ順序で対応させます。
-func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *ports.MangaState, panel *ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
-	// 参照キャラクターの画像を事前アップロード（アップロード済みはキャッシュされる）
-	if err := pr.resources.PrepareCharacterResources(ctx, state); err != nil {
-		return "", nil, fmt.Errorf("参照画像の事前準備に失敗しました: %w", err)
+// buildRequest は、編集モードか通常生成かに応じてプロンプト一式と参照画像を構築します。
+// プロンプト本文の組み立ては ports.PanelPrompt の実装（既定はキット内蔵の簡潔版）に委ね、
+// ここは「どのキャラクターの参照画像をどの順序で添付したか」を伝える役に徹します。
+func (pr *PanelImageRunner) buildRequest(panel *ports.Panel, opts ports.GenerateOptions) (promptSet, []imagePorts.ImageURI, error) {
+	if opts.EditPrompt != "" {
+		if panel.Generation == nil || panel.Generation.ImageURL == "" {
+			return promptSet{}, nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
+		}
+		set, err := newPromptSet(pr.prompt.BuildPanelEdit(opts.EditPrompt))
+		if err != nil {
+			return promptSet{}, nil, err
+		}
+		return set.withOverride(opts.PromptOverride), []imagePorts.ImageURI{{ReferenceURL: panel.Generation.ImageURL}}, nil
 	}
 
 	var images []imagePorts.ImageURI
-	var subjects []string
+	var subjectIDs []string
 	for _, id := range panel.ReferencedCharacterIDs() {
 		char := pr.characters.GetCharacter(id)
 		if char == nil {
@@ -260,101 +233,18 @@ func (pr *PanelImageRunner) buildGenerateRequest(ctx context.Context, state *por
 			slog.Warn("キャラクターに参照画像がありません", "character_id", id)
 			continue
 		}
-		images = append(images, imagePorts.ImageURI{
-			ReferenceURL: referenceURL,
-			FileAPIURI:   pr.resources.GetCharacterResourceURIFor(id, pr.aspectRatio),
-		})
-		subjects = append(subjects, subjectLine(len(images), char, findPanelCharacter(panel, id)))
+		images = append(images, imagePorts.ImageURI{ReferenceURL: referenceURL})
+		subjectIDs = append(subjectIDs, id)
 	}
 
-	if opts.PromptOverride != "" {
-		return opts.PromptOverride, images, nil
+	set, err := newPromptSet(pr.prompt.BuildPanel(&ports.PanelPromptData{
+		Panel:       *panel,
+		Characters:  pr.characters,
+		SubjectIDs:  subjectIDs,
+		StyleSuffix: pr.styleSuffix,
+	}))
+	if err != nil {
+		return promptSet{}, nil, err
 	}
-	return pr.buildPanelPrompt(panel, subjects), images, nil
-}
-
-// buildEditRequest は編集モード（既存画像への指示ベースの変更）のプロンプトと入力画像を構築します。
-// 構図・ポーズ・背景を保ったまま指示箇所だけを変更します（go-veo-orchestrator の EditCut と同方式）。
-func (pr *PanelImageRunner) buildEditRequest(panel *ports.Panel, opts ports.GenerateOptions) (string, []imagePorts.ImageURI, error) {
-	if panel.Generation == nil || panel.Generation.ImageURL == "" {
-		return "", nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
-	}
-	prompt := panelEditInstruction + opts.EditPrompt
-	images := []imagePorts.ImageURI{{ReferenceURL: panel.Generation.ImageURL}}
-	return prompt, images, nil
-}
-
-// buildPanelPrompt はパネルの演出情報からユーザープロンプトを組み立てます。
-func (pr *PanelImageRunner) buildPanelPrompt(panel *ports.Panel, subjects []string) string {
-	var sb strings.Builder
-	sb.WriteString("Manga panel illustration.")
-	if panel.Shot != "" {
-		fmt.Fprintf(&sb, " Shot: %s.", panel.Shot)
-	}
-	if panel.Setting != "" {
-		fmt.Fprintf(&sb, " Setting: %s.", panel.Setting)
-	}
-	if anchor := strings.TrimSpace(panel.VisualAnchor); anchor != "" {
-		sb.WriteString("\nScene direction: ")
-		sb.WriteString(anchor)
-	}
-	for _, subject := range subjects {
-		sb.WriteString("\n")
-		sb.WriteString(subject)
-	}
-	if extras := backgroundExtras(panel); extras != "" {
-		sb.WriteString("\nBackground extras (no reference, generic): ")
-		sb.WriteString(extras)
-	}
-	if pr.styleSuffix != "" {
-		sb.WriteString("\nStyle: ")
-		sb.WriteString(pr.styleSuffix)
-	}
-	sb.WriteString("\nNo speech bubbles, no text.")
-	return sb.String()
-}
-
-// subjectLine は1キャラクター分の [Subject N] 記述を構築します。
-func subjectLine(index int, char *ports.Character, pc *ports.PanelCharacter) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "[Subject %d: %s", index, char.Name)
-	if len(char.VisualCues) > 0 {
-		fmt.Fprintf(&sb, " (%s)", strings.Join(char.VisualCues, ", "))
-	}
-	sb.WriteString("]")
-	if pc == nil {
-		return sb.String()
-	}
-	if pc.Emotion != "" {
-		fmt.Fprintf(&sb, " emotion: %s.", pc.Emotion)
-	}
-	if pc.Action != "" {
-		fmt.Fprintf(&sb, " action: %s.", pc.Action)
-	}
-	if pc.Position != "" {
-		fmt.Fprintf(&sb, " position: %s.", pc.Position)
-	}
-	return sb.String()
-}
-
-// findPanelCharacter はパネル内の指定キャラクターの登場情報を返します。
-func findPanelCharacter(panel *ports.Panel, charID string) *ports.PanelCharacter {
-	for i := range panel.Characters {
-		if panel.Characters[i].CharacterID == charID {
-			return &panel.Characters[i]
-		}
-	}
-	return nil
-}
-
-// backgroundExtras は background（モブ）キャラクターの記述をまとめます。
-func backgroundExtras(panel *ports.Panel) string {
-	var parts []string
-	for i := range panel.Characters {
-		if panel.Characters[i].Prominence != ports.ProminenceBackground {
-			continue
-		}
-		parts = append(parts, backgroundExtraDesc(&panel.Characters[i]))
-	}
-	return strings.Join(parts, ", ")
+	return set.withOverride(opts.PromptOverride), images, nil
 }

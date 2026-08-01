@@ -11,7 +11,6 @@ import (
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-remote-io/remoteio"
 
-	"github.com/shouni/go-comic-kit/internal/layout"
 	"github.com/shouni/go-comic-kit/internal/operations"
 	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
@@ -42,12 +41,16 @@ type Args struct {
 	OutlinePrompt       ports.OutlinePrompt
 	ChapterScriptPrompt ports.ChapterScriptPrompt
 	DesignSheetPrompt   ports.DesignSheetPrompt
+	// PanelPrompt / PagePrompt も同様に差し替え可能です。キット内蔵の既定は、
+	// 参照画像との対応やコマ数といった構造的な指示だけを持つ簡潔なものです。
+	// 作品ごとの作り込みはアプリ側で実装してください。
+	PanelPrompt ports.PanelPrompt
+	PagePrompt  ports.PagePrompt
 }
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
 type generationUnit struct {
 	imageGenerator operations.ImageFusionGenerator
-	composer       *layout.ComicComposer
 	model          string
 	cache          *imageCache
 }
@@ -115,7 +118,7 @@ func New(args Args) (*ports.Operations, error) {
 
 	panelRunner := operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
 		Characters:     args.Characters,
-		Resources:      standard.composer,
+		Prompt:         args.PanelPrompt,
 		Generator:      standard.imageGenerator,
 		Writer:         args.Writer,
 		Model:          standard.model,
@@ -124,7 +127,7 @@ func New(args Args) (*ports.Operations, error) {
 	})
 	pageRunner := operations.NewPageImageRunner(operations.PageImageRunnerArgs{
 		Characters:     args.Characters,
-		Resources:      quality.composer,
+		Prompt:         args.PagePrompt,
 		Generator:      quality.imageGenerator,
 		Writer:         args.Writer,
 		Model:          quality.model,
@@ -142,7 +145,7 @@ func New(args Args) (*ports.Operations, error) {
 			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
 		DesignSheet: operations.NewDesignSheetRunner(
-			designPrompt, args.Characters, quality.composer, quality.imageGenerator, args.Writer,
+			designPrompt, args.Characters, quality.imageGenerator, args.Writer,
 			quality.model, cfg.DesignStyleSuffix,
 		),
 		Panel:      panelRunner,
@@ -157,7 +160,7 @@ func New(args Args) (*ports.Operations, error) {
 	return ops, nil
 }
 
-// buildGenerationUnit は、指定クライアント・モデルの画像生成一式（core・composer・generator）を構築します。
+// buildGenerationUnit は、指定クライアント・モデルの画像生成一式（core・generator）を構築します。
 func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName string, guard callGuard) (*generationUnit, error) {
 	cache := newImageCache(defaultCacheExpiration)
 
@@ -167,16 +170,13 @@ func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName st
 		HTTPClient: args.HTTPClient,
 		Cache:      cache,
 		CacheTTL:   defaultTTL,
+		// 参照画像のアップロードにも AI 呼び出しと同じ上限時間を適用する
+		// （Config.RequestTimeout）。
+		UploadTimeout: guard.timeout,
 	})
 	if err != nil {
 		cache.Stop()
 		return nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)
-	}
-
-	composer, err := layout.NewComicComposer(core, core, args.Characters, guard.timeout)
-	if err != nil {
-		cache.Stop()
-		return nil, fmt.Errorf("ComicComposer の初期化に失敗しました: %w", err)
 	}
 
 	gen, err := generator.NewGeminiGenerator(core)
@@ -189,7 +189,6 @@ func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName st
 	return &generationUnit{
 		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
 		imageGenerator: &singleflightFusionGenerator{inner: gen, guard: guard},
-		composer:       composer,
 		model:          modelName,
 		cache:          cache,
 	}, nil

@@ -35,14 +35,6 @@ func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, _ ...rem
 	return m.err
 }
 
-type mockResources struct {
-	uris map[string]string
-}
-
-func (m *mockResources) GetCharacterResourceURI(charID string) string {
-	return m.uris[charID]
-}
-
 // --- Helpers ---
 
 func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *mockWriter) {
@@ -67,8 +59,7 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 	}
 	genMock := &mockDesignGenerator{}
 	writer := &mockWriter{}
-	resources := &mockResources{uris: map[string]string{"tsumugi": "https://file-api.google.com/tsumugi"}}
-	dr := NewDesignSheetRunner(prompts.DefaultDesignPrompt{}, cm, resources, genMock, writer, "test-image-model", ports.DefaultDesignStyleSuffix)
+	dr := NewDesignSheetRunner(prompts.DefaultDesignPrompt{}, cm, genMock, writer, "test-image-model", ports.DefaultDesignStyleSuffix)
 	return dr, genMock, writer
 }
 
@@ -127,8 +118,9 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	if genMock.lastReq.Seed == nil || *genMock.lastReq.Seed != 42 {
 		t.Errorf("Seed = %v, want 42", genMock.lastReq.Seed)
 	}
-	if len(genMock.lastReq.Images) != 1 || genMock.lastReq.Images[0].FileAPIURI != "https://file-api.google.com/tsumugi" {
-		t.Errorf("Images = %+v, want pre-uploaded File API URI", genMock.lastReq.Images)
+	// 参照の解決は gemini-image-kit が担うため、ここでは参照元 URL を渡すだけ。
+	if len(genMock.lastReq.Images) != 1 || genMock.lastReq.Images[0].ReferenceURL != "gs://bucket/tsumugi.png" {
+		t.Errorf("Images = %+v, want the character reference URL", genMock.lastReq.Images)
 	}
 }
 

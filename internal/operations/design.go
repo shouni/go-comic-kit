@@ -15,18 +15,10 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// CharacterResourceProvider は、DesignSheetRunner が layout.ComicComposer に依存する範囲
-// だけを切り出した契約です（go-veo-orchestrator の同名インターフェースと同じ方針）。
-// 事前アップロード済みのキャラクター参照画像 URI を解決します。
-type CharacterResourceProvider interface {
-	GetCharacterResourceURI(charID string) string
-}
-
 // DesignSheetRunner はキャラクターデザインシート生成（GenerateDesignSheet 操作）を実行します。
 type DesignSheetRunner struct {
 	prompt      ports.DesignSheetPrompt
 	characters  *ports.Characters
-	resources   CharacterResourceProvider
 	generator   ImageFusionGenerator
 	writer      remoteio.Writer
 	model       string
@@ -43,7 +35,6 @@ var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 func NewDesignSheetRunner(
 	prompt ports.DesignSheetPrompt,
 	characters *ports.Characters,
-	resources CharacterResourceProvider,
 	generator ImageFusionGenerator,
 	writer remoteio.Writer,
 	model string,
@@ -52,7 +43,6 @@ func NewDesignSheetRunner(
 	return &DesignSheetRunner{
 		prompt:      prompt,
 		characters:  characters,
-		resources:   resources,
 		generator:   generator,
 		writer:      writer,
 		model:       model,
@@ -104,7 +94,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 			NegativePrompt: negativePrompt,
 			AspectRatio:    layout.NormalizeDesignAspectRatio(req.AspectRatio),
 			ImageSize:      layout.ImageSize2K,
-			Seed:           ptrInt64(req.Seed),
+			Seed:           designSeed(req.Seed),
 		},
 		Images: imageURIs,
 	}
@@ -150,10 +140,15 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	return state, nil
 }
 
-// ptrInt64 は 0 を nil として扱う int64 ポインタ変換です。
-func ptrInt64(v int64) *int64 {
+// designSeed は、指定が無ければ（0）新しいシードを採番します。
+//
+// デザインシートはキャラクターの同一性アンカーなので、後から同じシートを出せることが
+// パネル以上に重要です。シードを渡さないと API 側が選んだ値はレスポンスに返らず、
+// DesignSheetRef.UsedSeed に 0 が記録されて再現できなくなります
+// （パネル・ページ側の resolveSeedChain と同じ理由です）。
+func designSeed(v int64) *int64 {
 	if v == 0 {
-		return nil
+		return newSeed()
 	}
 	return &v
 }
@@ -181,28 +176,20 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ids []string, override ports.D
 
 		referenceURL := char.ReferenceURL
 		visualCues := char.VisualCues
-		// File API URI があれば取得（既定の参照画像に対して事前アップロード済みのもの）
-		fileURI := dr.resources.GetCharacterResourceURI(char.ID)
 
 		if applyOverride && strings.TrimSpace(override.ReferenceURL) != "" {
 			referenceURL = override.ReferenceURL
-			// 上書きURLは事前アップロード対象に含まれていないため、File API URIは使わず
-			// ReferenceURLをそのまま渡す（Vertex AI + GCS URIの直接参照にフォールバックする）。
-			fileURI = ""
 		}
 		if applyOverride && len(override.VisualCues) > 0 {
 			visualCues = override.VisualCues
 		}
 
-		if referenceURL == "" && fileURI == "" {
+		if referenceURL == "" {
 			slog.Warn("キャラクターに有効な参照画像がないためスキップします", "id", id)
 			continue
 		}
 
-		uris = append(uris, imagePorts.ImageURI{
-			ReferenceURL: referenceURL,
-			FileAPIURI:   fileURI,
-		})
+		uris = append(uris, imagePorts.ImageURI{ReferenceURL: referenceURL})
 
 		desc := char.Name
 		if len(visualCues) > 0 {

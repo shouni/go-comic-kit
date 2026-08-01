@@ -89,7 +89,7 @@ func TestGenerateAllPanelsRunsConcurrently(t *testing.T) {
 	t.Parallel()
 
 	probe := &concurrencyProbe{hold: 30 * time.Millisecond}
-	runner, _, _, _ := newPanelRunner(t)
+	runner, _, _ := newPanelRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 	runner.maxConcurrency = 4
@@ -120,7 +120,7 @@ func TestGenerateAllPanelsSerialByDefault(t *testing.T) {
 	t.Parallel()
 
 	probe := &concurrencyProbe{hold: 10 * time.Millisecond}
-	runner, _, _, _ := newPanelRunner(t)
+	runner, _, _ := newPanelRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 	// NewPanelImageRunner の既定（MaxConcurrency 未指定 → 1）を模す
@@ -139,7 +139,7 @@ func TestGenerateAllPanelsKeepsSuccessesOnPartialFailure(t *testing.T) {
 
 	// scene-02 のコマだけ失敗させる
 	probe := &concurrencyProbe{failOn: "scene-02"}
-	runner, _, _, _ := newPanelRunner(t)
+	runner, _, _ := newPanelRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 	runner.maxConcurrency = 3
@@ -167,7 +167,7 @@ func TestGenerateAllPanelsSkipGenerated(t *testing.T) {
 	t.Parallel()
 
 	probe := &concurrencyProbe{}
-	runner, _, _, _ := newPanelRunner(t)
+	runner, _, _ := newPanelRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 
@@ -190,7 +190,7 @@ func TestGenerateAllPanelsSkipGenerated(t *testing.T) {
 func TestGenerateAllPanelsNilState(t *testing.T) {
 	t.Parallel()
 
-	runner, _, _, _ := newPanelRunner(t)
+	runner, _, _ := newPanelRunner(t, nil)
 	if _, err := runner.GenerateAllPanels(context.Background(), nil, ports.BatchOptions{}); !errors.Is(err, ports.ErrInvalidRequest) {
 		t.Errorf("err = %v, want ports.ErrInvalidRequest", err)
 	}
@@ -238,7 +238,7 @@ func TestComposeAllPagesRunsConcurrently(t *testing.T) {
 	t.Parallel()
 
 	probe := &concurrencyProbe{hold: 30 * time.Millisecond}
-	runner, _, _, _ := newPageRunner(t)
+	runner, _, _ := newPageRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 	runner.maxConcurrency = 3
@@ -275,7 +275,7 @@ func TestComposeAllPagesKeepsSuccessesOnPartialFailure(t *testing.T) {
 	t.Parallel()
 
 	probe := &concurrencyProbe{failOn: "page-02"}
-	runner, _, _, _ := newPageRunner(t)
+	runner, _, _ := newPageRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 	runner.maxConcurrency = 3
@@ -299,7 +299,7 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 	t.Parallel()
 
 	probe := &concurrencyProbe{}
-	runner, _, _, _ := newPageRunner(t)
+	runner, _, _ := newPageRunner(t, nil)
 	runner.generator = probe
 	runner.writer = &concurrentWriter{}
 
