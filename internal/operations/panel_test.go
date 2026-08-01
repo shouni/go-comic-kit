@@ -290,7 +290,9 @@ func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	if len(gen.lastReq.Images) != 0 {
 		t.Errorf("Images = %+v, want no references for scenery panel", gen.lastReq.Images)
 	}
-	if gen.lastReq.Seed != nil {
-		t.Errorf("Seed = %v, want nil for scenery panel", gen.lastReq.Seed)
+	// キャラクター由来のシードは無いが、記録から再現できるようシードは必ず送る
+	// （resolveSeedChain の最後の採番。UsedSeed が 0 のまま記録されると再生成が別物になる）。
+	if gen.lastReq.Seed == nil {
+		t.Error("Seed = nil, want a freshly drawn seed so the panel can be reproduced")
 	}
 }

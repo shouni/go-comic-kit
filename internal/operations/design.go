@@ -109,16 +109,25 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 		Images: imageURIs,
 	}
 
-	// 4. 生成実行
-	resp, err := dr.generator.GenerateFusedImage(ctx, fusionReq)
+	// 4. 生成と保存
+	// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
+	// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
+	// 上書きせず履歴として残します。
+	record, err := renderImage(ctx, dr.generator, dr.writer, imageRenderRequest{
+		Model:          fusionReq.Model,
+		Prompt:         fusionReq.Prompt,
+		SystemPrompt:   fusionReq.SystemPrompt,
+		NegativePrompt: fusionReq.NegativePrompt,
+		AspectRatio:    fusionReq.AspectRatio,
+		ImageSize:      fusionReq.ImageSize,
+		Seed:           fusionReq.Seed,
+		Images:         fusionReq.Images,
+		PathFor: func(mimeType string) (string, error) {
+			return asset.DesignSheetPath(req.OutputDir, req.CharacterIDs, req.JobID, getPreferredExtension(mimeType))
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: デザインシート画像の生成に失敗しました: %w", ports.ErrGeneration, err)
-	}
-
-	// 5. 画像の保存
-	outputPath, err := dr.saveResponseImage(ctx, resp, req.CharacterIDs, req.JobID, req.OutputDir)
-	if err != nil {
-		return nil, fmt.Errorf("画像の保存に失敗しました: %w", err)
+		return nil, fmt.Errorf("デザインシート (%v): %w", req.CharacterIDs, err)
 	}
 
 	// 6. state への記録（冪等: 同一キャラクターの記録は上書き）
@@ -132,30 +141,13 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	for _, id := range req.CharacterIDs {
 		state.SetDesignSheet(ports.DesignSheetRef{
 			CharacterID: id,
-			ImageURL:    outputPath,
-			UsedSeed:    resp.UsedSeed,
+			ImageURL:    record.ImageURL,
+			UsedSeed:    record.UsedSeed,
 		})
 	}
 	state.UpdatedAt = now
 
 	return state, nil
-}
-
-// saveResponseImage は、生成された画像データを指定されたディレクトリに保存します。
-// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
-// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
-// 上書きせず履歴として残します。
-func (dr *DesignSheetRunner) saveResponseImage(ctx context.Context, resp *imagePorts.ImageResponse, charIDs []string, jobID string, outputDir string) (string, error) {
-	finalPath, err := asset.DesignSheetPath(outputDir, charIDs, jobID, getPreferredExtension(resp.MimeType))
-	if err != nil {
-		return "", fmt.Errorf("画像保存パスの生成に失敗しました (baseDir: %s, characters: %v): %w", outputDir, charIDs, err)
-	}
-
-	if err = writeGeneratedImage(ctx, dr.writer, finalPath, resp); err != nil {
-		return "", fmt.Errorf("画像の保存に失敗しました (path: %s): %w", finalPath, err)
-	}
-
-	return finalPath, nil
 }
 
 // ptrInt64 は 0 を nil として扱う int64 ポインタ変換です。
