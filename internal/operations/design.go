@@ -94,7 +94,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 			NegativePrompt: negativePrompt,
 			AspectRatio:    layout.NormalizeDesignAspectRatio(req.AspectRatio),
 			ImageSize:      layout.ImageSize2K,
-			Seed:           ptrInt64(req.Seed),
+			Seed:           designSeed(req.Seed),
 		},
 		Images: imageURIs,
 	}
@@ -140,10 +140,15 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	return state, nil
 }
 
-// ptrInt64 は 0 を nil として扱う int64 ポインタ変換です。
-func ptrInt64(v int64) *int64 {
+// designSeed は、指定が無ければ（0）新しいシードを採番します。
+//
+// デザインシートはキャラクターの同一性アンカーなので、後から同じシートを出せることが
+// パネル以上に重要です。シードを渡さないと API 側が選んだ値はレスポンスに返らず、
+// DesignSheetRef.UsedSeed に 0 が記録されて再現できなくなります
+// （パネル・ページ側の resolveSeedChain と同じ理由です）。
+func designSeed(v int64) *int64 {
 	if v == 0 {
-		return nil
+		return newSeed()
 	}
 	return &v
 }

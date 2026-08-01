@@ -41,6 +41,11 @@ type Args struct {
 	OutlinePrompt       ports.OutlinePrompt
 	ChapterScriptPrompt ports.ChapterScriptPrompt
 	DesignSheetPrompt   ports.DesignSheetPrompt
+	// PanelPrompt / PagePrompt も同様に差し替え可能です。キット内蔵の既定は、
+	// 参照画像との対応やコマ数といった構造的な指示だけを持つ簡潔なものです。
+	// 作品ごとの作り込みはアプリ側で実装してください。
+	PanelPrompt ports.PanelPrompt
+	PagePrompt  ports.PagePrompt
 }
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
@@ -113,6 +118,7 @@ func New(args Args) (*ports.Operations, error) {
 
 	panelRunner := operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
 		Characters:     args.Characters,
+		Prompt:         args.PanelPrompt,
 		Generator:      standard.imageGenerator,
 		Writer:         args.Writer,
 		Model:          standard.model,
@@ -121,6 +127,7 @@ func New(args Args) (*ports.Operations, error) {
 	})
 	pageRunner := operations.NewPageImageRunner(operations.PageImageRunnerArgs{
 		Characters:     args.Characters,
+		Prompt:         args.PagePrompt,
 		Generator:      quality.imageGenerator,
 		Writer:         args.Writer,
 		Model:          quality.model,

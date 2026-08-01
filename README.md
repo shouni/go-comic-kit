@@ -33,21 +33,30 @@
     * **Seed値**（基盤）、**参照アセット**（外見）、**VisualCues/言語指示**（詳細）の3要素で
       キャラクターの一貫性を制御。パネル・ページの生成条件は `GenerationRecord` として
       state に永続化されます。
+    * **シードは必ず記録されます**。明示指定が無い場合も「前回値 → 主役キャラクターの Seed →
+      新規採番」の順に必ず決まった値を送るため、`UsedSeed` を読み直せばいつでも同じ絵を再現できます
+      （シードを送らないと API 側が選んだ値は返ってこず、再現できなくなります）。
 * **📐 構造化出力（Constrained Decoding）**:
     * 台本生成は `ResponseJSONSchema`（素の JSON Schema）によりモデル出力が**文法レベルでスキーマに制約**されます。
       JSON の破綻を事後修復ではなく発生源で防ぎ、`prominence` や `kind` は Enum 制約で不正値を排除します。
 * **✏️ 編集モードによる再生成**:
     * シードの振り直しに加え、既存の生成済み画像に対する**指示ベースの部分編集**（`EditPrompt`）に対応。
       「構図はそのままで表情だけ笑顔に」のような修正がパネル・ページ単位で可能です。
-* **📝 内蔵プロンプトテンプレート + DI差し替え**:
-    * 章立て・章台本のプロンプトは go:embed のテンプレートを内蔵（`.md` を置くだけでモード追加）。
-      章立て・章台本・デザインシートの3操作は `workflow.Args`（`OutlinePrompt` /
-      `ChapterScriptPrompt` / `DesignSheetPrompt`）でアプリ側から完全に差し替え可能です。
-      パネル・ページのプロンプトは構造化された `Panel` からキット内部で組み立てますが、
-      `GenerateOptions.PromptOverride` による呼び出し単位の上書きも可能です。
+* **📝 プロンプトはすべて DI 差し替え可能**:
+    * 5操作すべてのプロンプトを `workflow.Args` から差し替えられます（`OutlinePrompt` /
+      `ChapterScriptPrompt` / `DesignSheetPrompt` / `PanelPrompt` / `PagePrompt`。nil はキット既定）。
+    * **キット内蔵の既定プロンプトは意図的に簡潔**です。参照画像との対応順・コマ数・読み順・
+      文字を描かないことといった、外すと**形式が壊れる**指示だけを持ちます。画風の言い回しや
+      コマ割りの演出は作品ごとに作り込むものなので、アプリ側で実装してください
+      （キット内に置くと、プロンプトを1文字変えるたびにキットのリリースが必要になります）。
+    * 章立て・章台本の既定は go:embed のテンプレートで、`.md` を置くだけでモードが増えます。
+    * `GenerateOptions.PromptOverride` は呼び出し単位で**本文だけ**を差し替えます
+      （システム指示とネガティブプロンプトは実装のものが残ります）。
 * **🌍 Multi-Backend Asset Support**:
-    * Gemini API モードでは **File API**、Vertex AI モードでは **Cloud Storage (GCS)** 上の画像を直接参照。
-      `singleflight` による二重アップロード防止つき。
+    * 参照画像の解決（Vertex AI + `gs://` は転送せず直接参照、Gemini API は File API へ1回だけ
+      アップロードして使い回す）は gemini-image-kit が担います。キットは「どの画像を何番目に
+      添付したか」だけを扱い、キャッシュと二重アップロード防止（singleflight）は
+      画像キット側の実装です。
 * **🔂 AI 呼び出しの重複排除**:
     * 同一内容のテキスト/画像生成リクエストの同時実行は `singleflight` で1回の API 呼び出しにまとめられます
       （Cloud Tasks の at-least-once 配信やリトライによる重複対策。プロセス内の in-flight が対象で、
@@ -67,8 +76,8 @@ go-comic-kit/
 ├── asset/                 # 【配置規約】成果物（パネル/ページ/デザインシート/state）の配置パスを決める唯一の場所。
 └── internal/
     ├── operations/        # 【実行実体】Outline/Chapter/Design/Panel/Page の具体的なプロセス実装。
-    ├── prompts/           # 【プロンプト】キット内蔵のデフォルトプロンプト実装（workflow.Args で上書き可能）。
-    └── layout/            # 【生成戦略】ComicComposer によるレイアウト計算・参照画像の事前アップロード。
+    ├── prompts/           # 【プロンプト】キット内蔵の簡潔な既定実装（workflow.Args で差し替え可能）。
+    └── layout/            # 【定数】アスペクト比・画像サイズの定義と正規化。
 ```
 
 `internal/operations` 等は `workflow` からしか使われない実装の詳細であり、将来これらへの直接アクセスが必要な消費側が現れた場合は、パッケージを `internal/` の外へ移動するだけで公開できます。

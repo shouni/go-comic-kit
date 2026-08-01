@@ -7,6 +7,7 @@ import (
 
 	characterkit "github.com/shouni/go-character-kit/character"
 
+	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -60,7 +61,7 @@ func pageTestState() *ports.MangaState {
 	}
 }
 
-func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockWriter) {
+func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mockFusionGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
 	cm, err := characterkit.NewCharacters([]ports.Character{
@@ -74,6 +75,7 @@ func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockW
 	writer := &mockWriter{}
 	r := NewPageImageRunner(PageImageRunnerArgs{
 		Characters:  cm,
+		Prompt:      prompt,
 		Generator:   gen,
 		Writer:      writer,
 		Model:       "page-model",
@@ -86,7 +88,7 @@ func newPageRunner(t *testing.T) (*PageImageRunner, *mockFusionGenerator, *mockW
 
 func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	t.Parallel()
-	r, gen, writer := newPageRunner(t)
+	r, gen, writer := newPageRunner(t, nil)
 	state := pageTestState()
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out"})
@@ -99,21 +101,24 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Fatalf("Images = %+v, want 3 references", gen.lastReq.Images)
 	}
 
+	// プロンプト本文の作り込みは ports.PagePrompt の実装（既定はキット内蔵の簡潔版、
+	// 作品ごとの本文はアプリ側）の責務なので、ここでは構造データが正しく渡ることだけを見る。
 	p := gen.lastReq.Prompt
+	if !strings.Contains(p, "exactly 2 panel") {
+		t.Errorf("prompt does not state the panel count:\n%s", p)
+	}
+	// 参照番号は添付順と一致していなければ、モデルは別人の参照画像を見て描く。
 	for _, want := range []string{
-		"PANEL COUNT: [ 2 ]",
-		"PANEL 1: ROW 1, RIGHT column",
-		"PANEL 2: ROW 1, LEFT column",
-		"SUBJECT [ずんだもん]: Match input_file_1",
-		"SUBJECT [めたん]: Match input_file_2",
-		"COMPOSITION_GUIDE: Recreate the composition, posing, and background from input_file_3",
-		"CHARACTER_IDENTITY: [ ずんだもん ] from input_file_1",
-		"SHOUT: Jagged, explosive speech bubble for [ずんだもん]",
-		"NARRATION: Rectangular caption box",
-		`TEXT_TO_RENDER: "なんなのだ！？"`,
-		"Horizontal (Yokogaki) or Vertical", // 短い叫びは横書き許可
-		"TEXT_TO_RENDER: \"落ち着きなさい。\"",
+		"identity from input_file_1", // ずんだもん = 1枚目
+		"identity from input_file_2", // めたん = 2枚目
+		"composition guide: input_file_3",
 	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt does not contain %q\nprompt: %s", want, p)
+		}
+	}
+	// セリフは話者名付きで渡る
+	for _, want := range []string{"dialogue (ずんだもん): なんなのだ！？", "dialogue (めたん): 落ち着きなさい。"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt does not contain %q\nprompt: %s", want, p)
 		}
@@ -124,9 +129,11 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Error("prompt leaked panels from another page")
 	}
 
-	// システムプロンプトにスタイルが後置される
-	if !strings.Contains(gen.lastReq.SystemPrompt, "READING FLOW: Right-to-Left") || !strings.Contains(gen.lastReq.SystemPrompt, "cinematic style") {
-		t.Error("system prompt missing format rules or style suffix")
+	if !strings.Contains(gen.lastReq.SystemPrompt, "right-to-left") {
+		t.Error("system prompt missing the reading order rule")
+	}
+	if !strings.Contains(p, "cinematic style") {
+		t.Error("prompt missing the style suffix")
 	}
 	if gen.lastReq.AspectRatio != "3:4" || gen.lastReq.ImageSize != "2K" {
 		t.Errorf("AspectRatio/ImageSize = %q/%q, want 3:4/2K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
@@ -152,7 +159,7 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 
 func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPageRunner(t)
+	r, gen, _ := newPageRunner(t, nil)
 	state := pageTestState()
 	state.Pages = []ports.PageArtifact{
 		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
@@ -178,7 +185,7 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 
 func TestComposePageEditMode(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPageRunner(t)
+	r, gen, _ := newPageRunner(t, nil)
 	state := pageTestState()
 	state.Pages = []ports.PageArtifact{
 		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
@@ -194,14 +201,14 @@ func TestComposePageEditMode(t *testing.T) {
 	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0].ReferenceURL != "gs://b/pages/page1.png" {
 		t.Errorf("Images = %+v, want existing page image only", gen.lastReq.Images)
 	}
-	if !strings.Contains(gen.lastReq.Prompt, pageEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
+	if !strings.Contains(gen.lastReq.Prompt, prompts.PageEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
 }
 
 func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPageRunner(t)
+	r, _, _ := newPageRunner(t, nil)
 
 	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更"})
 	if err == nil || !strings.Contains(err.Error(), "編集対象") {
@@ -211,39 +218,12 @@ func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 
 func TestComposePageEmptyPageFails(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPageRunner(t)
+	r, _, _ := newPageRunner(t, nil)
 
 	if _, err := r.ComposePage(context.Background(), pageTestState(), 99, ports.GenerateOptions{}); err == nil {
 		t.Error("ComposePage(empty page) succeeded, want error")
 	}
 	if _, err := r.ComposePage(context.Background(), nil, 1, ports.GenerateOptions{}); err == nil {
 		t.Error("ComposePage(nil state) succeeded, want error")
-	}
-}
-
-func TestComposePageFullWidthImpactForOddCount(t *testing.T) {
-	t.Parallel()
-	r, gen, _ := newPageRunner(t)
-	state := pageTestState()
-	// 3パネル構成にする（奇数 → 最後は全幅の見せゴマ）
-	state.Panels = append(state.Panels, ports.Panel{
-		ID:        "ch01-p03",
-		ChapterID: "ch01",
-		Page:      1,
-		Characters: []ports.PanelCharacter{
-			{CharacterID: "zundamon", Prominence: ports.ProminencePrimary},
-		},
-	})
-
-	if _, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{}); err != nil {
-		t.Fatalf("ComposePage failed: %v", err)
-	}
-
-	p := gen.lastReq.Prompt
-	if !strings.Contains(p, "PANEL 3: BOTTOM ROW, FULL-WIDTH") {
-		t.Errorf("prompt does not contain full-width placement for last odd panel:\n%s", p)
-	}
-	if !strings.Contains(p, "PANEL 3 [FULL-WIDTH IMPACT]") {
-		t.Error("prompt does not mark last odd panel as impact panel")
 	}
 }

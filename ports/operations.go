@@ -49,7 +49,8 @@ type DesignSheetRequest struct {
 	// 保存パス（OutputDir 配下の character/{tag}/{JobID}.ext）に使われ、同一キャラクターへの
 	// 複数回の生成を上書きせず履歴として残すためのものです。空文字は許可しません。
 	JobID string
-	// Seed は生成シードです。0 の場合はモデル側に委ねます。
+	// Seed は生成シードです。0 の場合は生成側で採番し、DesignSheetRef.UsedSeed に
+	// 記録します（その値を渡し直せば同じシートを再現できます）。
 	Seed int64
 	// OutputDir はシート画像の保存先ベースディレクトリ（ローカルまたは gs://）です。
 	// キャラクターはジョブ（作品）非依存の共有アセットのため、通常はバケットのルート
@@ -80,8 +81,11 @@ type DesignSheetGenerator interface {
 
 // GenerateOptions はパネル・ページ生成系操作の共通オプションです。
 type GenerateOptions struct {
-	// Seed は生成シードです。nil の場合、対象の GenerationRecord.UsedSeed（前回値）があれば
-	// それを再利用し「同条件での再生成」になります。指定すると振り直しです。
+	// Seed は生成シードです。指定すると振り直しになります。
+	//
+	// nil の場合は「前回の GenerationRecord.UsedSeed → 主役キャラクターの Seed → 新規採番」
+	// の順に解決します。前回値があれば「同条件での再生成」になり、無ければ採番した値が
+	// GenerationRecord.UsedSeed に記録されるので、次回以降は再現できます。
 	Seed *int64
 	// PromptOverride は自動構築されるプロンプトを差し替えます（空なら自動構築）。
 	PromptOverride string
@@ -113,7 +117,8 @@ type PageImageComposer interface {
 // 一括処理では意味を持たないためです（全対象に同じ編集指示を当てても無意味です）。
 type BatchOptions struct {
 	// Seed は全対象に適用する生成シードです。nil の場合は対象ごとに
-	// GenerateOptions.Seed が nil のときと同じ解決規則（前回値 → 主役キャラクター）に従います。
+	// GenerateOptions.Seed が nil のときと同じ解決規則
+	// （前回値 → 主役キャラクター → 新規採番）に従います。
 	Seed *int64
 	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
 	ModelOverride string
