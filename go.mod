@@ -7,9 +7,9 @@ require (
 	github.com/shouni/gemini-image-kit v1.12.3
 	github.com/shouni/go-character-kit v1.0.11
 	github.com/shouni/go-gemini-client v1.16.4
-	github.com/shouni/go-http-kit v1.7.2
+	github.com/shouni/go-http-kit v1.8.0
 	github.com/shouni/go-remote-io v1.7.2
-	github.com/shouni/go-utils v1.3.0
+	github.com/shouni/go-utils v1.5.0
 	golang.org/x/sync v0.22.0
 )
 
