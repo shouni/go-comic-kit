@@ -30,10 +30,10 @@ type Args struct {
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
 	// AIClient はテキスト生成（台本）と標準画質の画像生成（パネル）に使います。
-	AIClient gemini.MultimodalModel
+	AIClient gemini.Model
 	// AIClientQuality は高品質系の画像生成（デザインシート・ページ合成）に使います。
 	// nil の場合は AIClient を使います。
-	AIClientQuality gemini.MultimodalModel
+	AIClientQuality gemini.Model
 	Characters      *ports.Characters
 
 	// OutlinePrompt / ChapterScriptPrompt / DesignSheetPrompt を指定するとプロンプト構築を
@@ -50,7 +50,7 @@ type Args struct {
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
 type generationUnit struct {
-	imageGenerator operations.ImageFusionGenerator
+	imageGenerator operations.ImageGenerator
 	model          string
 	cache          *imageCache
 }
@@ -124,6 +124,7 @@ func New(args Args) (*ports.Operations, error) {
 		Model:          standard.model,
 		StyleSuffix:    cfg.StyleSuffix,
 		MaxConcurrency: cfg.MaxConcurrency,
+		CacheControl:   cfg.CacheControl,
 	})
 	pageRunner := operations.NewPageImageRunner(operations.PageImageRunnerArgs{
 		Characters:     args.Characters,
@@ -133,6 +134,7 @@ func New(args Args) (*ports.Operations, error) {
 		Model:          quality.model,
 		StyleSuffix:    cfg.StyleSuffix,
 		MaxConcurrency: cfg.MaxConcurrency,
+		CacheControl:   cfg.CacheControl,
 	})
 
 	ops := &ports.Operations{
@@ -144,10 +146,15 @@ func New(args Args) (*ports.Operations, error) {
 			chapterPrompt, textGenerator, args.Characters,
 			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
-		DesignSheet: operations.NewDesignSheetRunner(
-			designPrompt, args.Characters, quality.imageGenerator, args.Writer,
-			quality.model, cfg.DesignStyleSuffix,
-		),
+		DesignSheet: operations.NewDesignSheetRunner(operations.DesignSheetRunnerArgs{
+			Prompt:       designPrompt,
+			Characters:   args.Characters,
+			Generator:    quality.imageGenerator,
+			Writer:       args.Writer,
+			Model:        quality.model,
+			StyleSuffix:  cfg.DesignStyleSuffix,
+			CacheControl: cfg.CacheControl,
+		}),
 		Panel:      panelRunner,
 		Page:       pageRunner,
 		PanelBatch: panelRunner,
@@ -161,7 +168,7 @@ func New(args Args) (*ports.Operations, error) {
 }
 
 // buildGenerationUnit は、指定クライアント・モデルの画像生成一式（core・generator）を構築します。
-func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName string, guard callGuard) (*generationUnit, error) {
+func buildGenerationUnit(args *Args, client gemini.Model, modelName string, guard callGuard) (*generationUnit, error) {
 	cache := newImageCache(defaultCacheExpiration)
 
 	core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
@@ -188,7 +195,7 @@ func buildGenerationUnit(args *Args, client gemini.MultimodalModel, modelName st
 
 	return &generationUnit{
 		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
-		imageGenerator: &singleflightFusionGenerator{inner: gen, guard: guard},
+		imageGenerator: &singleflightImageGenerator{inner: gen, guard: guard},
 		model:          modelName,
 		cache:          cache,
 	}, nil

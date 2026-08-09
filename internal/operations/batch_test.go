@@ -17,7 +17,7 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// concurrencyProbe は、同時に走った生成の最大数を記録する ImageFusionGenerator です。
+// concurrencyProbe は、同時に走った生成の最大数を記録する ImageGenerator です。
 // failOn に含まれるプロンプト断片を持つリクエストは失敗させます。
 type concurrencyProbe struct {
 	mu      sync.Mutex
@@ -28,7 +28,7 @@ type concurrencyProbe struct {
 	failOn  string
 }
 
-func (p *concurrencyProbe) GenerateFusedImage(_ context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
+func (p *concurrencyProbe) Generate(_ context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
 	p.mu.Lock()
 	p.inFlite++
 	if p.inFlite > p.peak {

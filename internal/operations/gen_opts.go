@@ -6,10 +6,10 @@ import (
 
 // StructuredGenerator は、構造化出力オプション付きのテキスト生成を行う依存インターフェースです。
 //
-// gemini.MultimodalGenerator の別名です。この kit が渡すのはテキストプロンプトだけなので、
+// gemini.Generator の別名です。この kit が渡すのはテキストプロンプトだけなので、
 // genai.Part を組み立てる Generator ではなく、SDK の型を含まないこちらに依存します。
 // 独自に宣言し直すと、同じ 1 メソッドのインターフェースが 2 か所に増えます。
-type StructuredGenerator = gemini.MultimodalGenerator
+type StructuredGenerator = gemini.Generator
 
 // buildJSONGenerateOptions は、schema による構造化出力（constrained decoding）と、
 // セーフティブロックによる空応答を防ぐための BlockNone 統一設定を適用した

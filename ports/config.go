@@ -30,6 +30,11 @@ const (
 	// 演出（cinematic lighting 等）を含むため、デザインシートには使いません。
 	DefaultStyleSuffix = "Japanese anime style, official art, cel-shaded, clean line art, high-quality manga coloring, expressive eyes, vibrant colors, cinematic lighting, masterpiece, ultra-detailed, flat shading, clear character features, no 3D effect, high resolution"
 
+	// DefaultCacheControl は、生成画像を保存する際の既定の Cache-Control です。
+	// "public" は生成物を公開配信してよいという前提なので、非公開バケットへ書くデプロイでは
+	// Config.CacheControl に "private" 等を指定してください。
+	DefaultCacheControl = "public, max-age=1800"
+
 	// DefaultDesignStyleSuffix は、デザインシート生成プロンプトに付与する既定の画風指定です。
 	// シートは他生成物の同一性アンカーとして参照されるため、照明・演出系の指定を含めません
 	// （フラットな照明等の制約は DesignSheetRunner 側が常に後置します）。
@@ -54,6 +59,9 @@ type Config struct {
 	RateInterval time.Duration
 	// StyleSuffix はパネル・ページ画像生成に付与する画風指定です。
 	StyleSuffix string
+	// CacheControl は生成画像を保存する際の Cache-Control です。
+	// 空の場合は DefaultCacheControl（public, max-age=1800）を使います。
+	CacheControl string
 	// DesignStyleSuffix はデザインシート生成に付与する画風指定です。
 	// パネル用の StyleSuffix とは分離されています（演出照明の混入を防ぐため）。
 	DesignStyleSuffix string

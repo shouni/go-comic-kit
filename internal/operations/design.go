@@ -17,36 +17,47 @@ import (
 
 // DesignSheetRunner はキャラクターデザインシート生成（GenerateDesignSheet 操作）を実行します。
 type DesignSheetRunner struct {
-	prompt      ports.DesignSheetPrompt
-	characters  *ports.Characters
-	generator   ImageFusionGenerator
-	writer      remoteio.Writer
-	model       string
-	styleSuffix string
+	prompt       ports.DesignSheetPrompt
+	characters   *ports.Characters
+	generator    ImageGenerator
+	writer       remoteio.Writer
+	model        string
+	styleSuffix  string
+	cacheControl string
 }
 
 var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 
-// NewDesignSheetRunner は依存関係を注入して初期化します。styleSuffix にはデザインシート用の
-// 画風指定（ports.Config.DesignStyleSuffix）を渡してください。パネル用の StyleSuffix
-// （cinematic lighting 等の演出を含む）を渡すと、参照アンカーに演出照明が焼き付きます。
-// prompt にはキット内蔵の prompts.DefaultDesignPrompt{} を渡すか、アプリ側で
-// ports.DesignSheetPrompt を実装して独自のプロンプトに差し替えられます。
-func NewDesignSheetRunner(
-	prompt ports.DesignSheetPrompt,
-	characters *ports.Characters,
-	generator ImageFusionGenerator,
-	writer remoteio.Writer,
-	model string,
-	styleSuffix string,
-) *DesignSheetRunner {
+// DesignSheetRunnerArgs は DesignSheetRunner の構築に必要な依存と設定の集合です。
+// PanelImageRunnerArgs / PageImageRunnerArgs と同じ形にしてあります。位置引数のままだと
+// model / styleSuffix / cacheControl という無関係な文字列が3つ並び、取り違えても
+// コンパイルが通ってしまいます。
+type DesignSheetRunnerArgs struct {
+	// Prompt にはキット内蔵の prompts.DefaultDesignPrompt{} を渡すか、アプリ側で
+	// ports.DesignSheetPrompt を実装して独自のプロンプトに差し替えられます。
+	Prompt     ports.DesignSheetPrompt
+	Characters *ports.Characters
+	Generator  ImageGenerator
+	Writer     remoteio.Writer
+	Model      string
+	// StyleSuffix にはデザインシート用の画風指定（ports.Config.DesignStyleSuffix）を
+	// 渡してください。パネル用の StyleSuffix（cinematic lighting 等の演出を含む）を渡すと、
+	// 参照アンカーに演出照明が焼き付きます。
+	StyleSuffix string
+	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
+	CacheControl string
+}
+
+// NewDesignSheetRunner は依存関係を注入して初期化します。
+func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 	return &DesignSheetRunner{
-		prompt:      prompt,
-		characters:  characters,
-		generator:   generator,
-		writer:      writer,
-		model:       model,
-		styleSuffix: styleSuffix,
+		prompt:       args.Prompt,
+		characters:   args.Characters,
+		generator:    args.Generator,
+		writer:       args.Writer,
+		model:        args.Model,
+		styleSuffix:  args.StyleSuffix,
+		cacheControl: args.CacheControl,
 	}
 }
 
@@ -86,32 +97,20 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	if req.ModelOverride != "" {
 		targetModel = req.ModelOverride
 	}
-	fusionReq := imagePorts.ImageFusionRequest{
-		GenerationOptions: imagePorts.GenerationOptions{
-			Model:          targetModel,
-			Prompt:         userPrompt,
-			SystemPrompt:   systemPrompt,
-			NegativePrompt: negativePrompt,
-			AspectRatio:    layout.NormalizeDesignAspectRatio(req.AspectRatio),
-			ImageSize:      layout.ImageSize2K,
-			Seed:           designSeed(req.Seed),
-		},
-		Images: imageURIs,
-	}
-
 	// 4. 生成と保存
 	// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
 	// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
 	// 上書きせず履歴として残します。
 	record, err := renderImage(ctx, dr.generator, dr.writer, imageRenderRequest{
-		Model:          fusionReq.Model,
-		Prompt:         fusionReq.Prompt,
-		SystemPrompt:   fusionReq.SystemPrompt,
-		NegativePrompt: fusionReq.NegativePrompt,
-		AspectRatio:    fusionReq.AspectRatio,
-		ImageSize:      fusionReq.ImageSize,
-		Seed:           fusionReq.Seed,
-		Images:         fusionReq.Images,
+		Model:          targetModel,
+		Prompt:         userPrompt,
+		SystemPrompt:   systemPrompt,
+		NegativePrompt: negativePrompt,
+		AspectRatio:    layout.NormalizeDesignAspectRatio(req.AspectRatio),
+		ImageSize:      layout.ImageSize2K,
+		Seed:           designSeed(req.Seed),
+		Images:         imageURIs,
+		CacheControl:   dr.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
 			return asset.DesignSheetPath(req.OutputDir, req.CharacterIDs, req.JobID, getPreferredExtension(mimeType))
 		},

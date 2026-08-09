@@ -25,25 +25,25 @@ type callGuard struct {
 	timeout time.Duration
 }
 
-// singleflightFusionGenerator は、同一内容の画像生成リクエストの同時実行を1回にまとめる
-// ImageFusionGenerator のデコレータです（go-gemini-client/lyria と同方式）。
+// singleflightImageGenerator は、同一内容の画像生成リクエストの同時実行を1回にまとめる
+// ImageGenerator のデコレータです（go-gemini-client/lyria と同方式）。
 // Cloud Tasks の at-least-once 配信や MCP クライアントのリトライによる重複呼び出しから、
 // 高価な画像生成 API 呼び出しを守ります。プロセス内の in-flight のみが対象で、
 // 恒久的な重複排除は state の GenerationRecord によるジョブ側の冪等性で行います。
-type singleflightFusionGenerator struct {
-	inner operations.ImageFusionGenerator
+type singleflightImageGenerator struct {
+	inner operations.ImageGenerator
 	guard callGuard
 	group singleflight.Group
 }
 
-var _ operations.ImageFusionGenerator = (*singleflightFusionGenerator)(nil)
+var _ operations.ImageGenerator = (*singleflightImageGenerator)(nil)
 
-// GenerateFusedImage はリクエスト内容のハッシュをキーに同時実行をまとめます。
+// Generate はリクエスト内容のハッシュをキーに同時実行をまとめます。
 // 共有される応答は呼び出し元ごとに複製して返します。
-func (g *singleflightFusionGenerator) GenerateFusedImage(ctx context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
-	key := fusionRequestKey(&req)
+func (g *singleflightImageGenerator) Generate(ctx context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+	key := imageRequestKey(&req)
 	resp, err := doSingleflight(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*imagePorts.ImageResponse, error) {
-		return g.inner.GenerateFusedImage(execCtx, req)
+		return g.inner.Generate(execCtx, req)
 	})
 	if err != nil {
 		return nil, err
@@ -76,8 +76,8 @@ func (g *singleflightStructuredGenerator) GenerateWithAttachments(ctx context.Co
 	return &cloned, nil
 }
 
-// fusionRequestKey は画像生成リクエストの内容から singleflight 用キーを作ります。
-func fusionRequestKey(req *imagePorts.ImageFusionRequest) string {
+// imageRequestKey は画像生成リクエストの内容から singleflight 用キーを作ります。
+func imageRequestKey(req *imagePorts.ImageRequest) string {
 	parts := []string{
 		req.Model,
 		req.Prompt,
@@ -90,7 +90,7 @@ func fusionRequestKey(req *imagePorts.ImageFusionRequest) string {
 	for _, img := range req.Images {
 		parts = append(parts, img.ReferenceURL, img.FileAPIURI)
 	}
-	return singleflightKey("fusion", parts...)
+	return singleflightKey("image", parts...)
 }
 
 // structuredRequestKey はテキスト生成リクエストの内容から singleflight 用キーを作ります。

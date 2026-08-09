@@ -18,7 +18,7 @@ func TestNormalizeDesignAspectRatio(t *testing.T) {
 }
 
 func TestIsDesignAspectRatio(t *testing.T) {
-	for _, ratio := range []string{"1:1", "9:16", "16:9"} {
+	for _, ratio := range []string{"1:1", "3:4", "9:16", "16:9"} {
 		if !IsDesignAspectRatio(ratio) {
 			t.Errorf("IsDesignAspectRatio(%q) = false, want true", ratio)
 		}

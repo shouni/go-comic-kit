@@ -11,13 +11,13 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 )
 
-// blockingFusionGenerator は release されるまで応答を返さない fake です。
-type blockingFusionGenerator struct {
+// blockingImageGenerator は release されるまで応答を返さない fake です。
+type blockingImageGenerator struct {
 	calls   int32
 	release chan struct{}
 }
 
-func (g *blockingFusionGenerator) GenerateFusedImage(ctx context.Context, _ imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
+func (g *blockingImageGenerator) Generate(ctx context.Context, _ imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
 	atomic.AddInt32(&g.calls, 1)
 	select {
 	case <-g.release:
@@ -27,12 +27,12 @@ func (g *blockingFusionGenerator) GenerateFusedImage(ctx context.Context, _ imag
 	return &imagePorts.ImageResponse{Data: []byte("img"), MimeType: "image/png", UsedSeed: 7}, nil
 }
 
-func fusionReq(seed *int64) imagePorts.ImageFusionRequest {
-	return imagePorts.ImageFusionRequest{
+func imageReq(seed *int64) imagePorts.ImageRequest {
+	return imagePorts.ImageRequest{
 		GenerationOptions: imagePorts.GenerationOptions{
-			Model:  "m",
-			Prompt: "p",
-			Seed:   seed,
+			Model:           "m",
+			Prompt:          "p",
+			GenerateOptions: gemini.GenerateOptions{Seed: seed},
 		},
 		Images: []imagePorts.ImageURI{{ReferenceURL: "gs://b/ref.png"}},
 	}
@@ -41,8 +41,8 @@ func fusionReq(seed *int64) imagePorts.ImageFusionRequest {
 func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 	t.Parallel()
 
-	inner := &blockingFusionGenerator{release: make(chan struct{})}
-	g := &singleflightFusionGenerator{inner: inner}
+	inner := &blockingImageGenerator{release: make(chan struct{})}
+	g := &singleflightImageGenerator{inner: inner}
 
 	const callers = 5
 	var wg sync.WaitGroup
@@ -51,9 +51,9 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp, err := g.GenerateFusedImage(context.Background(), fusionReq(nil))
+			resp, err := g.Generate(context.Background(), imageReq(nil))
 			if err != nil {
-				t.Errorf("GenerateFusedImage failed: %v", err)
+				t.Errorf("Generate failed: %v", err)
 				return
 			}
 			results[i] = resp
@@ -79,18 +79,18 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 func TestSingleflightFusionDifferentSeedsAreSeparate(t *testing.T) {
 	t.Parallel()
 
-	inner := &blockingFusionGenerator{release: make(chan struct{})}
+	inner := &blockingImageGenerator{release: make(chan struct{})}
 	close(inner.release) // 即時応答
-	g := &singleflightFusionGenerator{inner: inner}
+	g := &singleflightImageGenerator{inner: inner}
 
 	seed1, seed2 := int64(1), int64(2)
-	if _, err := g.GenerateFusedImage(context.Background(), fusionReq(&seed1)); err != nil {
+	if _, err := g.Generate(context.Background(), imageReq(&seed1)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.GenerateFusedImage(context.Background(), fusionReq(&seed2)); err != nil {
+	if _, err := g.Generate(context.Background(), imageReq(&seed2)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.GenerateFusedImage(context.Background(), fusionReq(nil)); err != nil {
+	if _, err := g.Generate(context.Background(), imageReq(nil)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,21 +102,21 @@ func TestSingleflightFusionDifferentSeedsAreSeparate(t *testing.T) {
 func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 	t.Parallel()
 
-	inner := &blockingFusionGenerator{release: make(chan struct{})}
-	g := &singleflightFusionGenerator{inner: inner}
+	inner := &blockingImageGenerator{release: make(chan struct{})}
+	g := &singleflightImageGenerator{inner: inner}
 
 	// 呼び出し元A: すぐキャンセルする
 	ctxA, cancelA := context.WithCancel(context.Background())
 	errA := make(chan error, 1)
 	go func() {
-		_, err := g.GenerateFusedImage(ctxA, fusionReq(nil))
+		_, err := g.Generate(ctxA, imageReq(nil))
 		errA <- err
 	}()
 
 	// 呼び出し元B: 同一キーで相乗りし、完走を期待する
 	respB := make(chan *imagePorts.ImageResponse, 1)
 	go func() {
-		resp, err := g.GenerateFusedImage(context.Background(), fusionReq(nil))
+		resp, err := g.Generate(context.Background(), imageReq(nil))
 		if err != nil {
 			t.Errorf("caller B failed: %v", err)
 		}

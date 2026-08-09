@@ -14,11 +14,11 @@ import (
 
 // --- Mocks ---
 
-type mockFusionGenerator struct {
-	lastReq imagePorts.ImageFusionRequest
+type mockImageGenerator struct {
+	lastReq imagePorts.ImageRequest
 }
 
-func (m *mockFusionGenerator) GenerateFusedImage(_ context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
+func (m *mockImageGenerator) Generate(_ context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
 	m.lastReq = req
 	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 555}, nil
 }
@@ -50,7 +50,7 @@ func panelTestState() *ports.MangaState {
 	}
 }
 
-func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, *mockFusionGenerator, *mockWriter) {
+func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, *mockImageGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
 	cm, err := characterkit.NewCharacters([]ports.Character{
@@ -59,7 +59,7 @@ func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, 
 			Name:         "ずんだもん",
 			ReferenceURL: "gs://b/zunda.png",
 			ReferenceURLs: map[string]string{
-				"16:9": "gs://b/zunda-16x9.png",
+				"3:4": "gs://b/zunda-3x4.png",
 			},
 			VisualCues: []string{"green hair"},
 			Seed:       &zundaSeed,
@@ -70,7 +70,7 @@ func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, 
 	if err != nil {
 		t.Fatalf("NewCharacters failed: %v", err)
 	}
-	gen := &mockFusionGenerator{}
+	gen := &mockImageGenerator{}
 	writer := &mockWriter{}
 	r := NewPanelImageRunner(PanelImageRunnerArgs{
 		Characters:  cm,
@@ -100,7 +100,7 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 		t.Fatalf("Images = %+v, want 2 references", gen.lastReq.Images)
 	}
 	// アスペクト比一致の参照画像が優先される
-	if gen.lastReq.Images[0].ReferenceURL != "gs://b/zunda-16x9.png" {
+	if gen.lastReq.Images[0].ReferenceURL != "gs://b/zunda-3x4.png" {
 		t.Errorf("Images[0] = %q, want aspect-specific reference", gen.lastReq.Images[0].ReferenceURL)
 	}
 	// 参照の解決方法（GCS 直接参照 / File API へのアップロード）は gemini-image-kit の
@@ -130,8 +130,8 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 	if !strings.Contains(gen.lastReq.NegativePrompt, "speech bubble") || !strings.Contains(gen.lastReq.NegativePrompt, "extra fingers") {
 		t.Errorf("NegativePrompt = %q, want balloon and finger negatives", gen.lastReq.NegativePrompt)
 	}
-	if gen.lastReq.AspectRatio != "16:9" || gen.lastReq.ImageSize != "1K" {
-		t.Errorf("AspectRatio/ImageSize = %q/%q, want defaults 16:9/1K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
+	if gen.lastReq.AspectRatio != "3:4" || gen.lastReq.ImageSize != "1K" {
+		t.Errorf("AspectRatio/ImageSize = %q/%q, want defaults 3:4/1K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
 	}
 
 	// 主役キャラクターの Seed が既定として使われる
