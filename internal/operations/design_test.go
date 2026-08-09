@@ -17,21 +17,27 @@ import (
 // --- Mocks ---
 
 type mockDesignGenerator struct {
-	lastReq imagePorts.ImageFusionRequest
+	lastReq imagePorts.ImageRequest
 }
 
-func (m *mockDesignGenerator) GenerateFusedImage(_ context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
+func (m *mockDesignGenerator) Generate(_ context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
 	m.lastReq = req
 	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 123}, nil
 }
 
 type mockWriter struct {
 	lastPath string
-	err      error // 非 nil なら保存を失敗させる
+	// lastSettings は適用後の書き込みオプションです（Content-Type / Cache-Control の確認用）。
+	lastSettings remoteio.WriteSettings
+	err          error // 非 nil なら保存を失敗させる
 }
 
-func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, _ ...remoteio.WriteOption) error {
+func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, opts ...remoteio.WriteOption) error {
 	m.lastPath = path
+	m.lastSettings = remoteio.WriteSettings{}
+	for _, opt := range opts {
+		opt(&m.lastSettings)
+	}
 	return m.err
 }
 
@@ -59,7 +65,14 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 	}
 	genMock := &mockDesignGenerator{}
 	writer := &mockWriter{}
-	dr := NewDesignSheetRunner(prompts.DefaultDesignPrompt{}, cm, genMock, writer, "test-image-model", ports.DefaultDesignStyleSuffix)
+	dr := NewDesignSheetRunner(DesignSheetRunnerArgs{
+		Prompt:      prompts.DefaultDesignPrompt{},
+		Characters:  cm,
+		Generator:   genMock,
+		Writer:      writer,
+		Model:       "test-image-model",
+		StyleSuffix: ports.DefaultDesignStyleSuffix,
+	})
 	return dr, genMock, writer
 }
 

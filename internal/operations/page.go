@@ -21,13 +21,14 @@ import (
 type PageImageRunner struct {
 	characters     *ports.Characters
 	prompt         ports.PagePrompt
-	generator      ImageFusionGenerator
+	generator      ImageGenerator
 	writer         remoteio.Writer
 	model          string
 	styleSuffix    string
 	aspectRatio    string
 	imageSize      string
 	maxConcurrency int
+	cacheControl   string
 }
 
 var (
@@ -40,7 +41,7 @@ type PageImageRunnerArgs struct {
 	Characters *ports.Characters
 	// Prompt はページ合成プロンプトの構築器です（nil ならキット内蔵の簡潔な既定）。
 	Prompt    ports.PagePrompt
-	Generator ImageFusionGenerator
+	Generator ImageGenerator
 	Writer    remoteio.Writer
 	// Model には高品質系モデル（ports.Config.ImageQualityModel）を渡すことを推奨します。
 	Model string
@@ -53,6 +54,8 @@ type PageImageRunnerArgs struct {
 	// MaxConcurrency は ComposeAllPages の並列数です（ports.Config.MaxConcurrency）。
 	// 0 以下の場合は 1（逐次実行）になります。
 	MaxConcurrency int
+	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
+	CacheControl string
 }
 
 // NewPageImageRunner は依存関係を注入して初期化します。
@@ -79,6 +82,7 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 		aspectRatio:    args.AspectRatio,
 		imageSize:      args.ImageSize,
 		maxConcurrency: args.MaxConcurrency,
+		cacheControl:   args.CacheControl,
 	}
 }
 
@@ -150,6 +154,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 		ImageSize:      pg.imageSize,
 		Seed:           seed,
 		Images:         images,
+		CacheControl:   pg.cacheControl,
 		PathFor: func(string) (string, error) {
 			return asset.PageImagePath(opts.OutputDir, page)
 		},

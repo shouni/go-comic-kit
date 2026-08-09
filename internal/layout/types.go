@@ -11,7 +11,9 @@ const (
 	// AspectRatio を指定せずに GenerateDesignSheet を呼んだ場合に使われます。
 	DesignAspectRatio = "16:9"
 	// PanelAspectRatio は単体パネル（1コマ）の推奨アスペクト比です。
-	PanelAspectRatio = "16:9"
+	// ページ（PageAspectRatio）と揃えた縦長です。コマは縦長ページに積まれるため、
+	// 横長で生成すると合成時に上下が切られるか、余白で埋めることになります。
+	PanelAspectRatio = "3:4"
 	// PageAspectRatio は統合ページ全体の推奨アスペクト比です。
 	PageAspectRatio = "3:4"
 
@@ -24,8 +26,12 @@ const (
 // designAspectRatios は GenerateDesignSheet が受け付けるデザインシートのアスペクト比です。
 // キャラクターの参照画像（go-character-kit の ReferenceURLs）を、実際にその画像を使う先
 // （go-veo-orchestrator のキーフレーム、ap-comp のカバーアート等）と同じアスペクト比で
-// 用意できるようにするための選択肢で、ap-comp の coverArtAspectRatios と揃えています。
-var designAspectRatios = []string{"1:1", "9:16", "16:9"}
+// 用意できるようにするための選択肢で、ap-comp の coverArtAspectRatios を含みます。
+//
+// "3:4" はこのキット自身の消費先（PanelAspectRatio / PageAspectRatio）です。これが無いと、
+// パネルとページの char.ReferenceURLFor は必ずアスペクト比なしの ReferenceURL へ落ち、
+// 「生成対象と同じ比率の参照画像を使って細部のブレを抑える」仕組みが漫画側だけ働きません。
+var designAspectRatios = []string{"1:1", "3:4", "9:16", "16:9"}
 
 // IsDesignAspectRatio は、value がデザインシート生成でサポート対象のアスペクト比かどうかを
 // 判定します。

@@ -61,7 +61,7 @@ func pageTestState() *ports.MangaState {
 	}
 }
 
-func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mockFusionGenerator, *mockWriter) {
+func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mockImageGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
 	cm, err := characterkit.NewCharacters([]ports.Character{
@@ -71,7 +71,7 @@ func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mo
 	if err != nil {
 		t.Fatalf("NewCharacters failed: %v", err)
 	}
-	gen := &mockFusionGenerator{}
+	gen := &mockImageGenerator{}
 	writer := &mockWriter{}
 	r := NewPageImageRunner(PageImageRunnerArgs{
 		Characters:  cm,

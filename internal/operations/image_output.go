@@ -4,38 +4,54 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
+	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// ImageFusionGenerator は、複数参照画像を融合して画像を生成する依存インターフェースです。
+// ImageGenerator は、参照画像（0〜複数）を添えて画像を生成する依存インターフェースです。
 // デザインシート（複数キャラの合成）とパネル（複数キャラの同席コマ）の両方で使います。
-type ImageFusionGenerator interface {
-	GenerateFusedImage(ctx context.Context, req imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error)
+//
+// gemini-image-kit v1.13 で単発生成と融合生成が Generate へ統合されたため、参照の枚数は
+// ImageRequest.Images の長さでしか区別しません。imagePorts.ImageGenerator をそのまま
+// 使わないのは、テスト用フェイクをこのパッケージ内で完結させるためです。
+type ImageGenerator interface {
+	Generate(ctx context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error)
 }
 
-// defaultCacheControl は生成物を保存する際の既定の Cache-Control です。
-const defaultCacheControl = "public, max-age=1800"
+// DefaultCacheControl は生成物を保存する際の既定の Cache-Control です。
+// ports.Config.CacheControl で差し替えられます。
 
 // getPreferredExtension は MimeType に対応するファイル拡張子を返します。
+// 未知の MIME type は .png のままにします（Content-Type は resp.MimeType から別途
+// 正しく付くため、実害は拡張子の見た目だけです）。
 func getPreferredExtension(mimeType string) string {
-	preferred := map[string]string{"image/png": ".png", "image/jpeg": ".jpg"}
-	if ext, ok := preferred[mimeType]; ok {
-		return ext
+	switch strings.ToLower(strings.TrimSpace(mimeType)) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".png"
 	}
-	return ".png"
 }
 
 // writeGeneratedImage は生成された画像データを Content-Type と Cache-Control 付きで
-// 指定パスへ書き込みます。
-func writeGeneratedImage(ctx context.Context, writer remoteio.Writer, path string, resp *imagePorts.ImageResponse) error {
+// 指定パスへ書き込みます。cacheControl が空の場合は既定値を使います。
+func writeGeneratedImage(ctx context.Context, writer remoteio.Writer, path string, resp *imagePorts.ImageResponse, cacheControl string) error {
+	if cacheControl == "" {
+		cacheControl = ports.DefaultCacheControl
+	}
 	return writer.Write(ctx, path, bytes.NewReader(resp.Data),
 		remoteio.WithContentType(resp.MimeType),
-		remoteio.WithCacheControl(defaultCacheControl),
+		remoteio.WithCacheControl(cacheControl),
 	)
 }
 
@@ -49,6 +65,8 @@ type imageRenderRequest struct {
 	ImageSize      string
 	Seed           *int64
 	Images         []imagePorts.ImageURI
+	// CacheControl は保存時に付ける Cache-Control です（空なら ports.DefaultCacheControl）。
+	CacheControl string
 	// PathFor は、生成結果の MIME type から保存先パスを決めます。
 	// 拡張子が MIME type に依存するため、生成後にしか決められません。
 	PathFor func(mimeType string) (string, error)
@@ -62,16 +80,18 @@ type imageRenderRequest struct {
 // ありませんが、裸の fmt.Errorf で返すと呼び出し側の errors.Is 分類から見えなくなるためです
 // （ports/errors.go 参照）。パス生成の失敗は引数（OutputDir など）が原因で再試行しても
 // 直らないので ErrInvalidRequest、保存の失敗は一時的なことが多いので ErrGeneration です。
-func renderImage(ctx context.Context, generator ImageFusionGenerator, writer remoteio.Writer, req imageRenderRequest) (*ports.GenerationRecord, error) {
-	resp, err := generator.GenerateFusedImage(ctx, imagePorts.ImageFusionRequest{
+func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.Writer, req imageRenderRequest) (*ports.GenerationRecord, error) {
+	resp, err := generator.Generate(ctx, imagePorts.ImageRequest{
 		GenerationOptions: imagePorts.GenerationOptions{
 			Model:          req.Model,
 			Prompt:         req.Prompt,
-			SystemPrompt:   req.SystemPrompt,
 			NegativePrompt: req.NegativePrompt,
-			AspectRatio:    req.AspectRatio,
-			ImageSize:      req.ImageSize,
-			Seed:           req.Seed,
+			GenerateOptions: gemini.GenerateOptions{
+				SystemPrompt: req.SystemPrompt,
+				AspectRatio:  req.AspectRatio,
+				ImageSize:    req.ImageSize,
+				Seed:         req.Seed,
+			},
 		},
 		Images: req.Images,
 	})
@@ -83,7 +103,7 @@ func renderImage(ctx context.Context, generator ImageFusionGenerator, writer rem
 	if err != nil {
 		return nil, fmt.Errorf("%w: 画像の保存パス生成に失敗しました: %w", ports.ErrInvalidRequest, err)
 	}
-	if err := writeGeneratedImage(ctx, writer, finalPath, resp); err != nil {
+	if err := writeGeneratedImage(ctx, writer, finalPath, resp, req.CacheControl); err != nil {
 		return nil, fmt.Errorf("%w: 画像の保存に失敗しました (path: %s): %w", ports.ErrGeneration, finalPath, err)
 	}
 

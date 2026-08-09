@@ -20,28 +20,28 @@ func TestRenderImageClassifiesFailures(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		gen     ImageFusionGenerator
+		gen     ImageGenerator
 		writer  *mockWriter
 		pathFor func(string) (string, error)
 		want    error
 	}{
 		{
 			name:    "生成の失敗は ErrGeneration",
-			gen:     &failingFusionGenerator{err: errors.New("upstream 503")},
+			gen:     &failingImageGenerator{err: errors.New("upstream 503")},
 			writer:  &mockWriter{},
 			pathFor: okPath,
 			want:    ports.ErrGeneration,
 		},
 		{
 			name:    "保存先パスの失敗は ErrInvalidRequest",
-			gen:     &mockFusionGenerator{},
+			gen:     &mockImageGenerator{},
 			writer:  &mockWriter{},
 			pathFor: func(string) (string, error) { return "", errors.New("bad output dir") },
 			want:    ports.ErrInvalidRequest,
 		},
 		{
 			name:    "保存の失敗は ErrGeneration",
-			gen:     &mockFusionGenerator{},
+			gen:     &mockImageGenerator{},
 			writer:  &mockWriter{err: errors.New("gcs unavailable")},
 			pathFor: okPath,
 			want:    ports.ErrGeneration,
@@ -68,7 +68,7 @@ func TestRenderImageClassifiesFailures(t *testing.T) {
 func TestRenderImageRecordsGenerationConditions(t *testing.T) {
 	t.Parallel()
 
-	gen := &mockFusionGenerator{}
+	gen := &mockImageGenerator{}
 	writer := &mockWriter{}
 	record, err := renderImage(context.Background(), gen, writer, imageRenderRequest{
 		Model:          "panel-model",
@@ -93,10 +93,61 @@ func TestRenderImageRecordsGenerationConditions(t *testing.T) {
 	}
 }
 
-type failingFusionGenerator struct {
+type failingImageGenerator struct {
 	err error
 }
 
-func (f *failingFusionGenerator) GenerateFusedImage(context.Context, imagePorts.ImageFusionRequest) (*imagePorts.ImageResponse, error) {
+func (f *failingImageGenerator) Generate(context.Context, imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
 	return nil, f.err
+}
+
+// TestGetPreferredExtension は、モデルが返しうる画像形式に拡張子が追随することを確認します。
+// 以前は png/jpeg しか知らず、WebP を .png という名前で保存していました
+// （Content-Type は正しいので中身と名前だけが食い違う状態）。
+func TestGetPreferredExtension(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ mimeType, want string }{
+		{"image/png", ".png"},
+		{"image/jpeg", ".jpg"},
+		{"image/webp", ".webp"},
+		{"image/gif", ".gif"},
+		{"IMAGE/WEBP ", ".webp"}, // 大文字・前後の空白も揃える
+		{"", ".png"},             // 不明なものは既定のまま
+		{"text/plain", ".png"},
+	}
+	for _, tt := range tests {
+		if got := getPreferredExtension(tt.mimeType); got != tt.want {
+			t.Errorf("getPreferredExtension(%q) = %q, want %q", tt.mimeType, got, tt.want)
+		}
+	}
+}
+
+// TestRenderImageCacheControl は、保存時の Cache-Control が設定で差し替えられ、
+// 未設定なら既定値になることを確認します。"public" はライブラリが決めてよい値ではなく、
+// 生成物を公開配信してよいかというデプロイ側の判断です。
+func TestRenderImageCacheControl(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range map[string]struct{ given, want string }{
+		"未設定なら既定値": {"", ports.DefaultCacheControl},
+		"指定があれば尊重": {"private, max-age=0", "private, max-age=0"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			writer := &mockWriter{}
+			_, err := renderImage(context.Background(), &mockImageGenerator{}, writer, imageRenderRequest{
+				Model:        "test-model",
+				Prompt:       "prompt",
+				CacheControl: tt.given,
+				PathFor:      func(string) (string, error) { return "images/out.png", nil },
+			})
+			if err != nil {
+				t.Fatalf("renderImage failed: %v", err)
+			}
+			if writer.lastSettings.CacheControl != tt.want {
+				t.Errorf("CacheControl = %q, want %q", writer.lastSettings.CacheControl, tt.want)
+			}
+		})
+	}
 }

@@ -20,13 +20,14 @@ import (
 type PanelImageRunner struct {
 	characters     *ports.Characters
 	prompt         ports.PanelPrompt
-	generator      ImageFusionGenerator
+	generator      ImageGenerator
 	writer         remoteio.Writer
 	model          string
 	styleSuffix    string
 	aspectRatio    string
 	imageSize      string
 	maxConcurrency int
+	cacheControl   string
 }
 
 var (
@@ -39,7 +40,7 @@ type PanelImageRunnerArgs struct {
 	Characters *ports.Characters
 	// Prompt はパネル生成プロンプトの構築器です（nil ならキット内蔵の簡潔な既定）。
 	Prompt    ports.PanelPrompt
-	Generator ImageFusionGenerator
+	Generator ImageGenerator
 	Writer    remoteio.Writer
 	// Model は画像生成に使うモデル名です（標準系: ports.Config.ImageStandardModel 推奨）。
 	Model string
@@ -52,6 +53,8 @@ type PanelImageRunnerArgs struct {
 	// MaxConcurrency は GenerateAllPanels の並列数です（ports.Config.MaxConcurrency）。
 	// 0 以下の場合は 1（逐次実行）になります。
 	MaxConcurrency int
+	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
+	CacheControl string
 }
 
 // NewPanelImageRunner は依存関係を注入して初期化します。
@@ -78,6 +81,7 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 		aspectRatio:    args.AspectRatio,
 		imageSize:      args.ImageSize,
 		maxConcurrency: args.MaxConcurrency,
+		cacheControl:   args.CacheControl,
 	}
 }
 
@@ -136,6 +140,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *ports.Panel,
 		ImageSize:      pr.imageSize,
 		Seed:           seed,
 		Images:         images,
+		CacheControl:   pr.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
 			return asset.PanelImagePath(opts.OutputDir, panelID, getPreferredExtension(mimeType))
 		},
