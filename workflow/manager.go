@@ -91,6 +91,8 @@ func New(args Args) (*ports.Operations, error) {
 		Writer:         args.Writer,
 		Model:          images.model,
 		StyleSuffix:    cfg.StyleSuffix,
+		AspectRatio:    cfg.AspectRatio,
+		ImageSize:      cfg.PanelImageSize,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
 	})
@@ -101,6 +103,8 @@ func New(args Args) (*ports.Operations, error) {
 		Writer:         args.Writer,
 		Model:          images.model,
 		StyleSuffix:    cfg.StyleSuffix,
+		AspectRatio:    cfg.AspectRatio,
+		ImageSize:      cfg.PageImageSize,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
 	})
@@ -121,6 +125,8 @@ func New(args Args) (*ports.Operations, error) {
 			Writer:       args.Writer,
 			Model:        images.model,
 			StyleSuffix:  cfg.DesignStyleSuffix,
+			AspectRatio:  cfg.AspectRatio,
+			ImageSize:    cfg.PageImageSize,
 			CacheControl: cfg.CacheControl,
 		}),
 		Panel: panelRunner,

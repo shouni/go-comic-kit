@@ -129,8 +129,10 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
 			genMock.lastReq.SystemPrompt, genMock.lastReq.NegativePrompt)
 	}
-	if genMock.lastReq.AspectRatio != "16:9" {
-		t.Errorf("AspectRatio = %q, want default 16:9", genMock.lastReq.AspectRatio)
+	// 未指定なら runner に設定された比率（＝ ports.Config.AspectRatio）へ落ちます。
+	// パネル・ページと揃っていないと、参照画像によるブレ抑制が黙って無効になるためです。
+	if genMock.lastReq.AspectRatio != "3:4" {
+		t.Errorf("AspectRatio = %q, want the configured default 3:4", genMock.lastReq.AspectRatio)
 	}
 	if genMock.lastReq.Seed == nil || *genMock.lastReq.Seed != 42 {
 		t.Errorf("Seed = %v, want 42", genMock.lastReq.Seed)

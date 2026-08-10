@@ -58,7 +58,7 @@ type PanelImageRunnerArgs struct {
 // NewPanelImageRunner は依存関係を注入して初期化します。
 func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 	if args.AspectRatio == "" {
-		args.AspectRatio = layout.PanelAspectRatio
+		args.AspectRatio = layout.DefaultAspectRatio
 	}
 	if args.ImageSize == "" {
 		args.ImageSize = layout.ImageSize1K

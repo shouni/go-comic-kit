@@ -65,6 +65,22 @@ type Config struct {
 	// --- Layout Settings ---
 	MaxPanelsPerPage int
 
+	// PanelImageSize / PageImageSize は生成画像の解像度です（ImageSize1K / ImageSize2K）。
+	// 空なら ApplyDefaults がパネル 1K・ページ 2K を入れます（従来の固定値と同じ）。
+	//
+	// キットが決めずアプリが選ぶのは、1コマごとに費用が効くためです。どの解像度が
+	// 見合うかは作品と予算の話で、キットが持てる判断ではありません。
+	PanelImageSize string
+	PageImageSize  string
+
+	// AspectRatio はパネル・ページ・デザインシート既定の共通比率です。空なら 3:4。
+	//
+	// 3つを1つの設定にしているのは、揃っていないと参照画像によるブレ抑制が
+	// **黙って無効になる**ためです。キャラクターの参照画像は生成対象と同じ比率のものが
+	// 優先されますが（Character.ReferenceURLFor）、一致するものが無いと比率なしの
+	// ReferenceURL へ落ちるだけで、エラーにはなりません。
+	AspectRatio string
+
 	// --- Timeout & Retries ---
 	// RequestTimeout は外部 AI 呼び出し1回あたりの上限時間です（テキスト生成・画像生成・
 	// 参照画像のアップロードに適用されます）。工程列全体を包む上限ではないので、
@@ -85,6 +101,16 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.MaxPanelsPerPage <= 0 {
 		c.MaxPanelsPerPage = comic.DefaultMaxPanelsPerPage
+	}
+	if c.PanelImageSize == "" {
+		c.PanelImageSize = ImageSize1K
+	}
+	if c.PageImageSize == "" {
+		// ページはコマを並べた合成先なので、既定はパネルより1段上げます。
+		c.PageImageSize = ImageSize2K
+	}
+	if c.AspectRatio == "" {
+		c.AspectRatio = DefaultAspectRatio
 	}
 	if c.RequestTimeout <= 0 {
 		c.RequestTimeout = DefaultRequestTimeout
@@ -108,6 +134,22 @@ func (c *Config) Validate() error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: %s を指定してください（キットはモデル名と画風指定の既定値を持ちません）", ErrConfigInvalid, strings.Join(missing, ", "))
+	}
+
+	// 比率・解像度は黙って既定へ落とさず、書き間違いを起動時に落とします。
+	// 落としてしまうと「指定したつもりの比率で生成されない」状態が気付かれずに続きます。
+	if !IsAspectRatio(c.AspectRatio) {
+		return fmt.Errorf("%w: AspectRatio (%q) は %s のいずれかである必要があります",
+			ErrConfigInvalid, c.AspectRatio, strings.Join(AspectRatios(), " / "))
+	}
+	for _, size := range []struct{ name, value string }{
+		{"PanelImageSize", c.PanelImageSize},
+		{"PageImageSize", c.PageImageSize},
+	} {
+		if !IsImageSize(size.value) {
+			return fmt.Errorf("%w: %s (%q) は %s / %s のいずれかである必要があります",
+				ErrConfigInvalid, size.name, size.value, ImageSize1K, ImageSize2K)
+		}
 	}
 	return nil
 }
