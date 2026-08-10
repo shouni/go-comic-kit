@@ -24,4 +24,9 @@ var (
 	// ErrGeneration は、AI 呼び出しそのものか、その応答の解釈に失敗したことを表します。
 	// 一時的な失敗であることが多く、再試行の価値があります。
 	ErrGeneration = errors.New("生成に失敗しました")
+
+	// ErrConfigInvalid は、Config.Validate が必須項目（モデル名）の欠落を検出したことを
+	// 表します。リクエストではなく組み立て側の設定ミスなので、workflow.New の時点で
+	// 返り、実行時のリクエストでは発生しません。
+	ErrConfigInvalid = errors.New("設定が不正です")
 )

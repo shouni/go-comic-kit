@@ -71,7 +71,7 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 		Generator:   genMock,
 		Writer:      writer,
 		Model:       "test-image-model",
-		StyleSuffix: ports.DefaultDesignStyleSuffix,
+		StyleSuffix: "test design style",
 	})
 	return dr, genMock, writer
 }
