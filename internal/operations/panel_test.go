@@ -78,7 +78,7 @@ func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, 
 		Generator:   gen,
 		Writer:      writer,
 		Model:       "panel-model",
-		StyleSuffix: ports.DefaultStyleSuffix,
+		StyleSuffix: "test panel style",
 	})
 	return r, gen, writer
 }

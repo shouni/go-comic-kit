@@ -70,6 +70,9 @@ func New(args Args) (*ports.Operations, error) {
 
 	cfg := args.Config
 	cfg.ApplyDefaults()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	aiClientQuality := args.AIClientQuality
 	if aiClientQuality == nil {

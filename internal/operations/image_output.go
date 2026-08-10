@@ -24,9 +24,6 @@ type ImageGenerator interface {
 	Generate(ctx context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error)
 }
 
-// DefaultCacheControl は生成物を保存する際の既定の Cache-Control です。
-// ports.Config.CacheControl で差し替えられます。
-
 // getPreferredExtension は MimeType に対応するファイル拡張子を返します。
 // 未知の MIME type は .png のままにします（Content-Type は resp.MimeType から別途
 // 正しく付くため、実害は拡張子の見た目だけです）。

@@ -1,17 +1,13 @@
 package ports
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
 // デフォルト値の定義
 const (
-	// DefaultGeminiModel はテキスト生成（台本等）の既定モデルです。
-	DefaultGeminiModel = "gemini-3-flash-preview"
-	// DefaultImageStandardModel は標準・高速な画像生成（パネル用）の既定モデルです。
-	DefaultImageStandardModel = "gemini-3-pro-image-preview"
-	// DefaultImageQualityModel は高品質な画像生成（ページ・デザインシート用）の既定モデルです。
-	DefaultImageQualityModel = "gemini-3-pro-image-preview"
 	// DefaultMaxConcurrency は一括生成（GenerateAllPanels / ComposeAllPages）の
 	// 既定の最大並列数です。既定を1にしているのは、明示的に上げるまで従来どおりの
 	// 逐次実行を保ち、API クォータの消費のしかたを変えないためです。
@@ -26,19 +22,10 @@ const (
 	// DefaultMaxPanelsPerPage は1ページに載せるパネル数の既定値です（Repaginate 用）。
 	DefaultMaxPanelsPerPage = 6
 
-	// DefaultStyleSuffix は、パネル・ページ画像生成プロンプトに付与する既定の画風指定です。
-	// 演出（cinematic lighting 等）を含むため、デザインシートには使いません。
-	DefaultStyleSuffix = "Japanese anime style, official art, cel-shaded, clean line art, high-quality manga coloring, expressive eyes, vibrant colors, cinematic lighting, masterpiece, ultra-detailed, flat shading, clear character features, no 3D effect, high resolution"
-
 	// DefaultCacheControl は、生成画像を保存する際の既定の Cache-Control です。
 	// "public" は生成物を公開配信してよいという前提なので、非公開バケットへ書くデプロイでは
 	// Config.CacheControl に "private" 等を指定してください。
 	DefaultCacheControl = "public, max-age=1800"
-
-	// DefaultDesignStyleSuffix は、デザインシート生成プロンプトに付与する既定の画風指定です。
-	// シートは他生成物の同一性アンカーとして参照されるため、照明・演出系の指定を含めません
-	// （フラットな照明等の制約は DesignSheetRunner 側が常に後置します）。
-	DefaultDesignStyleSuffix = "Japanese anime style, official character reference art, cel-shaded, clean line art, vibrant colors, clear character features, no 3D effect, high resolution"
 )
 
 // Config は Go Comic Kit の各操作を動作させるための基本設定です。
@@ -57,13 +44,12 @@ type Config struct {
 	// スループットの上限は MaxConcurrency ではなく 1/RateInterval で決まる点に注意してください
 	// （例: RateInterval=10s なら並列数をいくつにしても毎分6回までになります）。
 	RateInterval time.Duration
-	// StyleSuffix はパネル・ページ画像生成に付与する画風指定です。
+	// StyleSuffix はパネル・ページ画像生成に付与する画風指定です（必須）。
 	StyleSuffix string
 	// CacheControl は生成画像を保存する際の Cache-Control です。
 	// 空の場合は DefaultCacheControl（public, max-age=1800）を使います。
 	CacheControl string
-	// DesignStyleSuffix はデザインシート生成に付与する画風指定です。
-	// パネル用の StyleSuffix とは分離されています（演出照明の混入を防ぐため）。
+	// DesignStyleSuffix はデザインシート生成に付与する画風指定です（必須）。
 	DesignStyleSuffix string
 
 	// --- Script Settings ---
@@ -84,23 +70,8 @@ type Config struct {
 
 // ApplyDefaults は未設定（ゼロ値）の項目にデフォルト値を適用します。
 func (c *Config) ApplyDefaults() {
-	if c.GeminiModel == "" {
-		c.GeminiModel = DefaultGeminiModel
-	}
-	if c.ImageStandardModel == "" {
-		c.ImageStandardModel = DefaultImageStandardModel
-	}
-	if c.ImageQualityModel == "" {
-		c.ImageQualityModel = DefaultImageQualityModel
-	}
 	if c.MaxConcurrency <= 0 {
 		c.MaxConcurrency = DefaultMaxConcurrency
-	}
-	if c.StyleSuffix == "" {
-		c.StyleSuffix = DefaultStyleSuffix
-	}
-	if c.DesignStyleSuffix == "" {
-		c.DesignStyleSuffix = DefaultDesignStyleSuffix
 	}
 	if c.MaxChapters <= 0 {
 		c.MaxChapters = DefaultMaxChapters
@@ -114,4 +85,28 @@ func (c *Config) ApplyDefaults() {
 	if c.RequestTimeout <= 0 {
 		c.RequestTimeout = DefaultRequestTimeout
 	}
+}
+
+// Validate は既定値を持たない必須項目を検証します。
+func (c *Config) Validate() error {
+	missing := make([]string, 0, 5)
+	if strings.TrimSpace(c.GeminiModel) == "" {
+		missing = append(missing, "GeminiModel")
+	}
+	if strings.TrimSpace(c.ImageStandardModel) == "" {
+		missing = append(missing, "ImageStandardModel")
+	}
+	if strings.TrimSpace(c.ImageQualityModel) == "" {
+		missing = append(missing, "ImageQualityModel")
+	}
+	if strings.TrimSpace(c.StyleSuffix) == "" {
+		missing = append(missing, "StyleSuffix")
+	}
+	if strings.TrimSpace(c.DesignStyleSuffix) == "" {
+		missing = append(missing, "DesignStyleSuffix")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: %s を指定してください（キットはモデル名と画風指定の既定値を持ちません）", ErrConfigInvalid, strings.Join(missing, ", "))
+	}
+	return nil
 }
