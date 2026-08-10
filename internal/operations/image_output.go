@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-remote-io/remoteio"
@@ -77,7 +79,7 @@ type imageRenderRequest struct {
 // ありませんが、裸の fmt.Errorf で返すと呼び出し側の errors.Is 分類から見えなくなるためです
 // （ports/errors.go 参照）。パス生成の失敗は引数（OutputDir など）が原因で再試行しても
 // 直らないので ErrInvalidRequest、保存の失敗は一時的なことが多いので ErrGeneration です。
-func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.Writer, req imageRenderRequest) (*ports.GenerationRecord, error) {
+func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.Writer, req imageRenderRequest) (*comic.GenerationRecord, error) {
 	resp, err := generator.Generate(ctx, imagePorts.ImageRequest{
 		GenerationOptions: imagePorts.GenerationOptions{
 			Model:          req.Model,
@@ -104,7 +106,7 @@ func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.
 		return nil, fmt.Errorf("%w: 画像の保存に失敗しました (path: %s): %w", ports.ErrGeneration, finalPath, err)
 	}
 
-	return &ports.GenerationRecord{
+	return &comic.GenerationRecord{
 		ImageURL:       finalPath,
 		UsedSeed:       resp.UsedSeed,
 		Prompt:         req.Prompt,

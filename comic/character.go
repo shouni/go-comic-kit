@@ -1,4 +1,4 @@
-package ports
+package comic
 
 import characterkit "github.com/shouni/go-character-kit/character"
 

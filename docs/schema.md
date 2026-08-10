@@ -2,13 +2,13 @@
 
 [← README](../README.md)
 
-`ports.MangaState` が1作品の唯一の真実源です。台本は「章立て（Chapters）→ 章ごとのパネル生成」の2段階で組み立てられ、1コマ（`Panel`）は発話の有無と独立した**登場キャラクターの集合**（`Characters []PanelCharacter`）と、複数吹き出しに対応した `Dialogues []DialogueLine` を持ちます。
+`comic.MangaState` が1作品の唯一の真実源です。台本は「章立て（Chapters）→ 章ごとのパネル生成」の2段階で組み立てられ、1コマ（`Panel`）は発話の有無と独立した**登場キャラクターの集合**（`Characters []PanelCharacter`）と、複数吹き出しに対応した `Dialogues []DialogueLine` を持ちます。
 
 ## データモデル
 
 ```go
 type MangaState struct {
-	Version      int              // state スキーマバージョン（ports.StateSchemaVersion）
+	Version      int              // state スキーマバージョン（comic.StateSchemaVersion）
 	ID           string           // 作品/ジョブID（キットは設定しない。呼び出し側が GenerateOutline 後に設定する）
 	Title        string
 	Description  string
@@ -74,7 +74,7 @@ type PageArtifact struct {
 }
 ```
 
-`Version` は `ports.StateSchemaVersion` です。`store.Load` はこれより新しいスキーマの state を拒否します（古いキットで新しい state を壊さないため）。
+`Version` は `comic.StateSchemaVersion` です。`store.Load` はこれより新しいスキーマの state を拒否します（古いキットで新しい state を壊さないため）。
 
 ## state を読むためのヘルパー
 
@@ -98,5 +98,5 @@ type PageArtifact struct {
 
 台本生成の正規化では、AI の出力をそのまま信用せず次の2つを機械的に補正します。
 
-* **primary + secondary は3体まで**（`ports.MaxReferencedCharactersPerPanel`）。参照画像添付と複数キャラ同時生成の同一性維持の難度が理由です。超過分は `background`（参照画像なし・モブとして描画）へ降格され、primary が優先して残り、コマ内の登場順は保たれます。
+* **primary + secondary は3体まで**（`comic.MaxReferencedCharactersPerPanel`）。参照画像添付と複数キャラ同時生成の同一性維持の難度が理由です。超過分は `background`（参照画像なし・モブとして描画）へ降格され、primary が優先して残り、コマ内の登場順は保たれます。
 * `characters.json` に無い `speaker_id` はナレーションへ変換されます（生の ID が話者名として描かれるのを防ぐため）。同じく未知の `character_id` は `background` へ降格されます（参照解決が既定キャラクターへフォールバックして別人を描くのを防ぐため）。

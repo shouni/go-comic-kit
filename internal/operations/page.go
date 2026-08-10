@@ -8,18 +8,19 @@ import (
 	"slices"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
 	"github.com/shouni/go-comic-kit/internal/layout"
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
 // PageImageRunner はページ画像の合成（ComposePage 操作）を実行します。
 type PageImageRunner struct {
-	characters     *ports.Characters
+	characters     *comic.Characters
 	prompt         ports.PagePrompt
 	generator      ImageGenerator
 	writer         remoteio.Writer
@@ -31,20 +32,16 @@ type PageImageRunner struct {
 	cacheControl   string
 }
 
-var (
-	_ ports.PageImageComposer = (*PageImageRunner)(nil)
-	_ ports.PageBatchComposer = (*PageImageRunner)(nil)
-)
+var _ ports.PageImageComposer = (*PageImageRunner)(nil)
 
 // PageImageRunnerArgs は PageImageRunner の構築に必要な依存と設定の集合です。
 type PageImageRunnerArgs struct {
-	Characters *ports.Characters
+	Characters *comic.Characters
 	// Prompt はページ合成プロンプトの構築器です（nil ならキット内蔵の簡潔な既定）。
 	Prompt    ports.PagePrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	// Model には高品質系モデル（ports.Config.ImageQualityModel）を渡すことを推奨します。
-	Model string
+	Model     string
 	// StyleSuffix にはページ用の画風指定（ports.Config.StyleSuffix）を渡してください。
 	StyleSuffix string
 	// AspectRatio が空の場合は layout.PageAspectRatio を使います。
@@ -68,9 +65,6 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	}
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
-	}
-	if args.Prompt == nil {
-		args.Prompt = prompts.DefaultPagePrompt{}
 	}
 	return &PageImageRunner{
 		characters:     args.Characters,
@@ -97,7 +91,7 @@ type pageResources struct {
 // 結果を PageArtifact として state に記録します（冪等・upsert）。
 // opts.Seed が nil の場合は前回の UsedSeed（あれば）を再利用します。
 // opts.EditPrompt を指定すると、既存のページ画像を入力とした編集モードになります。
-func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaState, page int, opts ports.GenerateOptions) (*ports.MangaState, error) {
+func (pg *PageImageRunner) ComposePage(ctx context.Context, state *comic.MangaState, page int, opts ports.GenerateOptions) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
@@ -114,7 +108,7 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *ports.MangaSt
 // renderPage は1ページ分の画像を合成・保存し、その記録を返します。
 // state は読むだけで書き換えないため、対象ページが異なれば並列に呼び出せます
 // （記録の反映は呼び出し側が単独で行います。ComposeAllPages 参照）。
-func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaState, page int, opts ports.GenerateOptions) (*ports.PageArtifact, error) {
+func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaState, page int, opts ports.GenerateOptions) (*comic.PageArtifact, error) {
 	panels := state.PanelsForPage(page)
 	if len(panels) == 0 {
 		return nil, fmt.Errorf("%w: ページ %d にパネルがありません", ports.ErrNotFound, page)
@@ -125,7 +119,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 		targetModel = opts.ModelOverride
 	}
 	existing := state.PageArtifactByNumber(page)
-	var prevGeneration *ports.GenerationRecord
+	var prevGeneration *comic.GenerationRecord
 	if existing != nil {
 		prevGeneration = existing.Generation
 	}
@@ -170,7 +164,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 	for i := range panels {
 		panelIDs[i] = panels[i].ID
 	}
-	return &ports.PageArtifact{
+	return &comic.PageArtifact{
 		PageNumber: page,
 		PanelIDs:   panelIDs,
 		Generation: record,
@@ -180,7 +174,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *ports.MangaSta
 // ComposeAllPages は state 内の全ページを maxConcurrency 並列で合成します。
 // 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します
 // （ports.PageBatchComposer 参照）。
-func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *ports.MangaState, opts ports.BatchOptions) (*ports.MangaState, error) {
+func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.MangaState, opts ports.BatchOptions) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
@@ -208,7 +202,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *ports.Man
 		OutputDir:     opts.OutputDir,
 	}
 	artifacts, errs := runBatch(ctx, pg.maxConcurrency, targets,
-		func(ctx context.Context, page int) (*ports.PageArtifact, error) {
+		func(ctx context.Context, page int) (*comic.PageArtifact, error) {
 			artifact, err := pg.renderPage(ctx, state, page, single)
 			if err != nil {
 				return nil, fmt.Errorf("ページ %d: %w", page, err)
@@ -234,7 +228,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *ports.Man
 }
 
 // uniquePageNumbers は、パネル群に登場するページ番号を重複なく昇順で返します。
-func uniquePageNumbers(panels []ports.Panel) []int {
+func uniquePageNumbers(panels []comic.Panel) []int {
 	seen := make(map[int]struct{}, len(panels))
 	pages := make([]int, 0, len(panels))
 	for i := range panels {
@@ -251,7 +245,7 @@ func uniquePageNumbers(panels []ports.Panel) []int {
 // buildRequest は、編集モードかページ合成かに応じてプロンプト一式と参照画像を構築します。
 // プロンプト本文の組み立ては ports.PagePrompt の実装（既定はキット内蔵の簡潔版）に委ね、
 // ここは「何番目にどの画像を添付したか」を伝える役に徹します。
-func (pg *PageImageRunner) buildRequest(page int, panels []ports.Panel, existing *ports.PageArtifact, opts ports.GenerateOptions) (promptSet, []imagePorts.ImageURI, error) {
+func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions) (promptSet, []imagePorts.ImageURI, error) {
 	if opts.EditPrompt != "" {
 		if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: ページ %d には編集対象の合成済み画像がありません", ports.ErrInvalidRequest, page)
@@ -279,7 +273,7 @@ func (pg *PageImageRunner) buildRequest(page int, panels []ports.Panel, existing
 
 // collectPageResources はページ内の参照画像を「キャラクター → 生成済みパネル」の順で集約し、
 // プロンプトから参照する input_file 番号（1始まり）を割り振ります。
-func (pg *PageImageRunner) collectPageResources(panels []ports.Panel) *pageResources {
+func (pg *PageImageRunner) collectPageResources(panels []comic.Panel) *pageResources {
 	res := &pageResources{
 		characterFile: make(map[string]int),
 		panelFile:     make(map[string]int),

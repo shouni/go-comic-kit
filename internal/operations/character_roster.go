@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shouni/go-comic-kit/ports"
+	"github.com/shouni/go-comic-kit/comic"
 )
 
 // characterRoster はプロンプトに注入するキャラクター一覧（箇条書き）を構築します。
-func characterRoster(characters *ports.Characters) string {
+func characterRoster(characters *comic.Characters) string {
 	if characters == nil || len(characters.List) == 0 {
 		return "（キャラクター定義なし）"
 	}

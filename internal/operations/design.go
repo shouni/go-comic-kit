@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-remote-io/remoteio"
 
@@ -18,7 +20,7 @@ import (
 // DesignSheetRunner はキャラクターデザインシート生成（GenerateDesignSheet 操作）を実行します。
 type DesignSheetRunner struct {
 	prompt       ports.DesignSheetPrompt
-	characters   *ports.Characters
+	characters   *comic.Characters
 	generator    ImageGenerator
 	writer       remoteio.Writer
 	model        string
@@ -36,7 +38,7 @@ type DesignSheetRunnerArgs struct {
 	// Prompt にはキット内蔵の prompts.DefaultDesignPrompt{} を渡すか、アプリ側で
 	// ports.DesignSheetPrompt を実装して独自のプロンプトに差し替えられます。
 	Prompt     ports.DesignSheetPrompt
-	Characters *ports.Characters
+	Characters *comic.Characters
 	Generator  ImageGenerator
 	Writer     remoteio.Writer
 	Model      string
@@ -64,7 +66,7 @@ func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 // GenerateDesignSheet はデザインシートを生成・保存し、その記録を state に反映して返します。
 // state が nil の場合は新しい MangaState を作成します。複数キャラクター指定時は1枚の
 // 合成シートを生成し、各キャラクターに同じ画像の DesignSheetRef を記録します。
-func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *ports.MangaState, req ports.DesignSheetRequest) (*ports.MangaState, error) {
+func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *comic.MangaState, req ports.DesignSheetRequest) (*comic.MangaState, error) {
 	if strings.TrimSpace(req.JobID) == "" {
 		return nil, fmt.Errorf("%w: デザインシート生成には job_id が必要です", ports.ErrInvalidRequest)
 	}
@@ -122,13 +124,13 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	// 6. state への記録（冪等: 同一キャラクターの記録は上書き）
 	now := time.Now().UTC()
 	if state == nil {
-		state = &ports.MangaState{
-			Version:   ports.StateSchemaVersion,
+		state = &comic.MangaState{
+			Version:   comic.StateSchemaVersion,
 			CreatedAt: now,
 		}
 	}
 	for _, id := range req.CharacterIDs {
-		state.SetDesignSheet(ports.DesignSheetRef{
+		state.SetDesignSheet(comic.DesignSheetRef{
 			CharacterID: id,
 			ImageURL:    record.ImageURL,
 			UsedSeed:    record.UsedSeed,
@@ -139,17 +141,17 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *por
 	return state, nil
 }
 
-// designSeed は、指定が無ければ（0）新しいシードを採番します。
+// designSeed は、指定が無ければ（nil）新しいシードを採番します。
 //
 // デザインシートはキャラクターの同一性アンカーなので、後から同じシートを出せることが
 // パネル以上に重要です。シードを渡さないと API 側が選んだ値はレスポンスに返らず、
 // DesignSheetRef.UsedSeed に 0 が記録されて再現できなくなります
 // （パネル・ページ側の resolveSeedChain と同じ理由です）。
-func designSeed(v int64) *int64 {
-	if v == 0 {
+func designSeed(v *int64) *int64 {
+	if v == nil {
 		return newSeed()
 	}
-	return &v
+	return v
 }
 
 // collectCharacterURIs はキャラクター情報を収集し、ImageURIスライスと説明文を返します。

@@ -3,33 +3,33 @@ package operations
 import (
 	"testing"
 
-	characterkit "github.com/shouni/go-character-kit/character"
+	"github.com/shouni/go-comic-kit/comic"
 
-	"github.com/shouni/go-comic-kit/ports"
+	characterkit "github.com/shouni/go-character-kit/character"
 )
 
 func TestResolveSeedChain(t *testing.T) {
 	t.Parallel()
 
 	characterSeed := int64(42)
-	characters, err := characterkit.NewCharacters([]ports.Character{
+	characters, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "tsumugi", Name: "つむぎ", ReferenceURL: "gs://bucket/tsumugi.png", VisualCues: []string{"緑髪"}, Seed: &characterSeed},
 	})
 	if err != nil {
 		t.Fatalf("NewCharacters failed: %v", err)
 	}
-	primary := []ports.PanelCharacter{{CharacterID: "tsumugi", Prominence: ports.ProminencePrimary}}
+	primary := []comic.PanelCharacter{{CharacterID: "tsumugi", Prominence: comic.ProminencePrimary}}
 
 	t.Run("明示指定が最優先", func(t *testing.T) {
 		explicit := int64(7)
-		got := resolveSeedChain(&explicit, &ports.GenerationRecord{UsedSeed: 99}, characters, primary)
+		got := resolveSeedChain(&explicit, &comic.GenerationRecord{UsedSeed: 99}, characters, primary)
 		if got == nil || *got != 7 {
 			t.Errorf("seed = %v, want 7", got)
 		}
 	})
 
 	t.Run("前回の UsedSeed を再利用", func(t *testing.T) {
-		got := resolveSeedChain(nil, &ports.GenerationRecord{UsedSeed: 99}, characters, primary)
+		got := resolveSeedChain(nil, &comic.GenerationRecord{UsedSeed: 99}, characters, primary)
 		if got == nil || *got != 99 {
 			t.Errorf("seed = %v, want 99", got)
 		}
@@ -72,7 +72,7 @@ func TestResolveSeedChain(t *testing.T) {
 
 	// UsedSeed が 0 の記録は「未設定」と区別がつかないため、再利用してはいけない。
 	t.Run("UsedSeed が 0 の記録は再利用しない", func(t *testing.T) {
-		got := resolveSeedChain(nil, &ports.GenerationRecord{UsedSeed: 0}, characters, primary)
+		got := resolveSeedChain(nil, &comic.GenerationRecord{UsedSeed: 0}, characters, primary)
 		if got == nil || *got != characterSeed {
 			t.Errorf("seed = %v, want the character seed %d", got, characterSeed)
 		}

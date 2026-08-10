@@ -1,7 +1,7 @@
 package operations
 
 import (
-	"github.com/shouni/go-comic-kit/ports"
+	"github.com/shouni/go-comic-kit/comic"
 )
 
 // outlineSchema は章立て生成（GenerateOutline）の構造化出力スキーマです。
@@ -55,7 +55,7 @@ func chapterScriptSchema() map[string]any {
 									"character_id": map[string]any{"type": "string"},
 									"prominence": map[string]any{
 										"type": "string",
-										"enum": []string{ports.ProminencePrimary, ports.ProminenceSecondary, ports.ProminenceBackground},
+										"enum": []string{comic.ProminencePrimary, comic.ProminenceSecondary, comic.ProminenceBackground},
 									},
 									"emotion":  map[string]any{"type": "string"},
 									"action":   map[string]any{"type": "string"},
@@ -74,11 +74,11 @@ func chapterScriptSchema() map[string]any {
 									"kind": map[string]any{
 										"type": "string",
 										"enum": []string{
-											ports.DialogueKindSpeech,
-											ports.DialogueKindThought,
-											ports.DialogueKindShout,
-											ports.DialogueKindNarration,
-											ports.DialogueKindSFX,
+											comic.DialogueKindSpeech,
+											comic.DialogueKindThought,
+											comic.DialogueKindShout,
+											comic.DialogueKindNarration,
+											comic.DialogueKindSFX,
 										},
 									},
 								},

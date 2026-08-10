@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	characterkit "github.com/shouni/go-character-kit/character"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -16,11 +17,11 @@ import (
 // charPrepared / panelPrepared は事前準備が1回以上呼ばれたかを返します。
 // --- Helpers ---
 
-func pageTestState() *ports.MangaState {
-	return &ports.MangaState{
-		Version: ports.StateSchemaVersion,
+func pageTestState() *comic.MangaState {
+	return &comic.MangaState{
+		Version: comic.StateSchemaVersion,
 		Title:   "夜明けのデプロイ",
-		Panels: []ports.Panel{
+		Panels: []comic.Panel{
 			{
 				ID:           "ch01-p01",
 				ChapterID:    "ch01",
@@ -28,33 +29,33 @@ func pageTestState() *ports.MangaState {
 				Shot:         "wide",
 				Setting:      "放課後の音楽室",
 				VisualAnchor: "sunset light, dynamic angle",
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "zundamon", Prominence: ports.ProminencePrimary, Emotion: "驚き", Position: "left"},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "zundamon", Prominence: comic.ProminencePrimary, Emotion: "驚き", Position: "left"},
 				},
-				Dialogues: []ports.DialogueLine{
-					{SpeakerID: "zundamon", Text: "なんなのだ！？", Kind: ports.DialogueKindShout},
-					{Text: "その日、すべてが変わった", Kind: ports.DialogueKindNarration},
+				Dialogues: []comic.DialogueLine{
+					{SpeakerID: "zundamon", Text: "なんなのだ！？", Kind: comic.DialogueKindShout},
+					{Text: "その日、すべてが変わった", Kind: comic.DialogueKindNarration},
 				},
-				Generation: &ports.GenerationRecord{ImageURL: "gs://b/panels/p01.png", UsedSeed: 11},
+				Generation: &comic.GenerationRecord{ImageURL: "gs://b/panels/p01.png", UsedSeed: 11},
 			},
 			{
 				ID:        "ch01-p02",
 				ChapterID: "ch01",
 				Page:      1,
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "metan", Prominence: ports.ProminencePrimary, Emotion: "冷静"},
-					{CharacterID: "zundamon", Prominence: ports.ProminenceSecondary},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "metan", Prominence: comic.ProminencePrimary, Emotion: "冷静"},
+					{CharacterID: "zundamon", Prominence: comic.ProminenceSecondary},
 				},
-				Dialogues: []ports.DialogueLine{
-					{SpeakerID: "metan", Text: "落ち着きなさい。", Kind: ports.DialogueKindSpeech},
+				Dialogues: []comic.DialogueLine{
+					{SpeakerID: "metan", Text: "落ち着きなさい。", Kind: comic.DialogueKindSpeech},
 				},
 			},
 			{
 				ID:        "ch02-p01",
 				ChapterID: "ch02",
 				Page:      2, // 別ページ（対象外）
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "zundamon", Prominence: ports.ProminencePrimary},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "zundamon", Prominence: comic.ProminencePrimary},
 				},
 			},
 		},
@@ -64,7 +65,7 @@ func pageTestState() *ports.MangaState {
 func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mockImageGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "zundamon", Name: "ずんだもん", ReferenceURL: "gs://b/zunda.png", VisualCues: []string{"green hair"}, Seed: &zundaSeed, IsDefault: true},
 		{ID: "metan", Name: "めたん", ReferenceURL: "gs://b/metan.png", VisualCues: []string{"purple hair"}},
 	})
@@ -88,7 +89,8 @@ func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mo
 
 func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	t.Parallel()
-	r, gen, writer := newPageRunner(t, nil)
+	prompt := &fakePagePrompt{}
+	r, gen, writer := newPageRunner(t, prompt)
 	state := pageTestState()
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out"})
@@ -101,40 +103,31 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Fatalf("Images = %+v, want 3 references", gen.lastReq.Images)
 	}
 
-	// プロンプト本文の作り込みは ports.PagePrompt の実装（既定はキット内蔵の簡潔版、
-	// 作品ごとの本文はアプリ側）の責務なので、ここでは構造データが正しく渡ることだけを見る。
-	p := gen.lastReq.Prompt
-	if !strings.Contains(p, "exactly 2 panel") {
-		t.Errorf("prompt does not state the panel count:\n%s", p)
+	// プロンプト本文はアプリ側の実装が持つので、ここで見るのは
+	// 「実装へ渡した構造データ」と「返った3本をそのまま載せたか」だけ。
+	d := prompt.data
+	if d == nil {
+		t.Fatal("PagePrompt was not called")
 	}
 	// 参照番号は添付順と一致していなければ、モデルは別人の参照画像を見て描く。
-	for _, want := range []string{
-		"identity from input_file_1", // ずんだもん = 1枚目
-		"identity from input_file_2", // めたん = 2枚目
-		"composition guide: input_file_3",
-	} {
-		if !strings.Contains(p, want) {
-			t.Errorf("prompt does not contain %q\nprompt: %s", want, p)
-		}
+	if d.CharacterFile["zundamon"] != 1 || d.CharacterFile["metan"] != 2 {
+		t.Errorf("CharacterFile = %v, want zundamon=1 / metan=2 (添付順)", d.CharacterFile)
 	}
-	// セリフは話者名付きで渡る
-	for _, want := range []string{"dialogue (ずんだもん): なんなのだ！？", "dialogue (めたん): 落ち着きなさい。"} {
-		if !strings.Contains(p, want) {
-			t.Errorf("prompt does not contain %q\nprompt: %s", want, p)
-		}
+	if d.PanelFile["ch01-p01"] != 3 {
+		t.Errorf("PanelFile = %v, want the generated panel at 3", d.PanelFile)
 	}
-
-	// 別ページのパネルが混ざらない
-	if strings.Contains(p, "ch02") {
-		t.Error("prompt leaked panels from another page")
+	// このページのコマだけが渡り、別ページのコマは混ざらない。
+	if got := panelIDs(d.Panels); len(got) != 2 || got[0] != "ch01-p01" || got[1] != "ch01-p02" {
+		t.Errorf("Panels = %v, want only page 1's panels in order", got)
+	}
+	if d.StyleSuffix != "cinematic style" {
+		t.Errorf("StyleSuffix = %q, want the configured style", d.StyleSuffix)
+	}
+	if gen.lastReq.SystemPrompt != fakeSystemPrompt || gen.lastReq.NegativePrompt != fakeNegativePrompt {
+		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
+			gen.lastReq.SystemPrompt, gen.lastReq.NegativePrompt)
 	}
 
-	if !strings.Contains(gen.lastReq.SystemPrompt, "right-to-left") {
-		t.Error("system prompt missing the reading order rule")
-	}
-	if !strings.Contains(p, "cinematic style") {
-		t.Error("prompt missing the style suffix")
-	}
 	if gen.lastReq.AspectRatio != "3:4" || gen.lastReq.ImageSize != "2K" {
 		t.Errorf("AspectRatio/ImageSize = %q/%q, want 3:4/2K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
 	}
@@ -159,10 +152,10 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 
 func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPageRunner(t, nil)
+	r, gen, _ := newPageRunner(t, &fakePagePrompt{})
 	state := pageTestState()
-	state.Pages = []ports.PageArtifact{
-		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
+	state.Pages = []comic.PageArtifact{
+		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
 	}
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{})
@@ -185,10 +178,10 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 
 func TestComposePageEditMode(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPageRunner(t, nil)
+	r, gen, _ := newPageRunner(t, &fakePagePrompt{})
 	state := pageTestState()
-	state.Pages = []ports.PageArtifact{
-		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
+	state.Pages = []comic.PageArtifact{
+		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
 	}
 
 	_, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{
@@ -201,14 +194,14 @@ func TestComposePageEditMode(t *testing.T) {
 	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0].ReferenceURL != "gs://b/pages/page1.png" {
 		t.Errorf("Images = %+v, want existing page image only", gen.lastReq.Images)
 	}
-	if !strings.Contains(gen.lastReq.Prompt, prompts.PageEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
+	if !strings.Contains(gen.lastReq.Prompt, "FAKE-PAGE-EDIT") || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
 }
 
 func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPageRunner(t, nil)
+	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更"})
 	if err == nil || !strings.Contains(err.Error(), "編集対象") {
@@ -218,7 +211,7 @@ func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 
 func TestComposePageEmptyPageFails(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPageRunner(t, nil)
+	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 	if _, err := r.ComposePage(context.Background(), pageTestState(), 99, ports.GenerateOptions{}); err == nil {
 		t.Error("ComposePage(empty page) succeeded, want error")

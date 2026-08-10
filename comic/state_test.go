@@ -1,4 +1,4 @@
-package ports
+package comic
 
 import (
 	"encoding/json"

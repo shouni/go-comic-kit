@@ -1,8 +1,10 @@
-// Package ports は、go-comic-kit の中核データモデルと契約を定義します。
+// Package comic は、go-comic-kit の中核データモデルを定義します。
 //
-// 中心となるのは MangaState（1作品の全状態を保持する永続ドキュメント）です。
+// 中心となるのは MangaState（1作品の全状態を保持する永続ドキュメント）で、
+// 章・コマ・台詞・デザインシート記録・ページ成果物と、それらを操作するメソッドを持ちます。
+// 操作の契約（インターフェース）は ports パッケージが持ちます。
 // 設計の詳細は README.md を参照してください。
-package ports
+package comic
 
 import (
 	"slices"
@@ -11,6 +13,10 @@ import (
 
 // StateSchemaVersion は MangaState の現行スキーマバージョンです。
 const StateSchemaVersion = 1
+
+// DefaultMaxPanelsPerPage は1ページに載せるパネル数の既定値です（Repaginate 用）。
+// ページ割りの規則そのものなので、生成側の上限（ports.Config）ではなくここが持ちます。
+const DefaultMaxPanelsPerPage = 6
 
 // MaxReferencedCharactersPerPanel は、1コマで参照画像（デザインシート）を添付する
 // キャラクター（primary + secondary）の上限です。参照画像が増えるほど複数キャラクター同士の

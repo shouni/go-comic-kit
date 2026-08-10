@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/rand/v2"
 
-	"github.com/shouni/go-comic-kit/ports"
+	"github.com/shouni/go-comic-kit/comic"
 )
 
 // resolveSeedChain は「明示指定 > 前回の UsedSeed > 主役キャラクターの Seed > 新規採番」の
@@ -15,7 +15,7 @@ import (
 // この関数へ渡しても「前回の UsedSeed」として採用されません（0 は「未設定」と区別が
 // つかない）。結果として、シードを一度も明示しない作品では「同条件での再生成」が
 // 永久に別の絵になります。ここで採番しておけば、記録された値でいつでも再現できます。
-func resolveSeedChain(explicit *int64, prev *ports.GenerationRecord, characters *ports.Characters, panelChars []ports.PanelCharacter) *int64 {
+func resolveSeedChain(explicit *int64, prev *comic.GenerationRecord, characters *comic.Characters, panelChars []comic.PanelCharacter) *int64 {
 	if explicit != nil {
 		return explicit
 	}
@@ -25,7 +25,7 @@ func resolveSeedChain(explicit *int64, prev *ports.GenerationRecord, characters 
 	}
 	if characters != nil {
 		for _, pc := range panelChars {
-			if pc.Prominence != ports.ProminencePrimary {
+			if pc.Prominence != comic.ProminencePrimary {
 				continue
 			}
 			if char := characters.GetCharacter(pc.CharacterID); char != nil && char.Seed != nil {

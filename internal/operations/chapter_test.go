@@ -5,10 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	characterkit "github.com/shouni/go-character-kit/character"
+	"github.com/shouni/go-comic-kit/comic"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
-	"github.com/shouni/go-comic-kit/ports"
+	characterkit "github.com/shouni/go-character-kit/character"
 )
 
 const chapterJSON = `{
@@ -36,42 +35,39 @@ const chapterJSON = `{
   ]
 }`
 
-func outlineState() *ports.MangaState {
-	return &ports.MangaState{
-		Version:     ports.StateSchemaVersion,
+func outlineState() *comic.MangaState {
+	return &comic.MangaState{
+		Version:     comic.StateSchemaVersion,
 		Title:       "夜明けのデプロイ",
 		Description: "あらすじ",
-		Chapters: []ports.Chapter{
+		Chapters: []comic.Chapter{
 			{ID: "ch01", Title: "導入", Summary: "つかみ", SourceExcerpt: "抜粋1"},
 			{ID: "ch02", Title: "核心", Summary: "本題", SourceExcerpt: "抜粋2"},
 		},
 	}
 }
 
-func newChapterRunner(t *testing.T, ai *fakeContentGenerator) *ChapterScriptRunner {
+func newChapterRunner(t *testing.T, ai *fakeContentGenerator) (*ChapterScriptRunner, *fakeScriptPrompt) {
 	t.Helper()
-	p, err := prompts.NewScriptPrompts()
-	if err != nil {
-		t.Fatalf("NewScriptPrompts failed: %v", err)
-	}
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	p := &fakeScriptPrompt{}
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "zundamon", Name: "ずんだもん", ReferenceURL: "gs://b/z.png", VisualCues: []string{"green hair"}, IsDefault: true},
 		{ID: "metan", Name: "めたん", ReferenceURL: "gs://b/m.png", VisualCues: []string{"purple hair"}},
 	})
 	if err != nil {
 		t.Fatalf("NewCharacters failed: %v", err)
 	}
-	return NewChapterScriptRunner(p, ai, cm, "test-model", 0, 0)
+	return NewChapterScriptRunner(p, ai, cm, "test-model", 0, 0), p
 }
 
 func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	t.Parallel()
 
 	ai := &fakeContentGenerator{text: "```json\n" + chapterJSON + "\n```"}
-	r := newChapterRunner(t, ai)
+	r, p := newChapterRunner(t, ai)
 	state := outlineState()
 	// 既存パネルが置き換わることの検証用
-	state.Panels = []ports.Panel{{ID: "ch01-p01", ChapterID: "ch01", Shot: "old"}}
+	state.Panels = []comic.Panel{{ID: "ch01-p01", ChapterID: "ch01", Shot: "old"}}
 
 	state, err := r.GenerateChapterScript(context.Background(), state, "ch01")
 	if err != nil {
@@ -98,16 +94,19 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	}
 
 	// ナレーション・複数吹き出しが保持される
-	if len(p1.Dialogues) != 2 || p1.Dialogues[1].Kind != ports.DialogueKindNarration {
+	if len(p1.Dialogues) != 2 || p1.Dialogues[1].Kind != comic.DialogueKindNarration {
 		t.Errorf("Dialogues = %+v, want narration preserved", p1.Dialogues)
 	}
 
-	// プロンプトに章立て文脈とキャラクター一覧が入る
-	if !strings.Contains(ai.lastPrompt, "▶ ch01") || !strings.Contains(ai.lastPrompt, "ch02") {
-		t.Error("prompt does not contain outline digest with target marker")
+	// プロンプト実装へ、章立て文脈とキャラクター一覧が渡る
+	if p.chapterData == nil {
+		t.Fatal("ChapterScriptPrompt was not called")
 	}
-	if !strings.Contains(ai.lastPrompt, "ずんだもん") {
-		t.Error("prompt does not contain character roster")
+	if !strings.Contains(p.chapterData.OutlineDigest, "▶ ch01") || !strings.Contains(p.chapterData.OutlineDigest, "ch02") {
+		t.Errorf("OutlineDigest = %q, want the digest with the target marker", p.chapterData.OutlineDigest)
+	}
+	if !strings.Contains(p.chapterData.CharacterRoster, "ずんだもん") {
+		t.Errorf("CharacterRoster = %q, want the character roster", p.chapterData.CharacterRoster)
 	}
 	// 構造化出力オプションの検証
 	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseJSONSchema == nil {
@@ -119,7 +118,7 @@ func TestGenerateChapterScriptDemotesUnknownCharacters(t *testing.T) {
 	t.Parallel()
 
 	ai := &fakeContentGenerator{text: chapterJSON}
-	r := newChapterRunner(t, ai)
+	r, _ := newChapterRunner(t, ai)
 
 	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01")
 	if err != nil {
@@ -131,11 +130,11 @@ func TestGenerateChapterScriptDemotesUnknownCharacters(t *testing.T) {
 		t.Fatalf("Characters = %+v, want 3", chars)
 	}
 	// 未定義IDは background に降格（デフォルトキャラへの暗黙フォールバック事故を防ぐ）
-	if chars[1].CharacterID != "unknown-hero" || chars[1].Prominence != ports.ProminenceBackground {
+	if chars[1].CharacterID != "unknown-hero" || chars[1].Prominence != comic.ProminenceBackground {
 		t.Errorf("unknown character = %+v, want demoted to background", chars[1])
 	}
 	// 既知IDはそのまま
-	if chars[0].Prominence != ports.ProminencePrimary {
+	if chars[0].Prominence != comic.ProminencePrimary {
 		t.Errorf("known character = %+v, want prominence preserved", chars[0])
 	}
 	// 参照対象は既知キャラだけになる
@@ -148,7 +147,7 @@ func TestGenerateChapterScriptDemotesUnknownCharacters(t *testing.T) {
 func TestGenerateChapterScriptUnknownChapterFails(t *testing.T) {
 	t.Parallel()
 
-	r := newChapterRunner(t, &fakeContentGenerator{text: chapterJSON})
+	r, _ := newChapterRunner(t, &fakeContentGenerator{text: chapterJSON})
 	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch99"); err == nil {
 		t.Error("GenerateChapterScript(ch99) succeeded, want error")
 	}
@@ -157,7 +156,7 @@ func TestGenerateChapterScriptUnknownChapterFails(t *testing.T) {
 func TestGenerateChapterScriptNilStateFails(t *testing.T) {
 	t.Parallel()
 
-	r := newChapterRunner(t, &fakeContentGenerator{text: chapterJSON})
+	r, _ := newChapterRunner(t, &fakeContentGenerator{text: chapterJSON})
 	if _, err := r.GenerateChapterScript(context.Background(), nil, "ch01"); err == nil {
 		t.Error("GenerateChapterScript(nil state) succeeded, want error")
 	}
@@ -166,7 +165,7 @@ func TestGenerateChapterScriptNilStateFails(t *testing.T) {
 func TestGenerateChapterScriptEmptyPanelsFails(t *testing.T) {
 	t.Parallel()
 
-	r := newChapterRunner(t, &fakeContentGenerator{text: `{"panels":[]}`})
+	r, _ := newChapterRunner(t, &fakeContentGenerator{text: `{"panels":[]}`})
 	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01"); err == nil {
 		t.Error("GenerateChapterScript with empty panels succeeded, want error")
 	}

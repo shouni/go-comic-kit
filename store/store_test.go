@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shouni/go-remote-io/remoteio"
+	"github.com/shouni/go-comic-kit/comic"
 
-	"github.com/shouni/go-comic-kit/ports"
+	"github.com/shouni/go-remote-io/remoteio"
 )
 
 type memWriter struct {
@@ -41,12 +41,12 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
-	original := &ports.MangaState{
-		Version:   ports.StateSchemaVersion,
+	original := &comic.MangaState{
+		Version:   comic.StateSchemaVersion,
 		ID:        "job-001",
 		Title:     "夜明けのデプロイ",
-		Chapters:  []ports.Chapter{{ID: "ch01", Title: "導入", Summary: "つかみ"}},
-		Panels:    []ports.Panel{{ID: "ch01-p01", ChapterID: "ch01", Page: 1}},
+		Chapters:  []comic.Chapter{{ID: "ch01", Title: "導入", Summary: "つかみ"}},
+		Panels:    []comic.Panel{{ID: "ch01-p01", ChapterID: "ch01", Page: 1}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

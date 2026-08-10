@@ -1,6 +1,10 @@
+// Package ports は、go-comic-kit の操作の契約（インターフェース）と、
+// その入出力・設定を定義します。データモデルそのものは comic パッケージが持ちます。
 package ports
 
 import (
+	"github.com/shouni/go-comic-kit/comic"
+
 	"fmt"
 	"strings"
 	"time"
@@ -19,8 +23,6 @@ const (
 	DefaultMaxChapters = 8
 	// DefaultMaxPanelsPerChapter は章単位の台本生成の既定のパネル数上限です。
 	DefaultMaxPanelsPerChapter = 8
-	// DefaultMaxPanelsPerPage は1ページに載せるパネル数の既定値です（Repaginate 用）。
-	DefaultMaxPanelsPerPage = 6
 
 	// DefaultCacheControl は、生成画像を保存する際の既定の Cache-Control です。
 	// "public" は生成物を公開配信してよいという前提なので、非公開バケットへ書くデプロイでは
@@ -31,9 +33,11 @@ const (
 // Config は Go Comic Kit の各操作を動作させるための基本設定です。
 type Config struct {
 	// --- AI Model Settings (Common) ---
-	GeminiModel        string
-	ImageStandardModel string // 標準・高速（パネル用）
-	ImageQualityModel  string // 高品質・高知能（ページ・デザインシート用）
+	GeminiModel string
+	// ImageModel はデザインシート・パネル・ページのすべてに使う画像生成モデルです。
+	// 用途ごとにモデルを分ける仕組みは持ちません。どのモデルが「高品質」かは
+	// Google のラインナップ次第で、キットが決められる区別ではないためです。
+	ImageModel string
 
 	// --- Generation Settings ---
 	// MaxConcurrency は一括生成（GenerateAllPanels / ComposeAllPages）の最大並列数です。
@@ -80,7 +84,7 @@ func (c *Config) ApplyDefaults() {
 		c.MaxPanelsPerChapter = DefaultMaxPanelsPerChapter
 	}
 	if c.MaxPanelsPerPage <= 0 {
-		c.MaxPanelsPerPage = DefaultMaxPanelsPerPage
+		c.MaxPanelsPerPage = comic.DefaultMaxPanelsPerPage
 	}
 	if c.RequestTimeout <= 0 {
 		c.RequestTimeout = DefaultRequestTimeout
@@ -93,11 +97,8 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.GeminiModel) == "" {
 		missing = append(missing, "GeminiModel")
 	}
-	if strings.TrimSpace(c.ImageStandardModel) == "" {
-		missing = append(missing, "ImageStandardModel")
-	}
-	if strings.TrimSpace(c.ImageQualityModel) == "" {
-		missing = append(missing, "ImageQualityModel")
+	if strings.TrimSpace(c.ImageModel) == "" {
+		missing = append(missing, "ImageModel")
 	}
 	if strings.TrimSpace(c.StyleSuffix) == "" {
 		missing = append(missing, "StyleSuffix")

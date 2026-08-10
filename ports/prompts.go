@@ -1,5 +1,7 @@
 package ports
 
+import "github.com/shouni/go-comic-kit/comic"
+
 // OutlinePromptData は章立て生成プロンプトのテンプレートに渡すデータです。
 type OutlinePromptData struct {
 	// InputText は元文章です。
@@ -19,7 +21,7 @@ type ChapterPromptData struct {
 	// 章をまたぐ流れの一貫性を保つための文脈として渡します。
 	OutlineDigest string
 	// Chapter は今回パネルを生成する対象の章です。
-	Chapter Chapter
+	Chapter comic.Chapter
 	// CharacterRoster は使用可能なキャラクターの一覧（箇条書きテキスト）です。
 	CharacterRoster string
 	// MaxPanels は1章あたりのパネル数の上限です。
@@ -59,9 +61,9 @@ type DesignSheetPrompt interface {
 // PanelPromptData はパネル画像生成プロンプトの組み立てに渡すデータです。
 type PanelPromptData struct {
 	// Panel は対象のコマです（Shot / Setting / VisualAnchor / Characters）。
-	Panel Panel
+	Panel comic.Panel
 	// Characters はキャラクター定義です。名前や visual_cues の解決に使います。
-	Characters *Characters
+	Characters *comic.Characters
 	// SubjectIDs は参照画像を添付したキャラクターIDで、**添付順**に並びます。
 	// 実装はこの順序で参照番号を振ってください。順序がずれると、モデルは別人の
 	// 参照画像を見ながら描くことになります。
@@ -85,9 +87,9 @@ type PanelPrompt interface {
 // PagePromptData はページ合成プロンプトの組み立てに渡すデータです。
 type PagePromptData struct {
 	// Panels はこのページに載るコマです（表示順）。
-	Panels []Panel
+	Panels []comic.Panel
 	// Characters はキャラクター定義です。
-	Characters *Characters
+	Characters *comic.Characters
 	// CharacterFile は キャラクターID → 添付した参照画像の番号（1始まり）です。
 	// 添付していないキャラクターは含まれません。
 	CharacterFile map[string]int
