@@ -5,10 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	characterkit "github.com/shouni/go-character-kit/character"
 
 	"github.com/shouni/go-comic-kit/internal/prompts"
-	"github.com/shouni/go-comic-kit/ports"
 )
 
 const chapterJSON = `{
@@ -36,12 +37,12 @@ const chapterJSON = `{
   ]
 }`
 
-func outlineState() *ports.MangaState {
-	return &ports.MangaState{
-		Version:     ports.StateSchemaVersion,
+func outlineState() *comic.MangaState {
+	return &comic.MangaState{
+		Version:     comic.StateSchemaVersion,
 		Title:       "夜明けのデプロイ",
 		Description: "あらすじ",
-		Chapters: []ports.Chapter{
+		Chapters: []comic.Chapter{
 			{ID: "ch01", Title: "導入", Summary: "つかみ", SourceExcerpt: "抜粋1"},
 			{ID: "ch02", Title: "核心", Summary: "本題", SourceExcerpt: "抜粋2"},
 		},
@@ -54,7 +55,7 @@ func newChapterRunner(t *testing.T, ai *fakeContentGenerator) *ChapterScriptRunn
 	if err != nil {
 		t.Fatalf("NewScriptPrompts failed: %v", err)
 	}
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "zundamon", Name: "ずんだもん", ReferenceURL: "gs://b/z.png", VisualCues: []string{"green hair"}, IsDefault: true},
 		{ID: "metan", Name: "めたん", ReferenceURL: "gs://b/m.png", VisualCues: []string{"purple hair"}},
 	})
@@ -71,7 +72,7 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	r := newChapterRunner(t, ai)
 	state := outlineState()
 	// 既存パネルが置き換わることの検証用
-	state.Panels = []ports.Panel{{ID: "ch01-p01", ChapterID: "ch01", Shot: "old"}}
+	state.Panels = []comic.Panel{{ID: "ch01-p01", ChapterID: "ch01", Shot: "old"}}
 
 	state, err := r.GenerateChapterScript(context.Background(), state, "ch01")
 	if err != nil {
@@ -98,7 +99,7 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	}
 
 	// ナレーション・複数吹き出しが保持される
-	if len(p1.Dialogues) != 2 || p1.Dialogues[1].Kind != ports.DialogueKindNarration {
+	if len(p1.Dialogues) != 2 || p1.Dialogues[1].Kind != comic.DialogueKindNarration {
 		t.Errorf("Dialogues = %+v, want narration preserved", p1.Dialogues)
 	}
 
@@ -131,11 +132,11 @@ func TestGenerateChapterScriptDemotesUnknownCharacters(t *testing.T) {
 		t.Fatalf("Characters = %+v, want 3", chars)
 	}
 	// 未定義IDは background に降格（デフォルトキャラへの暗黙フォールバック事故を防ぐ）
-	if chars[1].CharacterID != "unknown-hero" || chars[1].Prominence != ports.ProminenceBackground {
+	if chars[1].CharacterID != "unknown-hero" || chars[1].Prominence != comic.ProminenceBackground {
 		t.Errorf("unknown character = %+v, want demoted to background", chars[1])
 	}
 	// 既知IDはそのまま
-	if chars[0].Prominence != ports.ProminencePrimary {
+	if chars[0].Prominence != comic.ProminencePrimary {
 		t.Errorf("known character = %+v, want prominence preserved", chars[0])
 	}
 	// 参照対象は既知キャラだけになる

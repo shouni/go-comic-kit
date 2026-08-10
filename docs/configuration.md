@@ -4,7 +4,7 @@
 
 ## ports.Config
 
-`workflow.New(Args)` に渡す設定です。**モデル名3種と画風指定2種は必須**で、未設定なら `ports.ErrConfigInvalid` を返して構築に失敗します。モデル ID は Google 側の都合で世代交代する外部の識別子、画風指定は作品ごとに調整する文言で、どちらもキットのリリースを挟まずアプリ側で変えられるべきだからです。それ以外の項目はゼロ値で構いません（`ApplyDefaults` が補完します）。
+`workflow.New(Args)` に渡す設定です。**モデル名2種と画風指定2種は必須**で、未設定なら `ports.ErrConfigInvalid` を返して構築に失敗します。モデル ID は Google 側の都合で世代交代する外部の識別子、画風指定は作品ごとに調整する文言で、どちらもキットのリリースを挟まずアプリ側で変えられるべきだからです。それ以外の項目はゼロ値で構いません（`ApplyDefaults` が補完します）。
 
 | 設定項目 | 役割 |
 | --- | --- |
@@ -45,6 +45,6 @@
 | `HTTPClient` | go-http-kit の HTTP クライアント |
 | `Reader` / `Writer` | `ports.ContentReader` / `remoteio.Writer`（原稿の読み込み・成果物の保存） |
 | `AIClient` | 台本生成と標準品質の画像生成（パネル）に使う `gemini.Model` |
-| `Characters` | `*ports.Characters`（go-character-kit の `characters.json`） |
+| `Characters` | `*comic.Characters`（go-character-kit の `characters.json`） |
 
 `workflow.New` が返す `*ports.Operations` は、使い終わったら **`Close()`** を呼んでください（内部 TTL キャッシュのバックグラウンド goroutine を停止します。複数回呼んでも安全で、nil レシーバでも panic しません）。

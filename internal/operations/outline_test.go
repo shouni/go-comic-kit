@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/go-gemini-client/gemini"
 
 	"github.com/shouni/go-comic-kit/internal/prompts"
@@ -79,8 +81,8 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 	if state.Title != "夜明けのデプロイ" || state.Description == "" {
 		t.Errorf("state title/description = %q/%q, want parsed values", state.Title, state.Description)
 	}
-	if state.Version != ports.StateSchemaVersion || state.StyleMode != "mecha" {
-		t.Errorf("Version/StyleMode = %d/%q, want %d/mecha", state.Version, state.StyleMode, ports.StateSchemaVersion)
+	if state.Version != comic.StateSchemaVersion || state.StyleMode != "mecha" {
+		t.Errorf("Version/StyleMode = %d/%q, want %d/mecha", state.Version, state.StyleMode, comic.StateSchemaVersion)
 	}
 	if len(state.Chapters) != 2 {
 		t.Fatalf("Chapters = %+v, want 2", state.Chapters)

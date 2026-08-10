@@ -54,7 +54,8 @@
 
 ```text
 go-comic-kit/
-├── ports/                 # 【契約・定義】Interface、MangaState データモデル、Config。※全ての起点。
+├── comic/                 # 【データモデル】MangaState とその操作メソッド。※全ての起点。
+├── ports/                 # 【契約】操作の Interface、入出力の型、Config。
 ├── workflow/              # 【統合管理】5つの操作を組み立て、Operations を実装。singleflight による重複排除もここ。
 ├── store/                 # 【永続化】MangaState (comic_state.json) の Load/Save。
 ├── asset/                 # 【配置規約】成果物の配置パスを決める唯一の場所。
@@ -74,7 +75,7 @@ go-comic-kit/
 
 ```go
 ops, err := workflow.New(workflow.Args{
-	Config: ports.Config{ // モデル名3種と画風指定2種は必須。他はゼロ値なら ApplyDefaults が補完する
+	Config: ports.Config{ // モデル名2種と画風指定2種は必須。他はゼロ値なら ApplyDefaults が補完する
 		GeminiModel:        "gemini-3.6-flash",
 		ImageModel:  "gemini-3.1-flash-image",
 		StyleSuffix:        "Japanese anime style, official art, cel-shaded, ...",
@@ -102,8 +103,8 @@ state, _ = ops.Panel.GeneratePanel(ctx, state, "ch01-p01", ports.GenerateOptions
 state, _ = ops.Page.ComposePage(ctx, state, 1, ports.GenerateOptions{OutputDir: outDir})
 
 // 全パネル・全ページの一括生成（Config.MaxConcurrency で並列化）
-state, _ = ops.PanelBatch.GenerateAllPanels(ctx, state, ports.BatchOptions{OutputDir: outDir})
-state, _ = ops.PageBatch.ComposeAllPages(ctx, state, ports.BatchOptions{OutputDir: outDir})
+state, _ = ops.Panel.GenerateAllPanels(ctx, state, ports.BatchOptions{OutputDir: outDir})
+state, _ = ops.Page.ComposeAllPages(ctx, state, ports.BatchOptions{OutputDir: outDir})
 
 // state を保存（これが唯一の真実源。再生成はこの state を読み直して同じ操作を呼ぶだけ）
 _, _ = store.Save(ctx, writer, state, outDir)
@@ -117,7 +118,7 @@ _, _ = store.Save(ctx, writer, state, outDir)
 
 | ドキュメント | 内容 |
 | --- | --- |
-| [スキーマ (MangaState)](docs/schema.md) | データモデル、state ヘルパー、ページ割りとキャラクター正規化の規則 |
+| [スキーマ (comic.MangaState)](docs/schema.md) | データモデル、state ヘルパー、ページ割りとキャラクター正規化の規則 |
 | [設定と差し替え (Config / DI)](docs/configuration.md) | `ports.Config`、プロンプトの DI、`workflow.Args` の依存 |
 | [操作セット (Operations)](docs/operations.md) | 5操作と一括生成、呼び出し単位の上書き、エラーの分類 |
 | [成果物の配置 (asset)](docs/assets.md) | 保存パスの規約とファイル名の生成 |

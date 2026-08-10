@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-remote-io/remoteio"
@@ -43,9 +45,11 @@ func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, opts ...
 
 // --- Helpers ---
 
+func ptr[T any](v T) *T { return &v }
+
 func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *mockWriter) {
 	t.Helper()
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{
 			ID:           "tsumugi",
 			Name:         "Tsumugi",
@@ -85,7 +89,7 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-1",
-		Seed:         42,
+		Seed:         ptr(int64(42)),
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {
@@ -95,8 +99,8 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	if state == nil {
 		t.Fatal("state = nil, want a newly created state")
 	}
-	if state.Version != ports.StateSchemaVersion {
-		t.Errorf("Version = %d, want %d", state.Version, ports.StateSchemaVersion)
+	if state.Version != comic.StateSchemaVersion {
+		t.Errorf("Version = %d, want %d", state.Version, comic.StateSchemaVersion)
 	}
 	if len(state.DesignSheets) != 1 {
 		t.Fatalf("DesignSheets = %+v, want 1 entry", state.DesignSheets)
@@ -141,9 +145,9 @@ func TestGenerateDesignSheetUpsertsExistingRef(t *testing.T) {
 	t.Parallel()
 	dr, _, _ := newTestRunner(t)
 
-	state := &ports.MangaState{
-		Version:      ports.StateSchemaVersion,
-		DesignSheets: []ports.DesignSheetRef{{CharacterID: "tsumugi", ImageURL: "gs://old.png", UsedSeed: 1}},
+	state := &comic.MangaState{
+		Version:      comic.StateSchemaVersion,
+		DesignSheets: []comic.DesignSheetRef{{CharacterID: "tsumugi", ImageURL: "gs://old.png", UsedSeed: 1}},
 	}
 
 	state, err := dr.GenerateDesignSheet(context.Background(), state, ports.DesignSheetRequest{

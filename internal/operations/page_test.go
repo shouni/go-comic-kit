@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	characterkit "github.com/shouni/go-character-kit/character"
 
 	"github.com/shouni/go-comic-kit/internal/prompts"
@@ -16,11 +18,11 @@ import (
 // charPrepared / panelPrepared は事前準備が1回以上呼ばれたかを返します。
 // --- Helpers ---
 
-func pageTestState() *ports.MangaState {
-	return &ports.MangaState{
-		Version: ports.StateSchemaVersion,
+func pageTestState() *comic.MangaState {
+	return &comic.MangaState{
+		Version: comic.StateSchemaVersion,
 		Title:   "夜明けのデプロイ",
-		Panels: []ports.Panel{
+		Panels: []comic.Panel{
 			{
 				ID:           "ch01-p01",
 				ChapterID:    "ch01",
@@ -28,33 +30,33 @@ func pageTestState() *ports.MangaState {
 				Shot:         "wide",
 				Setting:      "放課後の音楽室",
 				VisualAnchor: "sunset light, dynamic angle",
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "zundamon", Prominence: ports.ProminencePrimary, Emotion: "驚き", Position: "left"},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "zundamon", Prominence: comic.ProminencePrimary, Emotion: "驚き", Position: "left"},
 				},
-				Dialogues: []ports.DialogueLine{
-					{SpeakerID: "zundamon", Text: "なんなのだ！？", Kind: ports.DialogueKindShout},
-					{Text: "その日、すべてが変わった", Kind: ports.DialogueKindNarration},
+				Dialogues: []comic.DialogueLine{
+					{SpeakerID: "zundamon", Text: "なんなのだ！？", Kind: comic.DialogueKindShout},
+					{Text: "その日、すべてが変わった", Kind: comic.DialogueKindNarration},
 				},
-				Generation: &ports.GenerationRecord{ImageURL: "gs://b/panels/p01.png", UsedSeed: 11},
+				Generation: &comic.GenerationRecord{ImageURL: "gs://b/panels/p01.png", UsedSeed: 11},
 			},
 			{
 				ID:        "ch01-p02",
 				ChapterID: "ch01",
 				Page:      1,
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "metan", Prominence: ports.ProminencePrimary, Emotion: "冷静"},
-					{CharacterID: "zundamon", Prominence: ports.ProminenceSecondary},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "metan", Prominence: comic.ProminencePrimary, Emotion: "冷静"},
+					{CharacterID: "zundamon", Prominence: comic.ProminenceSecondary},
 				},
-				Dialogues: []ports.DialogueLine{
-					{SpeakerID: "metan", Text: "落ち着きなさい。", Kind: ports.DialogueKindSpeech},
+				Dialogues: []comic.DialogueLine{
+					{SpeakerID: "metan", Text: "落ち着きなさい。", Kind: comic.DialogueKindSpeech},
 				},
 			},
 			{
 				ID:        "ch02-p01",
 				ChapterID: "ch02",
 				Page:      2, // 別ページ（対象外）
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "zundamon", Prominence: ports.ProminencePrimary},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "zundamon", Prominence: comic.ProminencePrimary},
 				},
 			},
 		},
@@ -64,7 +66,7 @@ func pageTestState() *ports.MangaState {
 func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mockImageGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "zundamon", Name: "ずんだもん", ReferenceURL: "gs://b/zunda.png", VisualCues: []string{"green hair"}, Seed: &zundaSeed, IsDefault: true},
 		{ID: "metan", Name: "めたん", ReferenceURL: "gs://b/metan.png", VisualCues: []string{"purple hair"}},
 	})
@@ -161,8 +163,8 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPageRunner(t, nil)
 	state := pageTestState()
-	state.Pages = []ports.PageArtifact{
-		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
+	state.Pages = []comic.PageArtifact{
+		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
 	}
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{})
@@ -187,8 +189,8 @@ func TestComposePageEditMode(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPageRunner(t, nil)
 	state := pageTestState()
-	state.Pages = []ports.PageArtifact{
-		{PageNumber: 1, Generation: &ports.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
+	state.Pages = []comic.PageArtifact{
+		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
 	}
 
 	_, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{

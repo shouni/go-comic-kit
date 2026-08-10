@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -69,10 +71,10 @@ func (DefaultPagePrompt) BuildPageEdit(editPrompt string) (string, string, strin
 }
 
 // writePageCharacters は登場キャラクターと、その参照画像の番号を出力します。
-func writePageCharacters(sb *strings.Builder, panel *ports.Panel, data *ports.PagePromptData) {
+func writePageCharacters(sb *strings.Builder, panel *comic.Panel, data *ports.PagePromptData) {
 	for i := range panel.Characters {
 		pc := &panel.Characters[i]
-		if pc.Prominence == ports.ProminenceBackground {
+		if pc.Prominence == comic.ProminenceBackground {
 			fmt.Fprintf(sb, "- background extra: %s\n", backgroundExtraDesc(pc))
 			continue
 		}
@@ -103,7 +105,7 @@ func writePageCharacters(sb *strings.Builder, panel *ports.Panel, data *ports.Pa
 }
 
 // writePageDialogues はセリフを話者名付きで出力します。話者不明はナレーション扱いです。
-func writePageDialogues(sb *strings.Builder, panel *ports.Panel, characters *ports.Characters) {
+func writePageDialogues(sb *strings.Builder, panel *comic.Panel, characters *comic.Characters) {
 	for i := range panel.Dialogues {
 		line := &panel.Dialogues[i]
 		if strings.TrimSpace(line.Text) == "" {
@@ -118,7 +120,7 @@ func writePageDialogues(sb *strings.Builder, panel *ports.Panel, characters *por
 }
 
 // speakerName は話者IDから表示名を引きます。空IDや未知IDは空文字列（ナレーション）です。
-func speakerName(characters *ports.Characters, speakerID string) string {
+func speakerName(characters *comic.Characters, speakerID string) string {
 	if speakerID == "" || characters == nil {
 		return ""
 	}

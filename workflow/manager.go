@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/gemini-image-kit/generator"
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-http-kit/httpkit"
@@ -31,7 +33,7 @@ type Args struct {
 	Writer     remoteio.Writer
 	// AIClient はテキスト生成（台本）と画像生成（デザインシート・パネル・ページ）に使います。
 	AIClient   gemini.Model
-	Characters *ports.Characters
+	Characters *comic.Characters
 
 	// OutlinePrompt / ChapterScriptPrompt / DesignSheetPrompt を指定するとプロンプト構築を
 	// 差し替えられます。nil の場合はキット内蔵テンプレート（prompts パッケージ）を使います。
@@ -145,11 +147,9 @@ func New(args Args) (*ports.Operations, error) {
 			StyleSuffix:  cfg.DesignStyleSuffix,
 			CacheControl: cfg.CacheControl,
 		}),
-		Panel:      panelRunner,
-		Page:       pageRunner,
-		PanelBatch: panelRunner,
-		PageBatch:  pageRunner,
-		CloseFunc:  images.stop,
+		Panel:     panelRunner,
+		Page:      pageRunner,
+		CloseFunc: images.stop,
 	}
 	return ops, nil
 }

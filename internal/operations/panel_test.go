@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 
@@ -26,13 +28,13 @@ func (m *mockImageGenerator) Generate(_ context.Context, req imagePorts.ImageReq
 // prepared は PrepareCharacterResources が1回以上呼ばれたかを返します。
 // --- Helpers ---
 
-func panelTestState() *ports.MangaState {
-	return &ports.MangaState{
-		Version: ports.StateSchemaVersion,
-		Chapters: []ports.Chapter{
+func panelTestState() *comic.MangaState {
+	return &comic.MangaState{
+		Version: comic.StateSchemaVersion,
+		Chapters: []comic.Chapter{
 			{ID: "ch01", Title: "導入"},
 		},
-		Panels: []ports.Panel{
+		Panels: []comic.Panel{
 			{
 				ID:           "ch01-p01",
 				ChapterID:    "ch01",
@@ -40,10 +42,10 @@ func panelTestState() *ports.MangaState {
 				Shot:         "wide",
 				Setting:      "放課後の音楽室",
 				VisualAnchor: "sunset light through windows, dynamic angle",
-				Characters: []ports.PanelCharacter{
-					{CharacterID: "zundamon", Prominence: ports.ProminencePrimary, Emotion: "驚き", Action: "めたんを指差す", Position: "left foreground"},
-					{CharacterID: "metan", Prominence: ports.ProminenceSecondary, Emotion: "冷静", Position: "right"},
-					{CharacterID: "students", Prominence: ports.ProminenceBackground, Action: "ざわめく"},
+				Characters: []comic.PanelCharacter{
+					{CharacterID: "zundamon", Prominence: comic.ProminencePrimary, Emotion: "驚き", Action: "めたんを指差す", Position: "left foreground"},
+					{CharacterID: "metan", Prominence: comic.ProminenceSecondary, Emotion: "冷静", Position: "right"},
+					{CharacterID: "students", Prominence: comic.ProminenceBackground, Action: "ざわめく"},
 				},
 			},
 		},
@@ -53,7 +55,7 @@ func panelTestState() *ports.MangaState {
 func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, *mockImageGenerator, *mockWriter) {
 	t.Helper()
 	zundaSeed := int64(10001)
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{
 			ID:           "zundamon",
 			Name:         "ずんだもん",
@@ -156,7 +158,7 @@ func TestGeneratePanelReusesPreviousSeed(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPanelRunner(t, nil)
 	state := panelTestState()
-	state.Panels[0].Generation = &ports.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}
+	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}
 
 	if _, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{}); err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
@@ -170,7 +172,7 @@ func TestGeneratePanelExplicitSeedWins(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPanelRunner(t, nil)
 	state := panelTestState()
-	state.Panels[0].Generation = &ports.GenerationRecord{UsedSeed: 777}
+	state.Panels[0].Generation = &comic.GenerationRecord{UsedSeed: 777}
 
 	newSeed := int64(42)
 	if _, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{Seed: &newSeed}); err != nil {
@@ -185,7 +187,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPanelRunner(t, nil)
 	state := panelTestState()
-	state.Panels[0].Generation = &ports.GenerationRecord{ImageURL: "gs://bucket/out/images/panel_ch01-p01.png", UsedSeed: 777}
+	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://bucket/out/images/panel_ch01-p01.png", UsedSeed: 777}
 
 	_, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{
 		EditPrompt: "ずんだもんの表情を笑顔に変える",

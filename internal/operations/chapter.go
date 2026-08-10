@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -15,7 +17,7 @@ import (
 type ChapterScriptRunner struct {
 	prompt           ports.ChapterScriptPrompt
 	aiClient         StructuredGenerator
-	characters       *ports.Characters
+	characters       *comic.Characters
 	model            string
 	maxPanels        int
 	maxPanelsPerPage int
@@ -28,7 +30,7 @@ var _ ports.ChapterScriptGenerator = (*ChapterScriptRunner)(nil)
 func NewChapterScriptRunner(
 	prompt ports.ChapterScriptPrompt,
 	aiClient StructuredGenerator,
-	characters *ports.Characters,
+	characters *comic.Characters,
 	model string,
 	maxPanels int,
 	maxPanelsPerPage int,
@@ -37,7 +39,7 @@ func NewChapterScriptRunner(
 		maxPanels = ports.DefaultMaxPanelsPerChapter
 	}
 	if maxPanelsPerPage <= 0 {
-		maxPanelsPerPage = ports.DefaultMaxPanelsPerPage
+		maxPanelsPerPage = comic.DefaultMaxPanelsPerPage
 	}
 	return &ChapterScriptRunner{
 		prompt:           prompt,
@@ -56,14 +58,14 @@ type chapterScriptResponse struct {
 		Shot         string                 `json:"shot"`
 		Setting      string                 `json:"setting"`
 		VisualAnchor string                 `json:"visual_anchor"`
-		Characters   []ports.PanelCharacter `json:"characters"`
-		Dialogues    []ports.DialogueLine   `json:"dialogues"`
+		Characters   []comic.PanelCharacter `json:"characters"`
+		Dialogues    []comic.DialogueLine   `json:"dialogues"`
 	} `json:"panels"`
 }
 
 // GenerateChapterScript は章立て全体を文脈として指定章のパネル群を生成し、
 // 既存の同章パネルを置き換えて state を返します（冪等）。
-func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *ports.MangaState, chapterID string) (*ports.MangaState, error) {
+func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *comic.MangaState, chapterID string) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です（先に GenerateOutline を実行してください）", ports.ErrInvalidRequest)
 	}
@@ -108,9 +110,9 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		parsed.Panels = parsed.Panels[:r.maxPanels]
 	}
 
-	panels := make([]ports.Panel, 0, len(parsed.Panels))
+	panels := make([]comic.Panel, 0, len(parsed.Panels))
 	for i, p := range parsed.Panels {
-		panels = append(panels, ports.Panel{
+		panels = append(panels, comic.Panel{
 			ID:           fmt.Sprintf("%s-p%02d", chapterID, i+1),
 			ChapterID:    chapterID,
 			Shot:         p.Shot,
@@ -138,16 +140,16 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 // フォールバックして別人が描かれる事故を防ぐため、background（参照なしのモブ）に降格します。
 // 参照画像を添付する primary/secondary が MaxReferencedCharactersPerPanel を超えた分も
 // 同じく background に降格します。
-func (r *ChapterScriptRunner) normalizeCharacters(chapterID string, chars []ports.PanelCharacter) []ports.PanelCharacter {
-	result := make([]ports.PanelCharacter, 0, len(chars))
+func (r *ChapterScriptRunner) normalizeCharacters(chapterID string, chars []comic.PanelCharacter) []comic.PanelCharacter {
+	result := make([]comic.PanelCharacter, 0, len(chars))
 	for _, pc := range chars {
 		if strings.TrimSpace(pc.CharacterID) == "" {
 			continue
 		}
-		if pc.Prominence != ports.ProminenceBackground && !r.knownCharacter(pc.CharacterID) {
+		if pc.Prominence != comic.ProminenceBackground && !r.knownCharacter(pc.CharacterID) {
 			slog.Warn("未定義のキャラクターIDをbackgroundに降格します",
 				"chapter", chapterID, "character_id", pc.CharacterID)
-			pc.Prominence = ports.ProminenceBackground
+			pc.Prominence = comic.ProminenceBackground
 		}
 		result = append(result, pc)
 	}
@@ -158,26 +160,26 @@ func (r *ChapterScriptRunner) normalizeCharacters(chapterID string, chars []port
 // MaxReferencedCharactersPerPanel まで絞り込み、あふれた分を background に降格します。
 // 残す優先度は primary > secondary で、同じ扱いの中では登場順を保ちます（決定的）。
 // スライス自体の並びは変えないため、AI が意図したコマ内の登場順は維持されます。
-func capReferencedCharacters(chapterID string, chars []ports.PanelCharacter) []ports.PanelCharacter {
+func capReferencedCharacters(chapterID string, chars []comic.PanelCharacter) []comic.PanelCharacter {
 	referenced := make([]int, 0, len(chars))
 	for i := range chars {
-		if chars[i].Prominence != ports.ProminenceBackground {
+		if chars[i].Prominence != comic.ProminenceBackground {
 			referenced = append(referenced, i)
 		}
 	}
-	if len(referenced) <= ports.MaxReferencedCharactersPerPanel {
+	if len(referenced) <= comic.MaxReferencedCharactersPerPanel {
 		return chars
 	}
 
 	slices.SortStableFunc(referenced, func(a, b int) int {
 		return prominenceRank(chars[a].Prominence) - prominenceRank(chars[b].Prominence)
 	})
-	for _, i := range referenced[ports.MaxReferencedCharactersPerPanel:] {
+	for _, i := range referenced[comic.MaxReferencedCharactersPerPanel:] {
 		slog.Warn("参照キャラクターが上限を超えたためbackgroundに降格します",
 			"chapter", chapterID,
 			"character_id", chars[i].CharacterID,
-			"max", ports.MaxReferencedCharactersPerPanel)
-		chars[i].Prominence = ports.ProminenceBackground
+			"max", comic.MaxReferencedCharactersPerPanel)
+		chars[i].Prominence = comic.ProminenceBackground
 	}
 	return chars
 }
@@ -185,7 +187,7 @@ func capReferencedCharacters(chapterID string, chars []ports.PanelCharacter) []p
 // prominenceRank は降格の優先順位（小さいほど残す）を返します。
 // primary 以外（secondary・未指定）はまとめて後回しにします。
 func prominenceRank(prominence string) int {
-	if prominence == ports.ProminencePrimary {
+	if prominence == comic.ProminencePrimary {
 		return 0
 	}
 	return 1
@@ -196,8 +198,8 @@ func prominenceRank(prominence string) int {
 // 未知の ID をそのまま話者名としてページ合成プロンプトに載せると、キャラクター名の位置に
 // 生の ID が描かれてしまうためで、登場キャラクターIDと同じ「AI が出した ID は検証してから
 // 使う」という不変条件に揃えています。
-func (r *ChapterScriptRunner) normalizeDialogues(chapterID string, lines []ports.DialogueLine) []ports.DialogueLine {
-	result := make([]ports.DialogueLine, 0, len(lines))
+func (r *ChapterScriptRunner) normalizeDialogues(chapterID string, lines []comic.DialogueLine) []comic.DialogueLine {
+	result := make([]comic.DialogueLine, 0, len(lines))
 	for _, line := range lines {
 		line.Text = strings.TrimSpace(line.Text)
 		if line.Text == "" {
@@ -208,7 +210,7 @@ func (r *ChapterScriptRunner) normalizeDialogues(chapterID string, lines []ports
 			slog.Warn("未定義の話者IDをナレーションに変更します",
 				"chapter", chapterID, "speaker_id", line.SpeakerID)
 			line.SpeakerID = ""
-			line.Kind = ports.DialogueKindNarration
+			line.Kind = comic.DialogueKindNarration
 		}
 		result = append(result, line)
 	}
@@ -223,7 +225,7 @@ func (r *ChapterScriptRunner) knownCharacter(id string) bool {
 }
 
 // outlineDigest は章立て全体の一覧（文脈用）を構築します。対象章には印を付けます。
-func outlineDigest(chapters []ports.Chapter, targetID string) string {
+func outlineDigest(chapters []comic.Chapter, targetID string) string {
 	var sb strings.Builder
 	for _, ch := range chapters {
 		marker := " "

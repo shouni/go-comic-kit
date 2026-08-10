@@ -1,6 +1,10 @@
+// Package ports は、go-comic-kit の操作の契約（インターフェース）と、
+// その入出力・設定を定義します。データモデルそのものは comic パッケージが持ちます。
 package ports
 
 import (
+	"github.com/shouni/go-comic-kit/comic"
+
 	"fmt"
 	"strings"
 	"time"
@@ -19,8 +23,6 @@ const (
 	DefaultMaxChapters = 8
 	// DefaultMaxPanelsPerChapter は章単位の台本生成の既定のパネル数上限です。
 	DefaultMaxPanelsPerChapter = 8
-	// DefaultMaxPanelsPerPage は1ページに載せるパネル数の既定値です（Repaginate 用）。
-	DefaultMaxPanelsPerPage = 6
 
 	// DefaultCacheControl は、生成画像を保存する際の既定の Cache-Control です。
 	// "public" は生成物を公開配信してよいという前提なので、非公開バケットへ書くデプロイでは
@@ -82,7 +84,7 @@ func (c *Config) ApplyDefaults() {
 		c.MaxPanelsPerChapter = DefaultMaxPanelsPerChapter
 	}
 	if c.MaxPanelsPerPage <= 0 {
-		c.MaxPanelsPerPage = DefaultMaxPanelsPerPage
+		c.MaxPanelsPerPage = comic.DefaultMaxPanelsPerPage
 	}
 	if c.RequestTimeout <= 0 {
 		c.RequestTimeout = DefaultRequestTimeout

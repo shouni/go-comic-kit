@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -14,7 +16,7 @@ type OutlineRunner struct {
 	prompt      ports.OutlinePrompt
 	aiClient    StructuredGenerator
 	reader      ports.ContentReader
-	characters  *ports.Characters
+	characters  *comic.Characters
 	model       string
 	maxChapters int
 }
@@ -27,7 +29,7 @@ func NewOutlineRunner(
 	prompt ports.OutlinePrompt,
 	aiClient StructuredGenerator,
 	reader ports.ContentReader,
-	characters *ports.Characters,
+	characters *comic.Characters,
 	model string,
 	maxChapters int,
 ) *OutlineRunner {
@@ -58,7 +60,7 @@ type outlineResponse struct {
 
 // GenerateOutline は元文章から章立てのみを持つ MangaState を生成します。
 // 章の ID はシステム側で "ch01" 形式に採番し直します（AI 出力の ID は信用しない）。
-func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRequest) (*ports.MangaState, error) {
+func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRequest) (*comic.MangaState, error) {
 	// 1. ソーステキストの解決
 	inputText, err := resolveSourceText(ctx, r.reader, req.SourceText, req.SourceURL)
 	if err != nil {
@@ -103,8 +105,8 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	}
 
 	now := time.Now().UTC()
-	state := &ports.MangaState{
-		Version:     ports.StateSchemaVersion,
+	state := &comic.MangaState{
+		Version:     comic.StateSchemaVersion,
 		Title:       parsed.Title,
 		Description: parsed.Description,
 		StyleMode:   req.StyleMode,
@@ -113,7 +115,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		UpdatedAt:   now,
 	}
 	for i, ch := range parsed.Chapters {
-		state.Chapters = append(state.Chapters, ports.Chapter{
+		state.Chapters = append(state.Chapters, comic.Chapter{
 			ID:            fmt.Sprintf("ch%02d", i+1),
 			Title:         ch.Title,
 			Summary:       ch.Summary,

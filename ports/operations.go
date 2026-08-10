@@ -1,6 +1,10 @@
 package ports
 
-import "context"
+import (
+	"context"
+
+	"github.com/shouni/go-comic-kit/comic"
+)
 
 // 本ファイルは go-comic-kit の操作セット（README.md の操作セット節）の契約を定義します。
 // すべての操作は冪等で、MangaState を受け取り更新済み MangaState を返します。
@@ -22,13 +26,13 @@ type OutlineRequest struct {
 // OutlineGenerator は、原稿から章立て（Chapters）のみを持つ MangaState を生成する契約です。
 // 台本生成の第1段で、各章のパネルは ChapterScriptGenerator が章単位で生成します。
 type OutlineGenerator interface {
-	GenerateOutline(ctx context.Context, req OutlineRequest) (*MangaState, error)
+	GenerateOutline(ctx context.Context, req OutlineRequest) (*comic.MangaState, error)
 }
 
 // ChapterScriptGenerator は、章立て全体を文脈としつつ指定章のパネル群（台本）を生成し、
 // 既存の同章パネルを置き換える契約です（冪等・章単位の再生成に対応）。
 type ChapterScriptGenerator interface {
-	GenerateChapterScript(ctx context.Context, state *MangaState, chapterID string) (*MangaState, error)
+	GenerateChapterScript(ctx context.Context, state *comic.MangaState, chapterID string) (*comic.MangaState, error)
 }
 
 // DesignOverride は、1回の呼び出しに限定してキャラクターの参照画像・visual_cues を
@@ -49,9 +53,10 @@ type DesignSheetRequest struct {
 	// 保存パス（OutputDir 配下の character/{tag}/{JobID}.ext）に使われ、同一キャラクターへの
 	// 複数回の生成を上書きせず履歴として残すためのものです。空文字は許可しません。
 	JobID string
-	// Seed は生成シードです。0 の場合は生成側で採番し、DesignSheetRef.UsedSeed に
+	// Seed は生成シードです。nil の場合は生成側で採番し、DesignSheetRef.UsedSeed に
 	// 記録します（その値を渡し直せば同じシートを再現できます）。
-	Seed int64
+	// GenerateOptions / BatchOptions の Seed と同じ表現です。
+	Seed *int64
 	// OutputDir はシート画像の保存先ベースディレクトリ（ローカルまたは gs://）です。
 	// キャラクターはジョブ（作品）非依存の共有アセットのため、通常はバケットのルート
 	// （例: "gs://bucket"）を渡します。相対パスは OutputDir に対して
@@ -78,7 +83,7 @@ const DesignLayoutSingleView = "single"
 // DesignSheetGenerator は、キャラクターの同一性アンカーとなるデザインシートを生成し、
 // その記録を MangaState に反映する契約です。state が nil の場合は新しい state を作成します。
 type DesignSheetGenerator interface {
-	GenerateDesignSheet(ctx context.Context, state *MangaState, req DesignSheetRequest) (*MangaState, error)
+	GenerateDesignSheet(ctx context.Context, state *comic.MangaState, req DesignSheetRequest) (*comic.MangaState, error)
 }
 
 // GenerateOptions はパネル・ページ生成系操作の共通オプションです。
@@ -102,16 +107,28 @@ type GenerateOptions struct {
 	OutputDir string
 }
 
-// PanelImageGenerator は、指定したパネル1コマを生成/再生成し、結果を
-// MangaState の GenerationRecord に記録する契約です。
+// PanelImageGenerator は、パネル画像を1コマ単位・全コマ一括で生成/再生成し、
+// 結果を comic.MangaState の comic.GenerationRecord に記録する契約です。
 type PanelImageGenerator interface {
-	GeneratePanel(ctx context.Context, state *MangaState, panelID string, opts GenerateOptions) (*MangaState, error)
+	GeneratePanel(ctx context.Context, state *comic.MangaState, panelID string, opts GenerateOptions) (*comic.MangaState, error)
+
+	// GenerateAllPanels は state 内の全パネルをまとめて生成します。
+	// 並列数は Config.MaxConcurrency に従います（既定の 1 では逐次実行と同じ挙動です）。
+	//
+	// 一部が失敗しても、成功した分を記録済みの state と、失敗を errors.Join でまとめた
+	// エラーの両方を返します（state が nil になるのは state 自体が不正だった場合だけです）。
+	// 画像生成は高価なので、成功分を保存してから SkipGenerated で残りだけ再実行できます。
+	GenerateAllPanels(ctx context.Context, state *comic.MangaState, opts BatchOptions) (*comic.MangaState, error)
 }
 
-// PageImageComposer は、指定ページのパネル群を1枚のページ画像として合成し、
-// 結果を MangaState の PageArtifact に記録する契約です。
+// PageImageComposer は、パネル群を1ページ単位・全ページ一括で合成し、
+// 結果を comic.MangaState の comic.PageArtifact に記録する契約です。
 type PageImageComposer interface {
-	ComposePage(ctx context.Context, state *MangaState, page int, opts GenerateOptions) (*MangaState, error)
+	ComposePage(ctx context.Context, state *comic.MangaState, page int, opts GenerateOptions) (*comic.MangaState, error)
+
+	// ComposeAllPages は state 内の全ページをまとめて合成します。
+	// 並列数とエラー時の戻り値の扱いは GenerateAllPanels と同じです。
+	ComposeAllPages(ctx context.Context, state *comic.MangaState, opts BatchOptions) (*comic.MangaState, error)
 }
 
 // BatchOptions は一括生成系操作（GenerateAllPanels / ComposeAllPages）のオプションです。
@@ -126,25 +143,9 @@ type BatchOptions struct {
 	ModelOverride string
 	// OutputDir は生成画像の保存先ベースディレクトリです。
 	OutputDir string
-	// SkipGenerated が true の場合、すでに生成済み（GenerationRecord を持つ）対象を飛ばします。
+	// SkipGenerated が true の場合、すでに生成済み（comic.GenerationRecord を持つ）対象を飛ばします。
 	// 途中まで成功した一括生成を、未生成分だけやり直すときに使います。
 	SkipGenerated bool
-}
-
-// PanelBatchGenerator は、state 内の全パネルをまとめて生成する契約です。
-// 並列数は Config.MaxConcurrency に従います（既定の 1 では逐次実行と同じ挙動です）。
-//
-// 一部が失敗しても、成功した分を記録済みの state と、失敗を errors.Join でまとめた
-// エラーの両方を返します（state が nil になるのは state 自体が不正だった場合だけです）。
-// 画像生成は高価なので、成功分を保存してから SkipGenerated で残りだけ再実行できます。
-type PanelBatchGenerator interface {
-	GenerateAllPanels(ctx context.Context, state *MangaState, opts BatchOptions) (*MangaState, error)
-}
-
-// PageBatchComposer は、state 内の全ページをまとめて合成する契約です。
-// エラー時の戻り値の扱いは PanelBatchGenerator と同じです。
-type PageBatchComposer interface {
-	ComposeAllPages(ctx context.Context, state *MangaState, opts BatchOptions) (*MangaState, error)
 }
 
 // Operations は、構築済みの全操作を保持します（workflow.New が組み立てて返します）。
@@ -154,11 +155,7 @@ type Operations struct {
 	DesignSheet   DesignSheetGenerator
 	Panel         PanelImageGenerator
 	Page          PageImageComposer
-	// PanelBatch / PageBatch は一括生成の入り口です。Panel / Page と同じ実体で、
-	// Config.MaxConcurrency に従って並列に実行します。
-	PanelBatch PanelBatchGenerator
-	PageBatch  PageBatchComposer
-	CloseFunc  func()
+	CloseFunc     func()
 }
 
 // Close は、保持しているリソースの解放関数（CloseFunc）を呼び出します。

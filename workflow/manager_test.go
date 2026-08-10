@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	characterkit "github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-http-kit/httpkit"
@@ -52,7 +54,7 @@ func (f *fakeWorkflowWriter) Write(_ context.Context, _ string, _ io.Reader, _ .
 
 func validArgs(t *testing.T) Args {
 	t.Helper()
-	cm, err := characterkit.NewCharacters([]ports.Character{
+	cm, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "zundamon", Name: "ずんだもん", ReferenceURL: "gs://b/z.png", VisualCues: []string{"green hair"}, IsDefault: true},
 	})
 	if err != nil {

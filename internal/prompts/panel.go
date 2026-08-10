@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -77,7 +79,7 @@ func (DefaultPanelPrompt) BuildPanelEdit(editPrompt string) (string, string, str
 }
 
 // subjectLine は1キャラクター分の [Subject N] 記述を構築します。
-func subjectLine(index int, char *ports.Character, pc *ports.PanelCharacter) string {
+func subjectLine(index int, char *comic.Character, pc *comic.PanelCharacter) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[Subject %d: %s", index, char.Name)
 	if len(char.VisualCues) > 0 {
@@ -100,7 +102,7 @@ func subjectLine(index int, char *ports.Character, pc *ports.PanelCharacter) str
 }
 
 // findPanelCharacter はパネル内のキャラクター指定を ID で引きます。
-func findPanelCharacter(panel *ports.Panel, charID string) *ports.PanelCharacter {
+func findPanelCharacter(panel *comic.Panel, charID string) *comic.PanelCharacter {
 	for i := range panel.Characters {
 		if panel.Characters[i].CharacterID == charID {
 			return &panel.Characters[i]
@@ -110,11 +112,11 @@ func findPanelCharacter(panel *ports.Panel, charID string) *ports.PanelCharacter
 }
 
 // backgroundExtras は background（モブ）キャラクターの一覧を返します。
-func backgroundExtras(panel *ports.Panel) string {
+func backgroundExtras(panel *comic.Panel) string {
 	var extras []string
 	for i := range panel.Characters {
 		pc := &panel.Characters[i]
-		if pc.Prominence != ports.ProminenceBackground {
+		if pc.Prominence != comic.ProminenceBackground {
 			continue
 		}
 		extras = append(extras, backgroundExtraDesc(pc))
@@ -123,7 +125,7 @@ func backgroundExtras(panel *ports.Panel) string {
 }
 
 // backgroundExtraDesc は background キャラクター1人分の記述を構築します。
-func backgroundExtraDesc(pc *ports.PanelCharacter) string {
+func backgroundExtraDesc(pc *comic.PanelCharacter) string {
 	desc := pc.CharacterID
 	if pc.Action != "" {
 		desc += " (" + pc.Action + ")"

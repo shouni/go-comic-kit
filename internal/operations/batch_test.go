@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-remote-io/remoteio"
 
@@ -65,20 +67,20 @@ func (w *concurrentWriter) Write(_ context.Context, path string, _ io.Reader, _ 
 }
 
 // batchState は指定コマ数の state を作ります（1章・全コマ同一ページ）。
-func batchState(t *testing.T, panelCount int) *ports.MangaState {
+func batchState(t *testing.T, panelCount int) *comic.MangaState {
 	t.Helper()
-	state := &ports.MangaState{
-		Version:  ports.StateSchemaVersion,
-		Chapters: []ports.Chapter{{ID: "ch01", Title: "導入"}},
+	state := &comic.MangaState{
+		Version:  comic.StateSchemaVersion,
+		Chapters: []comic.Chapter{{ID: "ch01", Title: "導入"}},
 	}
 	for i := 1; i <= panelCount; i++ {
-		state.Panels = append(state.Panels, ports.Panel{
+		state.Panels = append(state.Panels, comic.Panel{
 			ID:           fmt.Sprintf("ch01-p%02d", i),
 			ChapterID:    "ch01",
 			Page:         1,
 			VisualAnchor: fmt.Sprintf("scene-%02d", i),
-			Characters: []ports.PanelCharacter{
-				{CharacterID: "zundamon", Prominence: ports.ProminencePrimary},
+			Characters: []comic.PanelCharacter{
+				{CharacterID: "zundamon", Prominence: comic.ProminencePrimary},
 			},
 		})
 	}
@@ -172,7 +174,7 @@ func TestGenerateAllPanelsSkipGenerated(t *testing.T) {
 	runner.writer = &concurrentWriter{}
 
 	state := batchState(t, 3)
-	state.Panels[0].Generation = &ports.GenerationRecord{ImageURL: "gs://b/done.png"}
+	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://b/done.png"}
 
 	if _, err := runner.GenerateAllPanels(context.Background(), state,
 		ports.BatchOptions{SkipGenerated: true}); err != nil {
@@ -199,7 +201,7 @@ func TestGenerateAllPanelsNilState(t *testing.T) {
 func TestUniquePageNumbersSortedAndDeduplicated(t *testing.T) {
 	t.Parallel()
 
-	panels := []ports.Panel{{Page: 3}, {Page: 1}, {Page: 3}, {Page: 2}, {Page: 1}}
+	panels := []comic.Panel{{Page: 3}, {Page: 1}, {Page: 3}, {Page: 2}, {Page: 1}}
 	got := uniquePageNumbers(panels)
 	want := []int{1, 2, 3}
 	if len(got) != len(want) {
@@ -213,22 +215,22 @@ func TestUniquePageNumbersSortedAndDeduplicated(t *testing.T) {
 }
 
 // batchPageState は指定ページ数の state を作ります（各ページ1コマ、生成済み）。
-func batchPageState(t *testing.T, pageCount int) *ports.MangaState {
+func batchPageState(t *testing.T, pageCount int) *comic.MangaState {
 	t.Helper()
-	state := &ports.MangaState{
-		Version:  ports.StateSchemaVersion,
-		Chapters: []ports.Chapter{{ID: "ch01", Title: "導入"}},
+	state := &comic.MangaState{
+		Version:  comic.StateSchemaVersion,
+		Chapters: []comic.Chapter{{ID: "ch01", Title: "導入"}},
 	}
 	for i := 1; i <= pageCount; i++ {
-		state.Panels = append(state.Panels, ports.Panel{
+		state.Panels = append(state.Panels, comic.Panel{
 			ID:           fmt.Sprintf("ch01-p%02d", i),
 			ChapterID:    "ch01",
 			Page:         i,
 			VisualAnchor: fmt.Sprintf("page-%02d", i),
-			Characters: []ports.PanelCharacter{
-				{CharacterID: "zundamon", Prominence: ports.ProminencePrimary},
+			Characters: []comic.PanelCharacter{
+				{CharacterID: "zundamon", Prominence: comic.ProminencePrimary},
 			},
-			Generation: &ports.GenerationRecord{ImageURL: fmt.Sprintf("gs://b/panels/p%02d.png", i)},
+			Generation: &comic.GenerationRecord{ImageURL: fmt.Sprintf("gs://b/panels/p%02d.png", i)},
 		})
 	}
 	return state
@@ -304,10 +306,10 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 	runner.writer = &concurrentWriter{}
 
 	state := batchPageState(t, 3)
-	state.SetPageArtifact(ports.PageArtifact{
+	state.SetPageArtifact(comic.PageArtifact{
 		PageNumber: 1,
 		PanelIDs:   []string{"ch01-p01"},
-		Generation: &ports.GenerationRecord{ImageURL: "gs://b/page_1.png"},
+		Generation: &comic.GenerationRecord{ImageURL: "gs://b/page_1.png"},
 	})
 
 	if _, err := runner.ComposeAllPages(context.Background(), state,

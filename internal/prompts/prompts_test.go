@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-comic-kit/comic"
+
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -66,7 +68,7 @@ func TestBuildChapterScriptInjectsData(t *testing.T) {
 		WorkTitle:       "夜明けのデプロイ",
 		WorkDescription: "あらすじ",
 		OutlineDigest:   "▶ ch01: 導入 — つかみ",
-		Chapter: ports.Chapter{
+		Chapter: comic.Chapter{
 			ID:            "ch01",
 			Title:         "導入",
 			Summary:       "つかみ",
