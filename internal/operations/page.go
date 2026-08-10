@@ -58,7 +58,7 @@ type PageImageRunnerArgs struct {
 // NewPageImageRunner は依存関係を注入して初期化します。
 func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	if args.AspectRatio == "" {
-		args.AspectRatio = layout.PageAspectRatio
+		args.AspectRatio = layout.DefaultAspectRatio
 	}
 	if args.ImageSize == "" {
 		args.ImageSize = layout.ImageSize2K

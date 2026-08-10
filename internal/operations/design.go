@@ -25,6 +25,8 @@ type DesignSheetRunner struct {
 	writer       remoteio.Writer
 	model        string
 	styleSuffix  string
+	aspectRatio  string
+	imageSize    string
 	cacheControl string
 }
 
@@ -35,8 +37,7 @@ var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 // model / styleSuffix / cacheControl という無関係な文字列が3つ並び、取り違えても
 // コンパイルが通ってしまいます。
 type DesignSheetRunnerArgs struct {
-	// Prompt にはキット内蔵の prompts.DefaultDesignPrompt{} を渡すか、アプリ側で
-	// ports.DesignSheetPrompt を実装して独自のプロンプトに差し替えられます。
+	// Prompt はアプリ側が実装する ports.DesignSheetPrompt です（キットは内蔵しません）。
 	Prompt     ports.DesignSheetPrompt
 	Characters *comic.Characters
 	Generator  ImageGenerator
@@ -46,12 +47,24 @@ type DesignSheetRunnerArgs struct {
 	// 渡してください。パネル用の StyleSuffix（cinematic lighting 等の演出を含む）を渡すと、
 	// 参照アンカーに演出照明が焼き付きます。
 	StyleSuffix string
+	// AspectRatio は DesignSheetRequest.AspectRatio が未指定・未サポートのときの
+	// 既定です（ports.Config.AspectRatio）。空なら layout.DefaultAspectRatio。
+	AspectRatio string
+	// ImageSize は解像度です（ports.Config.PageImageSize）。空なら 2K。
+	// シートは全生成物の同一性アンカーなので、パネルではなくページ側に揃えます。
+	ImageSize string
 	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
 	CacheControl string
 }
 
 // NewDesignSheetRunner は依存関係を注入して初期化します。
 func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
+	if args.AspectRatio == "" {
+		args.AspectRatio = layout.DefaultAspectRatio
+	}
+	if args.ImageSize == "" {
+		args.ImageSize = layout.ImageSize2K
+	}
 	return &DesignSheetRunner{
 		prompt:       args.Prompt,
 		characters:   args.Characters,
@@ -59,6 +72,8 @@ func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 		writer:       args.Writer,
 		model:        args.Model,
 		styleSuffix:  args.StyleSuffix,
+		aspectRatio:  args.AspectRatio,
+		imageSize:    args.ImageSize,
 		cacheControl: args.CacheControl,
 	}
 }
@@ -108,8 +123,8 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		Prompt:         userPrompt,
 		SystemPrompt:   systemPrompt,
 		NegativePrompt: negativePrompt,
-		AspectRatio:    layout.NormalizeDesignAspectRatio(req.AspectRatio),
-		ImageSize:      layout.ImageSize2K,
+		AspectRatio:    layout.NormalizeAspectRatio(req.AspectRatio, dr.aspectRatio),
+		ImageSize:      dr.imageSize,
 		Seed:           designSeed(req.Seed),
 		Images:         imageURIs,
 		CacheControl:   dr.cacheControl,
