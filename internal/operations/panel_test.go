@@ -10,7 +10,6 @@ import (
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -89,7 +88,7 @@ func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, 
 
 func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 	t.Parallel()
-	r, gen, writer := newPanelRunner(t, nil)
+	r, gen, writer := newPanelRunner(t, &fakePanelPrompt{})
 	state := panelTestState()
 
 	state, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{OutputDir: "gs://bucket/out"})
@@ -126,7 +125,7 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 		}
 	}
 
-	if gen.lastReq.SystemPrompt != prompts.PanelSystemPrompt {
+	if gen.lastReq.SystemPrompt != fakeSystemPrompt {
 		t.Error("SystemPrompt not set")
 	}
 	if !strings.Contains(gen.lastReq.NegativePrompt, "speech bubble") || !strings.Contains(gen.lastReq.NegativePrompt, "extra fingers") {
@@ -156,7 +155,7 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 
 func TestGeneratePanelReusesPreviousSeed(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPanelRunner(t, nil)
+	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 	state := panelTestState()
 	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}
 
@@ -170,7 +169,7 @@ func TestGeneratePanelReusesPreviousSeed(t *testing.T) {
 
 func TestGeneratePanelExplicitSeedWins(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPanelRunner(t, nil)
+	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 	state := panelTestState()
 	state.Panels[0].Generation = &comic.GenerationRecord{UsedSeed: 777}
 
@@ -185,7 +184,7 @@ func TestGeneratePanelExplicitSeedWins(t *testing.T) {
 
 func TestGeneratePanelEditMode(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPanelRunner(t, nil)
+	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 	state := panelTestState()
 	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://bucket/out/images/panel_ch01-p01.png", UsedSeed: 777}
 
@@ -201,7 +200,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0].ReferenceURL != "gs://bucket/out/images/panel_ch01-p01.png" {
 		t.Errorf("Images = %+v, want the existing panel image only", gen.lastReq.Images)
 	}
-	if !strings.Contains(gen.lastReq.Prompt, prompts.PanelEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "笑顔") {
+	if !strings.Contains(gen.lastReq.Prompt, "FAKE-PANEL-EDIT") || !strings.Contains(gen.lastReq.Prompt, "笑顔") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
 	// 編集モードではキャラ参照の事前アップロードは不要
@@ -209,7 +208,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 
 func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPanelRunner(t, nil)
+	r, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
 		EditPrompt: "表情を変える",
@@ -221,7 +220,7 @@ func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {
 
 func TestGeneratePanelPromptOverride(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPanelRunner(t, nil)
+	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
 		PromptOverride: "custom prompt",
@@ -240,7 +239,7 @@ func TestGeneratePanelPromptOverride(t *testing.T) {
 
 func TestGeneratePanelUnknownPanelFails(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPanelRunner(t, nil)
+	r, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch99-p01", ports.GenerateOptions{}); err == nil {
 		t.Error("GeneratePanel(unknown) succeeded, want error")
@@ -252,7 +251,7 @@ func TestGeneratePanelUnknownPanelFails(t *testing.T) {
 
 func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPanelRunner(t, nil)
+	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 	state := panelTestState()
 	state.Panels[0].Characters = nil // 風景のみのコマ
 

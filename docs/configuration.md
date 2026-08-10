@@ -18,19 +18,19 @@
 | `CacheControl` | 生成画像を保存する際の `Cache-Control`。空なら `ports.DefaultCacheControl`（`public, max-age=1800`）。非公開バケットへ書くデプロイでは `private` 等を指定してください |
 | `MaxChapters` / `MaxPanelsPerChapter` / `MaxPanelsPerPage` | 章数・章あたりのコマ数・1ページあたりのコマ数の上限 |
 
-## プロンプトの差し替え
+## プロンプトの注入
 
-5操作すべてのプロンプトを `workflow.Args` から差し替えられます（nil でキット内蔵の既定）。
+5操作すべてのプロンプトを `workflow.Args` で注入します。**5つとも必須**で、nil があると `workflow.New` が構築に失敗します。キットは内蔵プロンプトを持ちません。
 
-| Args フィールド | インターフェース | 実装が受け取るデータ | キット内蔵の既定 |
+| Args フィールド | インターフェース | 実装が受け取るデータ |
 | --- | --- | --- | --- |
-| `OutlinePrompt` | `ports.OutlinePrompt` | `OutlinePromptData` | go:embed テンプレート（`.md` を置くだけでモード追加） |
-| `ChapterScriptPrompt` | `ports.ChapterScriptPrompt` | `ChapterPromptData` | 同上 |
-| `DesignSheetPrompt` | `ports.DesignSheetPrompt` | `DesignSheetPromptData` | 平叙な Go 実装（3面図・単一ポーズ） |
-| `PanelPrompt` | `ports.PanelPrompt` | `PanelPromptData` | **簡潔版**（参照順・文字禁止・指5本のみ） |
-| `PagePrompt` | `ports.PagePrompt` | `PagePromptData` | **簡潔版**（コマ数・読み順・参照番号のみ） |
+| `OutlinePrompt` | `ports.OutlinePrompt` | `OutlinePromptData` |
+| `ChapterScriptPrompt` | `ports.ChapterScriptPrompt` | `ChapterPromptData` |
+| `DesignSheetPrompt` | `ports.DesignSheetPrompt` | `DesignSheetPromptData` |
+| `PanelPrompt` | `ports.PanelPrompt` | `PanelPromptData` |
+| `PagePrompt` | `ports.PagePrompt` | `PagePromptData` |
 
-**キット内蔵の既定プロンプトが簡潔なのは意図的です。** 参照画像との対応順・コマ数・読み順・文字を描かないことといった、外すと**形式が壊れる**指示だけを持ちます。画風の言い回しやコマ割りの演出は作品ごとに作り込むもので、キットに置くとプロンプトを1文字変えるたびにキットのリリースが必要になります。利用側では `internal/adapters/prompts` のような層を設けて、そこにプロンプトの組み立てをまとめてください。
+**キットがプロンプトを一切持たないのは意図的です。** 参照画像との対応順・コマ数・読み順といった構造的な指示ですら、作品によって作り込みが変わります。キットに置くとプロンプトを1文字変えるたびにキットのリリースが必要になるため、モデル名・画風指定と同じく**アプリが持つ**方針に統一しました。利用側では `internal/adapters/prompts` のような層を設けて、そこにプロンプトの組み立てをまとめてください（`PanelPromptData.SubjectIDs` と `PagePromptData.CharacterFile` / `PanelFile` が参照画像の番号の唯一の情報源です。ここがずれると、モデルは別人の参照画像を見ながら描きます）。
 
 `GenerateOptions.PromptOverride` は呼び出し単位で**本文だけ**を差し替えます（システム指示とネガティブプロンプトは実装のものが残ります）。
 

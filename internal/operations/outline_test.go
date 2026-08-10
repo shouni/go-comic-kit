@@ -11,7 +11,6 @@ import (
 
 	"github.com/shouni/go-gemini-client/gemini"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -54,10 +53,7 @@ const outlineJSON = `{
 
 func newOutlineRunner(t *testing.T, ai StructuredGenerator, reader ports.ContentReader) *OutlineRunner {
 	t.Helper()
-	p, err := prompts.NewScriptPrompts()
-	if err != nil {
-		t.Fatalf("NewScriptPrompts failed: %v", err)
-	}
+	p := &fakeScriptPrompt{}
 	return NewOutlineRunner(p, ai, reader, nil, "test-model", 0)
 }
 

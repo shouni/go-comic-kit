@@ -8,8 +8,6 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 
 	characterkit "github.com/shouni/go-character-kit/character"
-
-	"github.com/shouni/go-comic-kit/internal/prompts"
 )
 
 const chapterJSON = `{
@@ -51,10 +49,7 @@ func outlineState() *comic.MangaState {
 
 func newChapterRunner(t *testing.T, ai *fakeContentGenerator) *ChapterScriptRunner {
 	t.Helper()
-	p, err := prompts.NewScriptPrompts()
-	if err != nil {
-		t.Fatalf("NewScriptPrompts failed: %v", err)
-	}
+	p := &fakeScriptPrompt{}
 	cm, err := characterkit.NewCharacters([]comic.Character{
 		{ID: "zundamon", Name: "ずんだもん", ReferenceURL: "gs://b/z.png", VisualCues: []string{"green hair"}, IsDefault: true},
 		{ID: "metan", Name: "めたん", ReferenceURL: "gs://b/m.png", VisualCues: []string{"purple hair"}},

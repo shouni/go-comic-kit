@@ -14,7 +14,6 @@ import (
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/internal/operations"
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -35,16 +34,13 @@ type Args struct {
 	AIClient   gemini.Model
 	Characters *comic.Characters
 
-	// OutlinePrompt / ChapterScriptPrompt / DesignSheetPrompt を指定するとプロンプト構築を
-	// 差し替えられます。nil の場合はキット内蔵テンプレート（prompts パッケージ）を使います。
+	// プロンプトは5つとも必須です。キットは内蔵テンプレートを持ちません。
+	// 作品ごとに調整する文言なので、キットのリリースを挟まずに変えられる側が持ちます。
 	OutlinePrompt       ports.OutlinePrompt
 	ChapterScriptPrompt ports.ChapterScriptPrompt
 	DesignSheetPrompt   ports.DesignSheetPrompt
-	// PanelPrompt / PagePrompt も同様に差し替え可能です。キット内蔵の既定は、
-	// 参照画像との対応やコマ数といった構造的な指示だけを持つ簡潔なものです。
-	// 作品ごとの作り込みはアプリ側で実装してください。
-	PanelPrompt ports.PanelPrompt
-	PagePrompt  ports.PagePrompt
+	PanelPrompt         ports.PanelPrompt
+	PagePrompt          ports.PagePrompt
 }
 
 // generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
@@ -71,26 +67,6 @@ func New(args Args) (*ports.Operations, error) {
 	cfg.ApplyDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
-	}
-
-	// プロンプトの既定はキット内蔵テンプレート
-	outlinePrompt := args.OutlinePrompt
-	chapterPrompt := args.ChapterScriptPrompt
-	if outlinePrompt == nil || chapterPrompt == nil {
-		builtin, err := prompts.NewScriptPrompts()
-		if err != nil {
-			return nil, fmt.Errorf("内蔵プロンプトテンプレートの読み込みに失敗しました: %w", err)
-		}
-		if outlinePrompt == nil {
-			outlinePrompt = builtin
-		}
-		if chapterPrompt == nil {
-			chapterPrompt = builtin
-		}
-	}
-	designPrompt := args.DesignSheetPrompt
-	if designPrompt == nil {
-		designPrompt = prompts.DefaultDesignPrompt{}
 	}
 
 	// AI 呼び出しの発射間隔はワークフロー全体で1つのリミッターに集約する
@@ -131,15 +107,15 @@ func New(args Args) (*ports.Operations, error) {
 
 	ops := &ports.Operations{
 		Outline: operations.NewOutlineRunner(
-			outlinePrompt, textGenerator, args.Reader, args.Characters,
+			args.OutlinePrompt, textGenerator, args.Reader, args.Characters,
 			cfg.GeminiModel, cfg.MaxChapters,
 		),
 		ChapterScript: operations.NewChapterScriptRunner(
-			chapterPrompt, textGenerator, args.Characters,
+			args.ChapterScriptPrompt, textGenerator, args.Characters,
 			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
 		DesignSheet: operations.NewDesignSheetRunner(operations.DesignSheetRunnerArgs{
-			Prompt:       designPrompt,
+			Prompt:       args.DesignSheetPrompt,
 			Characters:   args.Characters,
 			Generator:    images.imageGenerator,
 			Writer:       args.Writer,
@@ -204,6 +180,22 @@ func validateArgs(args *Args) error {
 	}
 	if args.Characters == nil {
 		return fmt.Errorf("characters is required")
+	}
+	// プロンプトはキットが持ちません。作品ごとに調整する文言なので、キットのリリースを
+	// 挟まずに変えられる側（アプリ）が実装します（画風指定・モデル名と同じ理由）。
+	for _, p := range []struct {
+		name  string
+		value any
+	}{
+		{"outlinePrompt", args.OutlinePrompt},
+		{"chapterScriptPrompt", args.ChapterScriptPrompt},
+		{"designSheetPrompt", args.DesignSheetPrompt},
+		{"panelPrompt", args.PanelPrompt},
+		{"pagePrompt", args.PagePrompt},
+	} {
+		if p.value == nil {
+			return fmt.Errorf("%s is required", p.name)
+		}
 	}
 	return nil
 }

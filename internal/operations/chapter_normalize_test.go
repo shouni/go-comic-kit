@@ -9,7 +9,6 @@ import (
 
 	characterkit "github.com/shouni/go-character-kit/character"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -47,10 +46,7 @@ const normalizeChapterJSON = `{
 // 2体しか登録しない newChapterRunner とは別に用意しています。
 func newChapterRunnerWithCast(t *testing.T, ai *fakeContentGenerator, ids ...string) *ChapterScriptRunner {
 	t.Helper()
-	p, err := prompts.NewScriptPrompts()
-	if err != nil {
-		t.Fatalf("NewScriptPrompts failed: %v", err)
-	}
+	p := &fakeScriptPrompt{}
 	cast := make([]comic.Character, 0, len(ids))
 	for i, id := range ids {
 		cast = append(cast, comic.Character{

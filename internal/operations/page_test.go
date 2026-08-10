@@ -9,7 +9,6 @@ import (
 
 	characterkit "github.com/shouni/go-character-kit/character"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -90,7 +89,7 @@ func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mo
 
 func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	t.Parallel()
-	r, gen, writer := newPageRunner(t, nil)
+	r, gen, writer := newPageRunner(t, &fakePagePrompt{})
 	state := pageTestState()
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out"})
@@ -161,7 +160,7 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 
 func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPageRunner(t, nil)
+	r, gen, _ := newPageRunner(t, &fakePagePrompt{})
 	state := pageTestState()
 	state.Pages = []comic.PageArtifact{
 		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
@@ -187,7 +186,7 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 
 func TestComposePageEditMode(t *testing.T) {
 	t.Parallel()
-	r, gen, _ := newPageRunner(t, nil)
+	r, gen, _ := newPageRunner(t, &fakePagePrompt{})
 	state := pageTestState()
 	state.Pages = []comic.PageArtifact{
 		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://b/pages/page1.png"}},
@@ -203,14 +202,14 @@ func TestComposePageEditMode(t *testing.T) {
 	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0].ReferenceURL != "gs://b/pages/page1.png" {
 		t.Errorf("Images = %+v, want existing page image only", gen.lastReq.Images)
 	}
-	if !strings.Contains(gen.lastReq.Prompt, prompts.PageEditInstruction) || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
+	if !strings.Contains(gen.lastReq.Prompt, "FAKE-PAGE-EDIT") || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
 }
 
 func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPageRunner(t, nil)
+	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更"})
 	if err == nil || !strings.Contains(err.Error(), "編集対象") {
@@ -220,7 +219,7 @@ func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 
 func TestComposePageEmptyPageFails(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newPageRunner(t, nil)
+	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 	if _, err := r.ComposePage(context.Background(), pageTestState(), 99, ports.GenerateOptions{}); err == nil {
 		t.Error("ComposePage(empty page) succeeded, want error")

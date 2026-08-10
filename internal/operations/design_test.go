@@ -12,7 +12,6 @@ import (
 	characterkit "github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-remote-io/remoteio"
 
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -47,7 +46,7 @@ func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, opts ...
 
 func ptr[T any](v T) *T { return &v }
 
-func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *mockWriter) {
+func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *mockWriter, *fakeDesignPrompt) {
 	t.Helper()
 	cm, err := characterkit.NewCharacters([]comic.Character{
 		{
@@ -69,22 +68,23 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 	}
 	genMock := &mockDesignGenerator{}
 	writer := &mockWriter{}
+	designPrompt := &fakeDesignPrompt{}
 	dr := NewDesignSheetRunner(DesignSheetRunnerArgs{
-		Prompt:      prompts.DefaultDesignPrompt{},
+		Prompt:      designPrompt,
 		Characters:  cm,
 		Generator:   genMock,
 		Writer:      writer,
 		Model:       "test-image-model",
 		StyleSuffix: "test design style",
 	})
-	return dr, genMock, writer
+	return dr, genMock, writer, designPrompt
 }
 
 // --- Tests ---
 
 func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	t.Parallel()
-	dr, genMock, writer := newTestRunner(t)
+	dr, genMock, writer, designPrompt := newTestRunner(t)
 
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
@@ -116,18 +116,18 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		t.Error("CreatedAt/UpdatedAt must be set")
 	}
 
-	// 生成リクエストの検証（内蔵デフォルトプロンプトの内容）
-	if !strings.Contains(genMock.lastReq.SystemPrompt, "canonical identity reference") {
-		t.Errorf("SystemPrompt = %q, want identity-consistency instructions", genMock.lastReq.SystemPrompt)
+	// プロンプト本文はアプリ側の実装が持つので、ここで確かめるのは
+	// 「実装へ何を渡したか」と「返ってきた3本をそのまま載せたか」だけ。
+	if designPrompt.data == nil || len(designPrompt.data.Descriptions) != 1 ||
+		!strings.Contains(designPrompt.data.Descriptions[0], "orange hair") {
+		t.Errorf("Descriptions = %+v, want the character's visual cues", designPrompt.data)
 	}
-	if !strings.Contains(genMock.lastReq.NegativePrompt, "Do not include") {
-		t.Errorf("NegativePrompt = %q, want instruction-style exclusion list", genMock.lastReq.NegativePrompt)
+	if designPrompt.data.StyleSuffix != "test design style" {
+		t.Errorf("StyleSuffix = %q, want the configured design style", designPrompt.data.StyleSuffix)
 	}
-	if !strings.Contains(genMock.lastReq.Prompt, "flat even neutral lighting") {
-		t.Errorf("Prompt = %q, want flat lighting constraint", genMock.lastReq.Prompt)
-	}
-	if !strings.Contains(genMock.lastReq.Prompt, "orange hair") {
-		t.Errorf("Prompt = %q, want visual cues", genMock.lastReq.Prompt)
+	if genMock.lastReq.SystemPrompt != fakeSystemPrompt || genMock.lastReq.NegativePrompt != fakeNegativePrompt {
+		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
+			genMock.lastReq.SystemPrompt, genMock.lastReq.NegativePrompt)
 	}
 	if genMock.lastReq.AspectRatio != "16:9" {
 		t.Errorf("AspectRatio = %q, want default 16:9", genMock.lastReq.AspectRatio)
@@ -143,7 +143,7 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 
 func TestGenerateDesignSheetUpsertsExistingRef(t *testing.T) {
 	t.Parallel()
-	dr, _, _ := newTestRunner(t)
+	dr, _, _, _ := newTestRunner(t)
 
 	state := &comic.MangaState{
 		Version:      comic.StateSchemaVersion,
@@ -169,7 +169,7 @@ func TestGenerateDesignSheetUpsertsExistingRef(t *testing.T) {
 
 func TestGenerateDesignSheetMultiCharacterFusion(t *testing.T) {
 	t.Parallel()
-	dr, genMock, _ := newTestRunner(t)
+	dr, genMock, _, designPrompt := newTestRunner(t)
 
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi", "metan"},
@@ -180,8 +180,8 @@ func TestGenerateDesignSheetMultiCharacterFusion(t *testing.T) {
 		t.Fatalf("GenerateDesignSheet failed: %v", err)
 	}
 
-	if !strings.Contains(genMock.lastReq.Prompt, "2 DIFFERENT characters") {
-		t.Errorf("Prompt = %q, want multi-subject prompt", genMock.lastReq.Prompt)
+	if designPrompt.data == nil || len(designPrompt.data.Descriptions) != 2 {
+		t.Errorf("Descriptions = %+v, want one per character", designPrompt.data)
 	}
 	if len(genMock.lastReq.Images) != 2 {
 		t.Errorf("Images = %+v, want 2 reference images", genMock.lastReq.Images)
@@ -194,7 +194,7 @@ func TestGenerateDesignSheetMultiCharacterFusion(t *testing.T) {
 
 func TestGenerateDesignSheetAppliesOverrideForSingleCharacter(t *testing.T) {
 	t.Parallel()
-	dr, genMock, _ := newTestRunner(t)
+	dr, genMock, _, designPrompt := newTestRunner(t)
 
 	override := ports.DesignOverride{
 		ReferenceURL: "gs://bucket/tsumugi-draft.png",
@@ -216,17 +216,18 @@ func TestGenerateDesignSheetAppliesOverrideForSingleCharacter(t *testing.T) {
 	if genMock.lastReq.Images[0].FileAPIURI != "" {
 		t.Errorf("FileAPIURI = %q, want empty (override URLs bypass pre-upload)", genMock.lastReq.Images[0].FileAPIURI)
 	}
-	if !strings.Contains(genMock.lastReq.Prompt, "temporary test outfit") {
-		t.Errorf("Prompt = %q, want overridden visual cues", genMock.lastReq.Prompt)
+	desc := strings.Join(designPrompt.data.Descriptions, " ")
+	if !strings.Contains(desc, "temporary test outfit") {
+		t.Errorf("Descriptions = %q, want overridden visual cues", desc)
 	}
-	if strings.Contains(genMock.lastReq.Prompt, "orange hair") {
-		t.Errorf("Prompt = %q, must not contain original cues once overridden", genMock.lastReq.Prompt)
+	if strings.Contains(desc, "orange hair") {
+		t.Errorf("Descriptions = %q, must not contain original cues once overridden", desc)
 	}
 }
 
 func TestGenerateDesignSheetIgnoresOverrideForMultipleCharacters(t *testing.T) {
 	t.Parallel()
-	dr, genMock, _ := newTestRunner(t)
+	dr, genMock, _, _ := newTestRunner(t)
 
 	override := ports.DesignOverride{ReferenceURL: "gs://bucket/should-be-ignored.png"}
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
@@ -248,7 +249,7 @@ func TestGenerateDesignSheetIgnoresOverrideForMultipleCharacters(t *testing.T) {
 
 func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 	t.Parallel()
-	dr, genMock, _ := newTestRunner(t)
+	dr, genMock, _, designPrompt := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
@@ -261,11 +262,8 @@ func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 		t.Fatalf("GenerateDesignSheet failed: %v", err)
 	}
 
-	if !strings.Contains(genMock.lastReq.Prompt, "single view, front-facing") {
-		t.Errorf("Prompt = %q, want single-view layout", genMock.lastReq.Prompt)
-	}
-	if strings.Contains(genMock.lastReq.Prompt, "multiple views") {
-		t.Errorf("Prompt = %q, must not contain multi-view layout", genMock.lastReq.Prompt)
+	if designPrompt.data.Layout != ports.DesignLayoutSingleView {
+		t.Errorf("Layout = %q, want %q", designPrompt.data.Layout, ports.DesignLayoutSingleView)
 	}
 	if genMock.lastReq.AspectRatio != "9:16" {
 		t.Errorf("AspectRatio = %q, want 9:16", genMock.lastReq.AspectRatio)
@@ -274,7 +272,7 @@ func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 
 func TestGenerateDesignSheetAppliesModelOverride(t *testing.T) {
 	t.Parallel()
-	dr, genMock, _ := newTestRunner(t)
+	dr, genMock, _, _ := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs:  []string{"tsumugi"},
@@ -293,7 +291,7 @@ func TestGenerateDesignSheetAppliesModelOverride(t *testing.T) {
 
 func TestGenerateDesignSheetUsesDefaultModelWithoutOverride(t *testing.T) {
 	t.Parallel()
-	dr, genMock, _ := newTestRunner(t)
+	dr, genMock, _, _ := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
@@ -311,7 +309,7 @@ func TestGenerateDesignSheetUsesDefaultModelWithoutOverride(t *testing.T) {
 
 func TestGenerateDesignSheetUnknownCharacterFails(t *testing.T) {
 	t.Parallel()
-	dr, _, _ := newTestRunner(t)
+	dr, _, _, _ := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"unknown"},
@@ -325,7 +323,7 @@ func TestGenerateDesignSheetUnknownCharacterFails(t *testing.T) {
 
 func TestGenerateDesignSheetRequiresJobID(t *testing.T) {
 	t.Parallel()
-	dr, _, _ := newTestRunner(t)
+	dr, _, _, _ := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},

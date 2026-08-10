@@ -15,7 +15,6 @@ import (
 
 	"github.com/shouni/go-comic-kit/asset"
 	"github.com/shouni/go-comic-kit/internal/layout"
-	"github.com/shouni/go-comic-kit/internal/prompts"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -66,9 +65,6 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	}
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
-	}
-	if args.Prompt == nil {
-		args.Prompt = prompts.DefaultPagePrompt{}
 	}
 	return &PageImageRunner{
 		characters:     args.Characters,
