@@ -9,8 +9,7 @@
 | 設定項目 | 役割 |
 | --- | --- |
 | `GeminiModel` | 台本生成（章立て・章台本）に使うテキストモデル（**必須**） |
-| `ImageStandardModel` | パネル画像に使う標準・高速モデル（**必須**） |
-| `ImageQualityModel` | デザインシート・ページ合成に使う高品質モデル（**必須**） |
+| `ImageModel` | デザインシート・パネル・ページのすべてに使う画像生成モデル（**必須**） |
 | `StyleSuffix` | パネル・ページ画像の画風指定（**必須**） |
 | `DesignStyleSuffix` | デザインシートの画風指定（**必須**）。`StyleSuffix` と**分離**されています。シートは同一性アンカーなので、照明・演出系の語を入れると下流の全生成に焼き付きます |
 | `MaxConcurrency` | 一括生成の最大並列数（1コマ・1ページ単位の操作には影響しません） |
@@ -46,7 +45,6 @@
 | `HTTPClient` | go-http-kit の HTTP クライアント |
 | `Reader` / `Writer` | `ports.ContentReader` / `remoteio.Writer`（原稿の読み込み・成果物の保存） |
 | `AIClient` | 台本生成と標準品質の画像生成（パネル）に使う `gemini.Model` |
-| `AIClientQuality` | 高品質系の画像生成（デザインシート・ページ合成）。nil なら `AIClient` を使います |
 | `Characters` | `*ports.Characters`（go-character-kit の `characters.json`） |
 
 `workflow.New` が返す `*ports.Operations` は、使い終わったら **`Close()`** を呼んでください（内部 TTL キャッシュのバックグラウンド goroutine を停止します。複数回呼んでも安全で、nil レシーバでも panic しません）。

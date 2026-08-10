@@ -42,7 +42,7 @@ type PanelImageRunnerArgs struct {
 	Prompt    ports.PanelPrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	// Model は画像生成に使うモデル名です（標準系: ports.Config.ImageStandardModel 推奨）。
+	// Model は画像生成に使うモデル名です（ports.Config.ImageModel）。
 	Model string
 	// StyleSuffix にはパネル用の画風指定（ports.Config.StyleSuffix）を渡してください。
 	StyleSuffix string

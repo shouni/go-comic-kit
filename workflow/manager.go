@@ -29,12 +29,9 @@ type Args struct {
 	HTTPClient httpkit.HTTPClient
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
-	// AIClient はテキスト生成（台本）と標準画質の画像生成（パネル）に使います。
-	AIClient gemini.Model
-	// AIClientQuality は高品質系の画像生成（デザインシート・ページ合成）に使います。
-	// nil の場合は AIClient を使います。
-	AIClientQuality gemini.Model
-	Characters      *ports.Characters
+	// AIClient はテキスト生成（台本）と画像生成（デザインシート・パネル・ページ）に使います。
+	AIClient   gemini.Model
+	Characters *ports.Characters
 
 	// OutlinePrompt / ChapterScriptPrompt / DesignSheetPrompt を指定するとプロンプト構築を
 	// 差し替えられます。nil の場合はキット内蔵テンプレート（prompts パッケージ）を使います。
@@ -74,11 +71,6 @@ func New(args Args) (*ports.Operations, error) {
 		return nil, err
 	}
 
-	aiClientQuality := args.AIClientQuality
-	if aiClientQuality == nil {
-		aiClientQuality = args.AIClient
-	}
-
 	// プロンプトの既定はキット内蔵テンプレート
 	outlinePrompt := args.OutlinePrompt
 	chapterPrompt := args.ChapterScriptPrompt
@@ -106,14 +98,9 @@ func New(args Args) (*ports.Operations, error) {
 		timeout: cfg.RequestTimeout,
 	}
 
-	standard, err := buildGenerationUnit(&args, args.AIClient, cfg.ImageStandardModel, guard)
+	images, err := buildGenerationUnit(&args, args.AIClient, cfg.ImageModel, guard)
 	if err != nil {
-		return nil, fmt.Errorf("standard 生成ユニットの構築に失敗しました: %w", err)
-	}
-	quality, err := buildGenerationUnit(&args, aiClientQuality, cfg.ImageQualityModel, guard)
-	if err != nil {
-		standard.stop()
-		return nil, fmt.Errorf("quality 生成ユニットの構築に失敗しました: %w", err)
+		return nil, fmt.Errorf("画像生成ユニットの構築に失敗しました: %w", err)
 	}
 
 	// 同一内容のテキスト生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
@@ -122,9 +109,9 @@ func New(args Args) (*ports.Operations, error) {
 	panelRunner := operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
 		Characters:     args.Characters,
 		Prompt:         args.PanelPrompt,
-		Generator:      standard.imageGenerator,
+		Generator:      images.imageGenerator,
 		Writer:         args.Writer,
-		Model:          standard.model,
+		Model:          images.model,
 		StyleSuffix:    cfg.StyleSuffix,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
@@ -132,9 +119,9 @@ func New(args Args) (*ports.Operations, error) {
 	pageRunner := operations.NewPageImageRunner(operations.PageImageRunnerArgs{
 		Characters:     args.Characters,
 		Prompt:         args.PagePrompt,
-		Generator:      quality.imageGenerator,
+		Generator:      images.imageGenerator,
 		Writer:         args.Writer,
-		Model:          quality.model,
+		Model:          images.model,
 		StyleSuffix:    cfg.StyleSuffix,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
@@ -152,9 +139,9 @@ func New(args Args) (*ports.Operations, error) {
 		DesignSheet: operations.NewDesignSheetRunner(operations.DesignSheetRunnerArgs{
 			Prompt:       designPrompt,
 			Characters:   args.Characters,
-			Generator:    quality.imageGenerator,
+			Generator:    images.imageGenerator,
 			Writer:       args.Writer,
-			Model:        quality.model,
+			Model:        images.model,
 			StyleSuffix:  cfg.DesignStyleSuffix,
 			CacheControl: cfg.CacheControl,
 		}),
@@ -162,10 +149,7 @@ func New(args Args) (*ports.Operations, error) {
 		Page:       pageRunner,
 		PanelBatch: panelRunner,
 		PageBatch:  pageRunner,
-		CloseFunc: func() {
-			standard.stop()
-			quality.stop()
-		},
+		CloseFunc:  images.stop,
 	}
 	return ops, nil
 }

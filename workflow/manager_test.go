@@ -61,11 +61,10 @@ func validArgs(t *testing.T) Args {
 	return Args{
 		// モデル名と画風指定はキットが既定値を持たないため、呼び出し側が必ず指定する。
 		Config: ports.Config{
-			GeminiModel:        "gemini-test",
-			ImageStandardModel: "image-standard-test",
-			ImageQualityModel:  "image-quality-test",
-			StyleSuffix:        "test panel style",
-			DesignStyleSuffix:  "test design style",
+			GeminiModel:       "gemini-test",
+			ImageModel:        "image-test",
+			StyleSuffix:       "test panel style",
+			DesignStyleSuffix: "test design style",
 		},
 		HTTPClient: httpkit.New(5 * time.Second),
 		Reader:     &fakeWorkflowReader{},
@@ -119,11 +118,10 @@ func TestNewRejectsMissingRequiredConfig(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]func(*ports.Config){
-		"GeminiModel":        func(c *ports.Config) { c.GeminiModel = "" },
-		"ImageStandardModel": func(c *ports.Config) { c.ImageStandardModel = "" },
-		"ImageQualityModel":  func(c *ports.Config) { c.ImageQualityModel = "  " },
-		"StyleSuffix":        func(c *ports.Config) { c.StyleSuffix = "" },
-		"DesignStyleSuffix":  func(c *ports.Config) { c.DesignStyleSuffix = "  " },
+		"GeminiModel":       func(c *ports.Config) { c.GeminiModel = "" },
+		"ImageModel":        func(c *ports.Config) { c.ImageModel = "  " },
+		"StyleSuffix":       func(c *ports.Config) { c.StyleSuffix = "" },
+		"DesignStyleSuffix": func(c *ports.Config) { c.DesignStyleSuffix = "  " },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -31,9 +31,11 @@ const (
 // Config は Go Comic Kit の各操作を動作させるための基本設定です。
 type Config struct {
 	// --- AI Model Settings (Common) ---
-	GeminiModel        string
-	ImageStandardModel string // 標準・高速（パネル用）
-	ImageQualityModel  string // 高品質・高知能（ページ・デザインシート用）
+	GeminiModel string
+	// ImageModel はデザインシート・パネル・ページのすべてに使う画像生成モデルです。
+	// 用途ごとにモデルを分ける仕組みは持ちません。どのモデルが「高品質」かは
+	// Google のラインナップ次第で、キットが決められる区別ではないためです。
+	ImageModel string
 
 	// --- Generation Settings ---
 	// MaxConcurrency は一括生成（GenerateAllPanels / ComposeAllPages）の最大並列数です。
@@ -93,11 +95,8 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.GeminiModel) == "" {
 		missing = append(missing, "GeminiModel")
 	}
-	if strings.TrimSpace(c.ImageStandardModel) == "" {
-		missing = append(missing, "ImageStandardModel")
-	}
-	if strings.TrimSpace(c.ImageQualityModel) == "" {
-		missing = append(missing, "ImageQualityModel")
+	if strings.TrimSpace(c.ImageModel) == "" {
+		missing = append(missing, "ImageModel")
 	}
 	if strings.TrimSpace(c.StyleSuffix) == "" {
 		missing = append(missing, "StyleSuffix")

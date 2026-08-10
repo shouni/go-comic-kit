@@ -43,8 +43,7 @@ type PageImageRunnerArgs struct {
 	Prompt    ports.PagePrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	// Model には高品質系モデル（ports.Config.ImageQualityModel）を渡すことを推奨します。
-	Model string
+	Model     string
 	// StyleSuffix にはページ用の画風指定（ports.Config.StyleSuffix）を渡してください。
 	StyleSuffix string
 	// AspectRatio が空の場合は layout.PageAspectRatio を使います。

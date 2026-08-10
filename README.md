@@ -76,8 +76,7 @@ go-comic-kit/
 ops, err := workflow.New(workflow.Args{
 	Config: ports.Config{ // モデル名3種と画風指定2種は必須。他はゼロ値なら ApplyDefaults が補完する
 		GeminiModel:        "gemini-3.6-flash",
-		ImageStandardModel: "gemini-3.1-flash-image",
-		ImageQualityModel:  "gemini-3-pro-image",
+		ImageModel:  "gemini-3.1-flash-image",
 		StyleSuffix:        "Japanese anime style, official art, cel-shaded, ...",
 		DesignStyleSuffix:  "Japanese anime style, official character reference art, ...",
 	},
@@ -85,7 +84,6 @@ ops, err := workflow.New(workflow.Args{
 	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
 	Writer:          writer,
 	AIClient:        aiClient,        // go-gemini-client。台本生成・パネル画像（標準品質）に使用
-	AIClientQuality: aiClientQuality, // 省略可（nil なら AIClient を使用）。デザインシート・ページ合成（高品質）に使用
 	Characters:      characters,      // go-character-kit (characters.json)
 })
 if err != nil {
