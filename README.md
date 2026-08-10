@@ -89,7 +89,7 @@ ops, err := workflow.New(workflow.Args{
 if err != nil {
 	return err
 }
-defer ops.Close()
+defer func() { _ = ops.Close() }()
 
 // 章立て → 章ごとの台本 → デザインシート → パネル → ページ
 state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{SourceURL: "gs://bucket/article.md"})

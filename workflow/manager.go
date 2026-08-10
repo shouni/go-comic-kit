@@ -123,10 +123,10 @@ func New(args Args) (*ports.Operations, error) {
 			StyleSuffix:  cfg.DesignStyleSuffix,
 			CacheControl: cfg.CacheControl,
 		}),
-		Panel:     panelRunner,
-		Page:      pageRunner,
-		CloseFunc: images.stop,
+		Panel: panelRunner,
+		Page:  pageRunner,
 	}
+	ops.SetCloseFunc(images.stop)
 	return ops, nil
 }
 

@@ -73,6 +73,12 @@ func validArgs(t *testing.T) Args {
 		Writer:     &fakeWorkflowWriter{},
 		AIClient:   &fakeAIClient{},
 		Characters: cm,
+
+		OutlinePrompt:       stubPrompts{},
+		ChapterScriptPrompt: stubPrompts{},
+		DesignSheetPrompt:   stubPrompts{},
+		PanelPrompt:         stubPrompts{},
+		PagePrompt:          stubPrompts{},
 	}
 }
 
@@ -85,13 +91,10 @@ func TestNewBuildsAllOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
-	defer ops.Close()
+	defer func() { _ = ops.Close() }()
 
 	if ops.Outline == nil || ops.ChapterScript == nil || ops.DesignSheet == nil || ops.Panel == nil || ops.Page == nil {
 		t.Errorf("Operations = %+v, want all operations wired", ops)
-	}
-	if ops.CloseFunc == nil {
-		t.Error("CloseFunc not set")
 	}
 }
 
@@ -104,6 +107,12 @@ func TestNewValidatesRequiredArgs(t *testing.T) {
 		"Writer":     func(a *Args) { a.Writer = nil },
 		"AIClient":   func(a *Args) { a.AIClient = nil },
 		"Characters": func(a *Args) { a.Characters = nil },
+		// プロンプトは5つとも必須。1つでも nil なら構築に失敗すること。
+		"OutlinePrompt":       func(a *Args) { a.OutlinePrompt = nil },
+		"ChapterScriptPrompt": func(a *Args) { a.ChapterScriptPrompt = nil },
+		"DesignSheetPrompt":   func(a *Args) { a.DesignSheetPrompt = nil },
+		"PanelPrompt":         func(a *Args) { a.PanelPrompt = nil },
+		"PagePrompt":          func(a *Args) { a.PagePrompt = nil },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -144,9 +153,15 @@ func TestOperationsCloseIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
-	ops.Close()
-	ops.Close() // 二重 Close で panic しないこと
+	if err := ops.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := ops.Close(); err != nil { // 二重 Close で panic せず、エラーにもならないこと
+		t.Fatalf("2回目の Close() error = %v", err)
+	}
 
 	var nilOps *ports.Operations
-	nilOps.Close() // nil レシーバでも panic しないこと
+	if err := nilOps.Close(); err != nil { // nil レシーバでも panic しないこと
+		t.Fatalf("nil レシーバの Close() error = %v", err)
+	}
 }

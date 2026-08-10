@@ -89,7 +89,8 @@ func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mo
 
 func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	t.Parallel()
-	r, gen, writer := newPageRunner(t, &fakePagePrompt{})
+	prompt := &fakePagePrompt{}
+	r, gen, writer := newPageRunner(t, prompt)
 	state := pageTestState()
 
 	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out"})
@@ -102,40 +103,31 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Fatalf("Images = %+v, want 3 references", gen.lastReq.Images)
 	}
 
-	// プロンプト本文の作り込みは ports.PagePrompt の実装（既定はキット内蔵の簡潔版、
-	// 作品ごとの本文はアプリ側）の責務なので、ここでは構造データが正しく渡ることだけを見る。
-	p := gen.lastReq.Prompt
-	if !strings.Contains(p, "exactly 2 panel") {
-		t.Errorf("prompt does not state the panel count:\n%s", p)
+	// プロンプト本文はアプリ側の実装が持つので、ここで見るのは
+	// 「実装へ渡した構造データ」と「返った3本をそのまま載せたか」だけ。
+	d := prompt.data
+	if d == nil {
+		t.Fatal("PagePrompt was not called")
 	}
 	// 参照番号は添付順と一致していなければ、モデルは別人の参照画像を見て描く。
-	for _, want := range []string{
-		"identity from input_file_1", // ずんだもん = 1枚目
-		"identity from input_file_2", // めたん = 2枚目
-		"composition guide: input_file_3",
-	} {
-		if !strings.Contains(p, want) {
-			t.Errorf("prompt does not contain %q\nprompt: %s", want, p)
-		}
+	if d.CharacterFile["zundamon"] != 1 || d.CharacterFile["metan"] != 2 {
+		t.Errorf("CharacterFile = %v, want zundamon=1 / metan=2 (添付順)", d.CharacterFile)
 	}
-	// セリフは話者名付きで渡る
-	for _, want := range []string{"dialogue (ずんだもん): なんなのだ！？", "dialogue (めたん): 落ち着きなさい。"} {
-		if !strings.Contains(p, want) {
-			t.Errorf("prompt does not contain %q\nprompt: %s", want, p)
-		}
+	if d.PanelFile["ch01-p01"] != 3 {
+		t.Errorf("PanelFile = %v, want the generated panel at 3", d.PanelFile)
 	}
-
-	// 別ページのパネルが混ざらない
-	if strings.Contains(p, "ch02") {
-		t.Error("prompt leaked panels from another page")
+	// このページのコマだけが渡り、別ページのコマは混ざらない。
+	if got := panelIDs(d.Panels); len(got) != 2 || got[0] != "ch01-p01" || got[1] != "ch01-p02" {
+		t.Errorf("Panels = %v, want only page 1's panels in order", got)
+	}
+	if d.StyleSuffix != "cinematic style" {
+		t.Errorf("StyleSuffix = %q, want the configured style", d.StyleSuffix)
+	}
+	if gen.lastReq.SystemPrompt != fakeSystemPrompt || gen.lastReq.NegativePrompt != fakeNegativePrompt {
+		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
+			gen.lastReq.SystemPrompt, gen.lastReq.NegativePrompt)
 	}
 
-	if !strings.Contains(gen.lastReq.SystemPrompt, "right-to-left") {
-		t.Error("system prompt missing the reading order rule")
-	}
-	if !strings.Contains(p, "cinematic style") {
-		t.Error("prompt missing the style suffix")
-	}
 	if gen.lastReq.AspectRatio != "3:4" || gen.lastReq.ImageSize != "2K" {
 		t.Errorf("AspectRatio/ImageSize = %q/%q, want 3:4/2K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
 	}

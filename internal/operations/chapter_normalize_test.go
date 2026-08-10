@@ -67,7 +67,7 @@ func newChapterRunnerWithCast(t *testing.T, ai *fakeContentGenerator, ids ...str
 func TestGenerateChapterScriptNormalizesDialogues(t *testing.T) {
 	t.Parallel()
 
-	r := newChapterRunner(t, &fakeContentGenerator{text: normalizeChapterJSON})
+	r, _ := newChapterRunner(t, &fakeContentGenerator{text: normalizeChapterJSON})
 	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01")
 	if err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
@@ -146,7 +146,7 @@ func TestGenerateChapterScriptCapsReferencedCharacters(t *testing.T) {
 func TestOperationErrorsAreClassifiable(t *testing.T) {
 	t.Parallel()
 
-	r := newChapterRunner(t, &fakeContentGenerator{text: normalizeChapterJSON})
+	r, _ := newChapterRunner(t, &fakeContentGenerator{text: normalizeChapterJSON})
 	ctx := context.Background()
 
 	if _, err := r.GenerateChapterScript(ctx, outlineState(), "ch99"); !errors.Is(err, ports.ErrNotFound) {
@@ -156,7 +156,7 @@ func TestOperationErrorsAreClassifiable(t *testing.T) {
 		t.Errorf("state=nil のエラー = %v, want ports.ErrInvalidRequest", err)
 	}
 
-	empty := newChapterRunner(t, &fakeContentGenerator{text: `{"panels":[]}`})
+	empty, _ := newChapterRunner(t, &fakeContentGenerator{text: `{"panels":[]}`})
 	if _, err := empty.GenerateChapterScript(ctx, outlineState(), "ch01"); !errors.Is(err, ports.ErrGeneration) {
 		t.Errorf("空応答のエラー = %v, want ports.ErrGeneration", err)
 	}

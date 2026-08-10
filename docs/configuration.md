@@ -47,4 +47,4 @@
 | `AIClient` | 台本生成と標準品質の画像生成（パネル）に使う `gemini.Model` |
 | `Characters` | `*comic.Characters`（go-character-kit の `characters.json`） |
 
-`workflow.New` が返す `*ports.Operations` は、使い終わったら **`Close()`** を呼んでください（内部 TTL キャッシュのバックグラウンド goroutine を停止します。複数回呼んでも安全で、nil レシーバでも panic しません）。
+`workflow.New` が返す `*ports.Operations` は、使い終わったら **`Close() error`** を呼んでください（内部 TTL キャッシュのバックグラウンド goroutine を停止します。`sync.Once` で守っているので複数回呼んでも安全、nil レシーバでも panic しません）。解放関数は非公開で、登録は `SetCloseFunc` から行います（go-veo-orchestrator の `Workflows` と同じ形）。

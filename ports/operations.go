@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"sync"
 
 	"github.com/shouni/go-comic-kit/comic"
 )
@@ -155,12 +156,30 @@ type Operations struct {
 	DesignSheet   DesignSheetGenerator
 	Panel         PanelImageGenerator
 	Page          PageImageComposer
-	CloseFunc     func()
+
+	closeOnce sync.Once
+	onClose   func()
 }
 
-// Close は、保持しているリソースの解放関数（CloseFunc）を呼び出します。
-func (o *Operations) Close() {
-	if o != nil && o.CloseFunc != nil {
-		o.CloseFunc()
+// SetCloseFunc は、Close で一度だけ実行するクリーンアップ処理を登録します。
+// 画像キャッシュのバックグラウンド goroutine など、workflow.New が確保したリソースの
+// 解放を接続するために構築側（workflow パッケージ）が使う想定です。
+// ゼロ値や手組みの Operations には登録がなく、Close は何もしません。
+func (o *Operations) SetCloseFunc(fn func()) {
+	o.onClose = fn
+}
+
+// Close は、workflow.New で構築した Operations が確保したバックグラウンドリソース
+// （現状は画像キャッシュの定期クリーンアップ goroutine）を解放します。
+// 複数回呼んでも安全で、2回目以降は何もしません。
+func (o *Operations) Close() error {
+	if o == nil {
+		return nil
 	}
+	o.closeOnce.Do(func() {
+		if o.onClose != nil {
+			o.onClose()
+		}
+	})
+	return nil
 }
