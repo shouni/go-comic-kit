@@ -24,7 +24,6 @@ type PanelImageRunner struct {
 	generator      ImageGenerator
 	writer         remoteio.Writer
 	model          string
-	styleSuffix    string
 	aspectRatio    string
 	imageSize      string
 	maxConcurrency int
@@ -42,8 +41,6 @@ type PanelImageRunnerArgs struct {
 	Writer    remoteio.Writer
 	// Model は画像生成に使うモデル名です（ports.Config.ImageModel）。
 	Model string
-	// StyleSuffix にはパネル用の画風指定（ports.Config.StyleSuffix）を渡してください。
-	StyleSuffix string
 	// AspectRatio が空の場合は layout.PanelAspectRatio を使います。
 	AspectRatio string
 	// ImageSize が空の場合は layout.ImageSize1K を使います。
@@ -72,7 +69,6 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 		generator:      args.Generator,
 		writer:         args.Writer,
 		model:          args.Model,
-		styleSuffix:    args.StyleSuffix,
 		aspectRatio:    args.AspectRatio,
 		imageSize:      args.ImageSize,
 		maxConcurrency: args.MaxConcurrency,
@@ -178,10 +174,10 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 		"panels", len(targets), "chapter", opts.ChapterID, "concurrency", pr.maxConcurrency)
 
 	single := ports.GenerateOptions{
-		Seed:                opts.Seed,
-		ModelOverride:       opts.ModelOverride,
-		StyleSuffixOverride: opts.StyleSuffixOverride,
-		OutputDir:           opts.OutputDir,
+		Seed:          opts.Seed,
+		ModelOverride: opts.ModelOverride,
+		StyleMode:     opts.StyleMode,
+		OutputDir:     opts.OutputDir,
 	}
 	records, errs := runBatch(ctx, pr.maxConcurrency, targets,
 		func(ctx context.Context, index int) (*comic.GenerationRecord, error) {
@@ -246,10 +242,10 @@ func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.Generate
 	}
 
 	set, err := newPromptSet(pr.prompt.BuildPanel(&ports.PanelPromptData{
-		Panel:       *panel,
-		Characters:  pr.characters,
-		SubjectIDs:  subjectIDs,
-		StyleSuffix: resolveStyleSuffix(pr.styleSuffix, opts.StyleSuffixOverride),
+		Panel:      *panel,
+		Characters: pr.characters,
+		SubjectIDs: subjectIDs,
+		StyleMode:  opts.StyleMode,
 	}))
 	if err != nil {
 		return promptSet{}, nil, err

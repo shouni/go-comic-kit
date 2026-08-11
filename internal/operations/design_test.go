@@ -70,12 +70,11 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 	writer := &mockWriter{}
 	designPrompt := &fakeDesignPrompt{}
 	dr := NewDesignSheetRunner(DesignSheetRunnerArgs{
-		Prompt:      designPrompt,
-		Characters:  cm,
-		Generator:   genMock,
-		Writer:      writer,
-		Model:       "test-image-model",
-		StyleSuffix: "test design style",
+		Prompt:     designPrompt,
+		Characters: cm,
+		Generator:  genMock,
+		Writer:     writer,
+		Model:      "test-image-model",
 	})
 	return dr, genMock, writer, designPrompt
 }
@@ -122,8 +121,8 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		!strings.Contains(designPrompt.data.Descriptions[0], "orange hair") {
 		t.Errorf("Descriptions = %+v, want the character's visual cues", designPrompt.data)
 	}
-	if designPrompt.data.StyleSuffix != "test design style" {
-		t.Errorf("StyleSuffix = %q, want the configured design style", designPrompt.data.StyleSuffix)
+	if designPrompt.data.StyleMode != "" {
+		t.Errorf("StyleMode = %q, want the requested mode passed straight through", designPrompt.data.StyleMode)
 	}
 	if genMock.lastReq.SystemPrompt != fakeSystemPrompt || genMock.lastReq.NegativePrompt != fakeNegativePrompt {
 		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",

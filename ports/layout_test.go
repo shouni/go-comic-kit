@@ -7,10 +7,8 @@ import (
 
 func validConfig() Config {
 	c := Config{
-		GeminiModel:       "gemini-test",
-		ImageModel:        "image-test",
-		StyleSuffix:       "panel style",
-		DesignStyleSuffix: "design style",
+		GeminiModel: "gemini-test",
+		ImageModel:  "image-test",
 	}
 	c.ApplyDefaults()
 	return c

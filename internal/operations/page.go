@@ -25,7 +25,6 @@ type PageImageRunner struct {
 	generator      ImageGenerator
 	writer         remoteio.Writer
 	model          string
-	styleSuffix    string
 	aspectRatio    string
 	imageSize      string
 	maxConcurrency int
@@ -42,8 +41,6 @@ type PageImageRunnerArgs struct {
 	Generator ImageGenerator
 	Writer    remoteio.Writer
 	Model     string
-	// StyleSuffix にはページ用の画風指定（ports.Config.StyleSuffix）を渡してください。
-	StyleSuffix string
 	// AspectRatio が空の場合は layout.PageAspectRatio を使います。
 	AspectRatio string
 	// ImageSize が空の場合は layout.ImageSize2K を使います。
@@ -72,7 +69,6 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 		generator:      args.Generator,
 		writer:         args.Writer,
 		model:          args.Model,
-		styleSuffix:    args.StyleSuffix,
 		aspectRatio:    args.AspectRatio,
 		imageSize:      args.ImageSize,
 		maxConcurrency: args.MaxConcurrency,
@@ -205,10 +201,10 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		"pages", len(targets), "chapter", opts.ChapterID, "concurrency", pg.maxConcurrency)
 
 	single := ports.GenerateOptions{
-		Seed:                opts.Seed,
-		ModelOverride:       opts.ModelOverride,
-		StyleSuffixOverride: opts.StyleSuffixOverride,
-		OutputDir:           opts.OutputDir,
+		Seed:          opts.Seed,
+		ModelOverride: opts.ModelOverride,
+		StyleMode:     opts.StyleMode,
+		OutputDir:     opts.OutputDir,
 	}
 	artifacts, errs := runBatch(ctx, pg.maxConcurrency, targets,
 		func(ctx context.Context, page int) (*comic.PageArtifact, error) {
@@ -272,7 +268,7 @@ func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing
 		Characters:    pg.characters,
 		CharacterFile: res.characterFile,
 		PanelFile:     res.panelFile,
-		StyleSuffix:   resolveStyleSuffix(pg.styleSuffix, opts.StyleSuffixOverride),
+		StyleMode:     opts.StyleMode,
 	}))
 	if err != nil {
 		return promptSet{}, nil, err

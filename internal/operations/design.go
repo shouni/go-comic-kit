@@ -24,7 +24,6 @@ type DesignSheetRunner struct {
 	generator    ImageGenerator
 	writer       remoteio.Writer
 	model        string
-	styleSuffix  string
 	aspectRatio  string
 	imageSize    string
 	cacheControl string
@@ -43,10 +42,9 @@ type DesignSheetRunnerArgs struct {
 	Generator  ImageGenerator
 	Writer     remoteio.Writer
 	Model      string
-	// StyleSuffix にはデザインシート用の画風指定（ports.Config.DesignStyleSuffix）を
-	// 渡してください。パネル用の StyleSuffix（cinematic lighting 等の演出を含む）を渡すと、
-	// 参照アンカーに演出照明が焼き付きます。
-	StyleSuffix string
+	// 画風の設定はありません。DesignSheetRequest.StyleMode として呼び出しごとに渡し、
+	// プロンプト実装がシート用の指定へ解決します。演出を含む画風をそのまま焼くと、
+	// 参照アンカーに演出照明が残り、下流の全生成が汚染されます。
 	// AspectRatio は DesignSheetRequest.AspectRatio が未指定・未サポートのときの
 	// 既定です（ports.Config.AspectRatio）。空なら layout.DefaultAspectRatio。
 	AspectRatio string
@@ -71,7 +69,6 @@ func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 		generator:    args.Generator,
 		writer:       args.Writer,
 		model:        args.Model,
-		styleSuffix:  args.StyleSuffix,
 		aspectRatio:  args.AspectRatio,
 		imageSize:    args.ImageSize,
 		cacheControl: args.CacheControl,
@@ -103,7 +100,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 	systemPrompt, userPrompt, negativePrompt, err := dr.prompt.BuildDesignSheet(&ports.DesignSheetPromptData{
 		Descriptions: descriptions,
 		Layout:       req.Layout,
-		StyleSuffix:  dr.styleSuffix,
+		StyleMode:    req.StyleMode,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: デザインシートプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)

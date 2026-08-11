@@ -74,12 +74,11 @@ func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, 
 	gen := &mockImageGenerator{}
 	writer := &mockWriter{}
 	r := NewPanelImageRunner(PanelImageRunnerArgs{
-		Characters:  cm,
-		Prompt:      prompt,
-		Generator:   gen,
-		Writer:      writer,
-		Model:       "panel-model",
-		StyleSuffix: "test panel style",
+		Characters: cm,
+		Prompt:     prompt,
+		Generator:  gen,
+		Writer:     writer,
+		Model:      "panel-model",
 	})
 	return r, gen, writer
 }
@@ -124,9 +123,6 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 	if d.Panel.ID != "ch01-p01" || d.Panel.Setting != "放課後の音楽室" ||
 		!strings.Contains(d.Panel.VisualAnchor, "sunset light through windows") {
 		t.Errorf("Panel = %+v, want the target panel with its setting and anchor", d.Panel)
-	}
-	if d.StyleSuffix != "test panel style" {
-		t.Errorf("StyleSuffix = %q, want the configured style", d.StyleSuffix)
 	}
 	if gen.lastReq.SystemPrompt != fakeSystemPrompt || gen.lastReq.NegativePrompt != fakeNegativePrompt {
 		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
@@ -271,29 +267,18 @@ func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	}
 }
 
-func TestGeneratePanelStyleSuffixOverride(t *testing.T) {
+// 画風モードはプロンプト実装へ素通しします（画風指定そのものはキットが持ちません）。
+func TestGeneratePanelPassesStyleMode(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name     string
-		override string
-		want     string
-	}{
-		{name: "上書きあり", override: "水彩画風", want: "水彩画風"},
-		{name: "上書きなしは設定値", override: "", want: "test panel style"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			prompt := &fakePanelPrompt{}
-			r, _, _ := newPanelRunner(t, prompt)
+	prompt := &fakePanelPrompt{}
+	r, _, _ := newPanelRunner(t, prompt)
 
-			if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
-				ports.GenerateOptions{StyleSuffixOverride: tc.override}); err != nil {
-				t.Fatalf("GeneratePanel failed: %v", err)
-			}
-			if got := prompt.data.StyleSuffix; got != tc.want {
-				t.Errorf("StyleSuffix = %q, want %q", got, tc.want)
-			}
-		})
+	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
+		ports.GenerateOptions{StyleMode: "watercolor"}); err != nil {
+		t.Fatalf("GeneratePanel failed: %v", err)
+	}
+	if got := prompt.data.StyleMode; got != "watercolor" {
+		t.Errorf("StyleMode = %q, want watercolor", got)
 	}
 }
