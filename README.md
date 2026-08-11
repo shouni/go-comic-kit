@@ -74,11 +74,9 @@ go-comic-kit/
 
 ```go
 ops, err := workflow.New(workflow.Args{
-	Config: ports.Config{ // モデル名2種と画風指定2種は必須。他はゼロ値なら ApplyDefaults が補完する
-		GeminiModel:        "gemini-3.6-flash",
+	Config: ports.Config{ // 必須はモデル名2種だけ。他はゼロ値なら ApplyDefaults が補完する
+		GeminiModel: "gemini-3.6-flash",
 		ImageModel:  "gemini-3.1-flash-image",
-		StyleSuffix:        "Japanese anime style, official art, cel-shaded, ...",
-		DesignStyleSuffix:  "Japanese anime style, official character reference art, ...",
 	},
 	HTTPClient:      httpClient,      // go-http-kit
 	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）

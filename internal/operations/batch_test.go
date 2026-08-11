@@ -325,20 +325,20 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 	}
 }
 
-// 一括生成でも画風の上書きがプロンプト実装まで届くことを確かめます。
+// 一括生成でも画風モードがプロンプト実装まで届くことを確かめます。
 // アプリ側が実際に使うのはこちらの経路（PanelBatch / PageBatch）なので、
 // GenerateOptions への詰め替えで落ちていないことを1件見ておきます。
-func TestGenerateAllPanelsPassesStyleSuffixOverride(t *testing.T) {
+func TestGenerateAllPanelsPassesStyleMode(t *testing.T) {
 	t.Parallel()
 
 	prompt := &fakePanelPrompt{}
 	runner, _, _ := newPanelRunner(t, prompt)
 
 	if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 2),
-		ports.BatchOptions{StyleSuffixOverride: "水彩画風"}); err != nil {
+		ports.BatchOptions{StyleMode: "watercolor"}); err != nil {
 		t.Fatalf("GenerateAllPanels failed: %v", err)
 	}
-	if got := prompt.data.StyleSuffix; got != "水彩画風" {
-		t.Errorf("StyleSuffix = %q, want 水彩画風", got)
+	if got := prompt.data.StyleMode; got != "watercolor" {
+		t.Errorf("StyleMode = %q, want watercolor", got)
 	}
 }

@@ -48,13 +48,9 @@ type Config struct {
 	// スループットの上限は MaxConcurrency ではなく 1/RateInterval で決まる点に注意してください
 	// （例: RateInterval=10s なら並列数をいくつにしても毎分6回までになります）。
 	RateInterval time.Duration
-	// StyleSuffix はパネル・ページ画像生成に付与する画風指定です（必須）。
-	StyleSuffix string
 	// CacheControl は生成画像を保存する際の Cache-Control です。
 	// 空の場合は DefaultCacheControl（public, max-age=1800）を使います。
 	CacheControl string
-	// DesignStyleSuffix はデザインシート生成に付与する画風指定です（必須）。
-	DesignStyleSuffix string
 
 	// --- Script Settings ---
 	// MaxChapters は章立て生成の章数上限です。
@@ -125,12 +121,6 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.ImageModel) == "" {
 		missing = append(missing, "ImageModel")
-	}
-	if strings.TrimSpace(c.StyleSuffix) == "" {
-		missing = append(missing, "StyleSuffix")
-	}
-	if strings.TrimSpace(c.DesignStyleSuffix) == "" {
-		missing = append(missing, "DesignStyleSuffix")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: %s を指定してください（キットはモデル名と画風指定の既定値を持ちません）", ErrConfigInvalid, strings.Join(missing, ", "))

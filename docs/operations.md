@@ -29,7 +29,7 @@ HTML/Markdown 等への出力工程はキットに含めません。閲覧・配
 | `GenerateOptions.PromptOverride` | パネル・ページ | プロンプト本文の差し替え（システム指示・ネガティブプロンプトは残ります） |
 | `GenerateOptions.ModelOverride` / `DesignSheetRequest.ModelOverride` | 各画像操作 | 構築時のモデルをその呼び出しに限って差し替え |
 | `OutlineRequest.ModelOverride` / `ChapterScriptOptions.ModelOverride` | 章立て・章台本 | 構築時のテキストモデル（`Config.GeminiModel`）をその呼び出しに限って差し替え。1作品の台本は同じモデルが書くべきなので、章立てと全章へ同じ値を渡してください |
-| `GenerateOptions.StyleSuffixOverride` / `BatchOptions.StyleSuffixOverride` | パネル・ページ | 構築時の画風指定（`Config.StyleSuffix`）をその呼び出しに限って差し替え。キットは中身を解釈せず、プロンプト実装へ `StyleSuffix` として素通しします |
+| `GenerateOptions.StyleMode` / `BatchOptions.StyleMode` | パネル・ページ | この生成の画風モード。キットは中身を解釈せず、プロンプト実装へ `PanelPromptData.StyleMode` / `PagePromptData.StyleMode` として素通しします。解決済みの文言ではなくモード名を運ぶのは、画風指定と「その画風で避けたいもの」（ネガティブプロンプト）が対で決まり、両方を持っているのがプロンプト実装だからです |
 | `DesignSheetRequest.Override`（`ports.DesignOverride`） | デザインシート | 参照画像・`visual_cues` をその場限りで差し替え（`characters.json` は変更しません）。**単一キャラクター指定時のみ有効** |
 
 ## 一括生成と再開

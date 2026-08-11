@@ -90,6 +90,12 @@ type DesignSheetRequest struct {
 	// ModelOverride は設定済みモデル（DesignSheetRunner 構築時の model）を差し替えます。
 	// 空文字なら既定のモデルを使います。
 	ModelOverride string
+	// StyleMode はこのシートの画風モードです（GenerateOptions.StyleMode と同じ扱い）。
+	// キットは中身を解釈せず、DesignSheetPromptData.StyleMode へ素通しします。
+	//
+	// シートは他の生成物の同一性アンカーなので、実装はパネル用の画風をそのまま使わず、
+	// 照明・演出を含まないシート用の指定へ解決してください。
+	StyleMode string
 }
 
 // DesignLayoutSingleView は DesignSheetRequest.Layout に渡す、単一ポーズレイアウトの指定値です。
@@ -118,12 +124,14 @@ type GenerateOptions struct {
 	EditPrompt string
 	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
 	ModelOverride string
-	// StyleSuffixOverride は設定済みの画風指定（Config.StyleSuffix）を差し替えます。
-	// 空文字なら既定の画風を使います。
+	// StyleMode はこの生成の画風モードです。空文字ならプロンプト実装の既定になります。
 	//
-	// 画風は作品ごとの絵作りで、設定（デプロイ単位）よりも細かい単位で変わります。
-	// キットは中身を解釈せず、プロンプト実装へ StyleSuffix として素通しします。
-	StyleSuffixOverride string
+	// キットは中身を解釈せず、プロンプト実装へ PanelPromptData.StyleMode /
+	// PagePromptData.StyleMode としてそのまま渡します。画風は作品ごとの絵作りで、
+	// しかも画風指定と「その画風で避けたいもの」（ネガティブプロンプト）は対で
+	// 決まります。両方を持っているのはプロンプト実装なので、キットは解決済みの
+	// 文言ではなくモード名を運びます。
+	StyleMode string
 	// OutputDir は生成画像の保存先ベースディレクトリです。
 	OutputDir string
 }
@@ -162,9 +170,8 @@ type BatchOptions struct {
 	Seed *int64
 	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
 	ModelOverride string
-	// StyleSuffixOverride は設定済みの画風指定（Config.StyleSuffix）を差し替えます。
-	// 空文字なら既定の画風を使います（GenerateOptions.StyleSuffixOverride と同じ扱い）。
-	StyleSuffixOverride string
+	// StyleMode はこの一括生成の画風モードです（GenerateOptions.StyleMode と同じ扱い）。
+	StyleMode string
 	// OutputDir は生成画像の保存先ベースディレクトリです。
 	OutputDir string
 	// SkipGenerated が true の場合、すでに生成済み（comic.GenerationRecord を持つ）対象を飛ばします。

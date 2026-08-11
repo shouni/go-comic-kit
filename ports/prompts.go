@@ -47,8 +47,9 @@ type DesignSheetPromptData struct {
 	// Layout に DesignLayoutSingleView を渡すと単一ポーズレイアウト、
 	// 空文字なら3面図ターンアラウンドを意図します。
 	Layout string
-	// StyleSuffix は画風指定です（Config.DesignStyleSuffix）。
-	StyleSuffix string
+	// StyleMode は呼び出し側が指定した画風モード（DesignSheetRequest.StyleMode）です。
+	// 空文字なら指定なしで、実装の既定に従います。キットは中身を解釈しません。
+	StyleMode string
 }
 
 // DesignSheetPrompt はデザインシート生成のシステム/ユーザー/ネガティブプロンプトを
@@ -68,8 +69,12 @@ type PanelPromptData struct {
 	// 実装はこの順序で参照番号を振ってください。順序がずれると、モデルは別人の
 	// 参照画像を見ながら描くことになります。
 	SubjectIDs []string
-	// StyleSuffix は画風指定です（Config.StyleSuffix）。
-	StyleSuffix string
+	// StyleMode は呼び出し側が指定した画風モード（GenerateOptions.StyleMode）です。
+	// 空文字なら指定なしで、実装の既定に従います。キットは中身を解釈しません。
+	//
+	// 画風指定そのものではなくモード名を渡すのは、画風と「その画風で避けたいもの」
+	// （ネガティブプロンプト）が対で決まり、両方を持っているのが実装側だからです。
+	StyleMode string
 }
 
 // PanelPrompt はパネル画像生成のプロンプトを構築する契約です。
@@ -95,8 +100,8 @@ type PagePromptData struct {
 	CharacterFile map[string]int
 	// PanelFile は パネルID → 添付した生成済みパネル画像の番号（1始まり）です。
 	PanelFile map[string]int
-	// StyleSuffix は画風指定です（Config.StyleSuffix）。
-	StyleSuffix string
+	// StyleMode は呼び出し側が指定した画風モードです（PanelPromptData.StyleMode と同じ扱い）。
+	StyleMode string
 }
 
 // PagePrompt はページ合成のプロンプトを構築する契約です。

@@ -11,15 +11,6 @@ import (
 // 独自に宣言し直すと、同じ 1 メソッドのインターフェースが 2 か所に増えます。
 type StructuredGenerator = gemini.Generator
 
-// resolveStyleSuffix は、構築時に設定された画風指定と1回限りの上書きから、
-// 実際にプロンプトへ渡す画風指定を決めます。上書きが空文字なら設定値のままです。
-func resolveStyleSuffix(configured, override string) string {
-	if override != "" {
-		return override
-	}
-	return configured
-}
-
 // buildJSONGenerateOptions は、schema による構造化出力（constrained decoding）と、
 // セーフティブロックによる空応答を防ぐための BlockNone 統一設定を適用した
 // JSON 生成オプションを返します（go-gemini-client/lyria と同方式）。

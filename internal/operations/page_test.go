@@ -75,12 +75,11 @@ func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mo
 	gen := &mockImageGenerator{}
 	writer := &mockWriter{}
 	r := NewPageImageRunner(PageImageRunnerArgs{
-		Characters:  cm,
-		Prompt:      prompt,
-		Generator:   gen,
-		Writer:      writer,
-		Model:       "page-model",
-		StyleSuffix: "cinematic style",
+		Characters: cm,
+		Prompt:     prompt,
+		Generator:  gen,
+		Writer:     writer,
+		Model:      "page-model",
 	})
 	return r, gen, writer
 }
@@ -119,9 +118,6 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	// このページのコマだけが渡り、別ページのコマは混ざらない。
 	if got := panelIDs(d.Panels); len(got) != 2 || got[0] != "ch01-p01" || got[1] != "ch01-p02" {
 		t.Errorf("Panels = %v, want only page 1's panels in order", got)
-	}
-	if d.StyleSuffix != "cinematic style" {
-		t.Errorf("StyleSuffix = %q, want the configured style", d.StyleSuffix)
 	}
 	if gen.lastReq.SystemPrompt != fakeSystemPrompt || gen.lastReq.NegativePrompt != fakeNegativePrompt {
 		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
