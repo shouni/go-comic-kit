@@ -1,22 +1,49 @@
 package operations
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/shouni/go-gemini-client/gemini"
+
+	"github.com/shouni/go-comic-kit/ports"
 )
 
 // StructuredGenerator は、構造化出力オプション付きのテキスト生成を行う依存インターフェースです。
-//
-// gemini.Generator の別名です。この kit が渡すのはテキストプロンプトだけなので、
-// genai.Part を組み立てる Generator ではなく、SDK の型を含まないこちらに依存します。
-// 独自に宣言し直すと、同じ 1 メソッドのインターフェースが 2 か所に増えます。
 type StructuredGenerator = gemini.Generator
 
+// requireModel は、呼び出しごとに指定されるモデル名を検証します。
+func requireModel(model, operation string) error {
+	if model == "" {
+		return fmt.Errorf("%w: %sのモデル名が指定されていません", ports.ErrInvalidRequest, operation)
+	}
+	return nil
+}
+
+// resolveAspectRatio / resolveImageSize は、呼び出しごとの指定を検証して返します。
+func resolveAspectRatio(requested, fallback string) (string, error) {
+	if requested == "" {
+		return fallback, nil
+	}
+	if !ports.IsAspectRatio(requested) {
+		return "", fmt.Errorf("%w: AspectRatio (%q) は %s のいずれかである必要があります",
+			ports.ErrInvalidRequest, requested, strings.Join(ports.AspectRatios(), " / "))
+	}
+	return requested, nil
+}
+
+func resolveImageSize(requested, fallback string) (string, error) {
+	if requested == "" {
+		return fallback, nil
+	}
+	if !ports.IsImageSize(requested) {
+		return "", fmt.Errorf("%w: ImageSize (%q) は %s / %s のいずれかである必要があります",
+			ports.ErrInvalidRequest, requested, ports.ImageSize1K, ports.ImageSize2K)
+	}
+	return requested, nil
+}
+
 // buildJSONGenerateOptions は、schema による構造化出力（constrained decoding）と、
-// セーフティブロックによる空応答を防ぐための BlockNone 統一設定を適用した
-// JSON 生成オプションを返します（go-gemini-client/lyria と同方式）。
-//
-// schema は素の JSON Schema です。genai.Schema で組み立てると、スキーマを書くだけの
-// コードが SDK の型に縛られ、go-gemini-client を挟んでいる意味が薄れます。
 func buildJSONGenerateOptions(schema map[string]any) gemini.GenerateOptions {
 	return gemini.GenerateOptions{
 		ResponseMIMEType:   "application/json",

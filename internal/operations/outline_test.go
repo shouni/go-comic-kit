@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -54,7 +55,7 @@ const outlineJSON = `{
 func newOutlineRunner(t *testing.T, ai StructuredGenerator, reader ports.ContentReader) *OutlineRunner {
 	t.Helper()
 	p := &fakeScriptPrompt{}
-	return NewOutlineRunner(p, ai, reader, nil, "test-model", 0)
+	return NewOutlineRunner(p, ai, reader, nil, 0)
 }
 
 // --- Tests ---
@@ -68,8 +69,7 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 	state, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{
 		SourceText: "元文章のテキスト",
 		Mode:       "",
-		StyleMode:  "mecha",
-	})
+		StyleMode:  "mecha", Model: "test-model"})
 	if err != nil {
 		t.Fatalf("GenerateOutline failed: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestGenerateOutlineFromSourceURL(t *testing.T) {
 	reader := &fakeReader{content: "URLから読んだ本文"}
 	r := newOutlineRunner(t, ai, reader)
 
-	_, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceURL: "gs://bucket/article.md"})
+	_, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceURL: "gs://bucket/article.md", Model: "test-model"})
 	if err != nil {
 		t.Fatalf("GenerateOutline failed: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestGenerateOutlineRequiresSource(t *testing.T) {
 	t.Parallel()
 
 	r := newOutlineRunner(t, &fakeContentGenerator{text: outlineJSON}, nil)
-	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{}); err == nil {
+	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{Model: "test-model"}); err == nil {
 		t.Error("GenerateOutline without source succeeded, want error")
 	}
 }
@@ -154,8 +154,7 @@ func TestGenerateOutlineClampsChapterCount(t *testing.T) {
 
 	state, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{
 		SourceText:  "text",
-		MaxChapters: 3,
-	})
+		MaxChapters: 3, Model: "test-model"})
 	if err != nil {
 		t.Fatalf("GenerateOutline failed: %v", err)
 	}
@@ -170,7 +169,7 @@ func TestGenerateOutlineEmptyChaptersFails(t *testing.T) {
 	ai := &fakeContentGenerator{text: `{"title":"t","description":"d","chapters":[]}`}
 	r := newOutlineRunner(t, ai, nil)
 
-	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceText: "text"}); err == nil {
+	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceText: "text", Model: "test-model"}); err == nil {
 		t.Error("GenerateOutline with empty chapters succeeded, want error")
 	}
 }
@@ -182,8 +181,8 @@ func TestGenerateOutlineUsesModelOverride(t *testing.T) {
 	r := newOutlineRunner(t, ai, nil)
 
 	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{
-		SourceText:    "元文章のテキスト",
-		ModelOverride: "override-model",
+		SourceText: "元文章のテキスト",
+		Model:      "override-model",
 	}); err != nil {
 		t.Fatalf("GenerateOutline failed: %v", err)
 	}
@@ -198,10 +197,46 @@ func TestGenerateOutlineEmptyModelOverrideKeepsConfigured(t *testing.T) {
 	ai := &fakeContentGenerator{text: outlineJSON}
 	r := newOutlineRunner(t, ai, nil)
 
-	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceText: "元文章のテキスト"}); err != nil {
+	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceText: "元文章のテキスト", Model: "test-model"}); err != nil {
 		t.Fatalf("GenerateOutline failed: %v", err)
 	}
 	if ai.lastModel != "test-model" {
 		t.Errorf("model = %q, want test-model", ai.lastModel)
+	}
+}
+
+// 既定も上書きも無い呼び出しは、AI を呼ばずに ErrInvalidRequest で落とします。
+// モデル名の無いリクエストは必ず失敗するので、送る前に、しかも「引数が悪い」と
+// 分かる形で返します。
+func TestGenerateOutlineWithoutAnyModelFails(t *testing.T) {
+	t.Parallel()
+
+	ai := &fakeContentGenerator{text: outlineJSON}
+	r := NewOutlineRunner(&fakeScriptPrompt{}, ai, nil, nil, 0)
+
+	_, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceText: "text"})
+	if !errors.Is(err, ports.ErrInvalidRequest) {
+		t.Errorf("err = %v, want ErrInvalidRequest", err)
+	}
+	if ai.lastModel != "" || ai.lastPrompt != "" {
+		t.Error("モデル名が無いのに AI を呼んでいます")
+	}
+}
+
+// 設定が空でも、呼び出しごとに渡せば生成できます。
+func TestGenerateOutlineWithOverrideOnly(t *testing.T) {
+	t.Parallel()
+
+	ai := &fakeContentGenerator{text: outlineJSON}
+	r := NewOutlineRunner(&fakeScriptPrompt{}, ai, nil, nil, 0)
+
+	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{
+		SourceText: "text",
+		Model:      "override-model",
+	}); err != nil {
+		t.Fatalf("GenerateOutline failed: %v", err)
+	}
+	if ai.lastModel != "override-model" {
+		t.Errorf("model = %q, want override-model", ai.lastModel)
 	}
 }

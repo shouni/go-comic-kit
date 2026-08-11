@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -62,10 +61,7 @@ func validArgs(t *testing.T) Args {
 	}
 	return Args{
 		// モデル名と画風指定はキットが既定値を持たないため、呼び出し側が必ず指定する。
-		Config: ports.Config{
-			GeminiModel: "gemini-test",
-			ImageModel:  "image-test",
-		},
+		Config:     ports.Config{},
 		HTTPClient: httpkit.New(5 * time.Second),
 		Reader:     &fakeWorkflowReader{},
 		Writer:     &fakeWorkflowWriter{},
@@ -118,25 +114,6 @@ func TestNewValidatesRequiredArgs(t *testing.T) {
 			mutate(&args)
 			if _, err := New(args); err == nil {
 				t.Errorf("New without %s succeeded, want error", name)
-			}
-		})
-	}
-}
-
-func TestNewRejectsMissingRequiredConfig(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]func(*ports.Config){
-		"GeminiModel": func(c *ports.Config) { c.GeminiModel = "" },
-		"ImageModel":  func(c *ports.Config) { c.ImageModel = "  " },
-	}
-	for name, mutate := range cases {
-		t.Run(name, func(t *testing.T) {
-			args := validArgs(t)
-			mutate(&args.Config)
-			_, err := New(args)
-			if !errors.Is(err, ports.ErrConfigInvalid) {
-				t.Errorf("New without %s: err = %v, want ErrConfigInvalid", name, err)
 			}
 		})
 	}

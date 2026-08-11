@@ -74,7 +74,6 @@ func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *moc
 		Characters: cm,
 		Generator:  genMock,
 		Writer:     writer,
-		Model:      "test-image-model",
 	})
 	return dr, genMock, writer, designPrompt
 }
@@ -88,6 +87,7 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-1",
+		Model:        "design-model",
 		Seed:         ptr(int64(42)),
 		OutputDir:    "gs://bucket/out",
 	})
@@ -154,6 +154,7 @@ func TestGenerateDesignSheetUpsertsExistingRef(t *testing.T) {
 	state, err := dr.GenerateDesignSheet(context.Background(), state, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-2",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {
@@ -175,6 +176,7 @@ func TestGenerateDesignSheetMultiCharacterFusion(t *testing.T) {
 	state, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi", "metan"},
 		JobID:        "job-3",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {
@@ -204,6 +206,7 @@ func TestGenerateDesignSheetAppliesOverrideForSingleCharacter(t *testing.T) {
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-4",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 		Override:     override,
 	})
@@ -234,6 +237,7 @@ func TestGenerateDesignSheetIgnoresOverrideForMultipleCharacters(t *testing.T) {
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi", "metan"},
 		JobID:        "job-5",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 		Override:     override,
 	})
@@ -255,6 +259,7 @@ func TestGenerateDesignSheetSingleViewLayout(t *testing.T) {
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-6",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 		Layout:       ports.DesignLayoutSingleView,
 		AspectRatio:  "9:16",
@@ -276,10 +281,10 @@ func TestGenerateDesignSheetAppliesModelOverride(t *testing.T) {
 	dr, genMock, _, _ := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
-		CharacterIDs:  []string{"tsumugi"},
-		JobID:         "job-model",
-		OutputDir:     "gs://bucket/out",
-		ModelOverride: "gemini-override-model",
+		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-model",
+		OutputDir:    "gs://bucket/out",
+		Model:        "gemini-override-model",
 	})
 	if err != nil {
 		t.Fatalf("GenerateDesignSheet failed: %v", err)
@@ -290,21 +295,22 @@ func TestGenerateDesignSheetAppliesModelOverride(t *testing.T) {
 	}
 }
 
-func TestGenerateDesignSheetUsesDefaultModelWithoutOverride(t *testing.T) {
+func TestGenerateDesignSheetUsesRequestedModel(t *testing.T) {
 	t.Parallel()
 	dr, genMock, _, _ := newTestRunner(t)
 
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-model-default",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {
 		t.Fatalf("GenerateDesignSheet failed: %v", err)
 	}
 
-	if genMock.lastReq.Model != "test-image-model" {
-		t.Errorf("Model = %q, want default model from runner construction", genMock.lastReq.Model)
+	if genMock.lastReq.Model != "design-model" {
+		t.Errorf("Model = %q, want the model named by the request", genMock.lastReq.Model)
 	}
 }
 
@@ -315,6 +321,7 @@ func TestGenerateDesignSheetUnknownCharacterFails(t *testing.T) {
 	_, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
 		CharacterIDs: []string{"unknown"},
 		JobID:        "job-7",
+		Model:        "design-model",
 		OutputDir:    "gs://bucket/out",
 	})
 	if err == nil || !strings.Contains(err.Error(), "unknown") {

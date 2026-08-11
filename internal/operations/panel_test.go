@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 
+	"github.com/shouni/go-comic-kit/internal/layout"
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -78,7 +80,6 @@ func newPanelRunner(t *testing.T, prompt ports.PanelPrompt) (*PanelImageRunner, 
 		Prompt:     prompt,
 		Generator:  gen,
 		Writer:     writer,
-		Model:      "panel-model",
 	})
 	return r, gen, writer
 }
@@ -91,7 +92,7 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 	r, gen, writer := newPanelRunner(t, prompt)
 	state := panelTestState()
 
-	state, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{OutputDir: "gs://bucket/out"})
+	state, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{OutputDir: "gs://bucket/out", Model: "panel-model"})
 	if err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
@@ -157,7 +158,7 @@ func TestGeneratePanelReusesPreviousSeed(t *testing.T) {
 	state := panelTestState()
 	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}
 
-	if _, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{}); err != nil {
+	if _, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{Model: "panel-model"}); err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
 	if gen.lastReq.Seed == nil || *gen.lastReq.Seed != 777 {
@@ -172,7 +173,7 @@ func TestGeneratePanelExplicitSeedWins(t *testing.T) {
 	state.Panels[0].Generation = &comic.GenerationRecord{UsedSeed: 777}
 
 	newSeed := int64(42)
-	if _, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{Seed: &newSeed}); err != nil {
+	if _, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{Seed: &newSeed, Model: "panel-model"}); err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
 	if gen.lastReq.Seed == nil || *gen.lastReq.Seed != 42 {
@@ -188,8 +189,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 
 	_, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{
 		EditPrompt: "ずんだもんの表情を笑顔に変える",
-		OutputDir:  "gs://bucket/out",
-	})
+		OutputDir:  "gs://bucket/out", Model: "panel-model"})
 	if err != nil {
 		t.Fatalf("GeneratePanel(edit) failed: %v", err)
 	}
@@ -209,8 +209,7 @@ func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {
 	r, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
-		EditPrompt: "表情を変える",
-	})
+		EditPrompt: "表情を変える", Model: "panel-model"})
 	if err == nil || !strings.Contains(err.Error(), "編集対象") {
 		t.Errorf("err = %v, want missing-image error", err)
 	}
@@ -221,8 +220,7 @@ func TestGeneratePanelPromptOverride(t *testing.T) {
 	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
-		PromptOverride: "custom prompt",
-	})
+		PromptOverride: "custom prompt", Model: "panel-model"})
 	if err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
@@ -239,10 +237,10 @@ func TestGeneratePanelUnknownPanelFails(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 
-	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch99-p01", ports.GenerateOptions{}); err == nil {
+	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch99-p01", ports.GenerateOptions{Model: "panel-model"}); err == nil {
 		t.Error("GeneratePanel(unknown) succeeded, want error")
 	}
-	if _, err := r.GeneratePanel(context.Background(), nil, "ch01-p01", ports.GenerateOptions{}); err == nil {
+	if _, err := r.GeneratePanel(context.Background(), nil, "ch01-p01", ports.GenerateOptions{Model: "panel-model"}); err == nil {
 		t.Error("GeneratePanel(nil state) succeeded, want error")
 	}
 }
@@ -253,7 +251,7 @@ func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	state := panelTestState()
 	state.Panels[0].Characters = nil // 風景のみのコマ
 
-	_, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{})
+	_, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{Model: "panel-model"})
 	if err != nil {
 		t.Fatalf("GeneratePanel(scenery) failed: %v", err)
 	}
@@ -275,10 +273,81 @@ func TestGeneratePanelPassesStyleMode(t *testing.T) {
 	r, _, _ := newPanelRunner(t, prompt)
 
 	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
-		ports.GenerateOptions{StyleMode: "watercolor"}); err != nil {
+		ports.GenerateOptions{StyleMode: "watercolor", Model: "panel-model"}); err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
 	if got := prompt.data.StyleMode; got != "watercolor" {
 		t.Errorf("StyleMode = %q, want watercolor", got)
+	}
+}
+
+// 画像側も同じく、モデル名が無ければ生成器を呼ばずに ErrInvalidRequest で落とします。
+// パネル・ページ・デザインシートは renderImage を共有するので、代表して1件見ます。
+func TestGeneratePanelWithoutAnyModelFails(t *testing.T) {
+	t.Parallel()
+
+	r, gen, writer := newPanelRunner(t, &fakePanelPrompt{})
+
+	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{})
+	if !errors.Is(err, ports.ErrInvalidRequest) {
+		t.Errorf("err = %v, want ErrInvalidRequest", err)
+	}
+	if gen.lastReq.Model != "" {
+		t.Error("モデル名が無いのに画像生成を呼んでいます")
+	}
+	if writer.lastPath != "" {
+		t.Error("生成していないのに書き込んでいます")
+	}
+}
+
+// 比率・解像度は呼び出しごとの指定です。空ならキット既定（3:4 / 1K）に落ち、
+// 未サポート値は黙って既定へ落とさず ErrInvalidRequest にします。
+// 落とすと「指定したつもりの比率で生成されない」状態が気付かれずに続きます。
+func TestGeneratePanelResolvesLayoutPerCall(t *testing.T) {
+	t.Parallel()
+
+	t.Run("未指定はキット既定", func(t *testing.T) {
+		t.Parallel()
+		r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
+
+		if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
+			ports.GenerateOptions{Model: "m"}); err != nil {
+			t.Fatalf("GeneratePanel failed: %v", err)
+		}
+		if gen.lastReq.AspectRatio != layout.DefaultAspectRatio || gen.lastReq.ImageSize != layout.ImageSize1K {
+			t.Errorf("layout = %q/%q, want %q/%q",
+				gen.lastReq.AspectRatio, gen.lastReq.ImageSize, layout.DefaultAspectRatio, layout.ImageSize1K)
+		}
+	})
+
+	t.Run("指定が届く", func(t *testing.T) {
+		t.Parallel()
+		r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
+
+		if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
+			ports.GenerateOptions{Model: "m", AspectRatio: "16:9", ImageSize: ports.ImageSize2K}); err != nil {
+			t.Fatalf("GeneratePanel failed: %v", err)
+		}
+		if gen.lastReq.AspectRatio != "16:9" || gen.lastReq.ImageSize != ports.ImageSize2K {
+			t.Errorf("layout = %q/%q, want 16:9/%s", gen.lastReq.AspectRatio, gen.lastReq.ImageSize, ports.ImageSize2K)
+		}
+	})
+
+	for name, opts := range map[string]ports.GenerateOptions{
+		"未サポートの比率":  {Model: "m", AspectRatio: "4:3"},
+		"未サポートの解像度": {Model: "m", ImageSize: "4K"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
+
+			_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", opts)
+			if !errors.Is(err, ports.ErrInvalidRequest) {
+				t.Errorf("err = %v, want ErrInvalidRequest", err)
+			}
+			if gen.lastReq.Model != "" {
+				t.Error("不正な指定なのに画像生成を呼んでいます")
+			}
+		})
 	}
 }

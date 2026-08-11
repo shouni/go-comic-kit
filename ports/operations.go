@@ -22,9 +22,9 @@ type OutlineRequest struct {
 	StyleMode string
 	// MaxChapters は章数の上限です。0 以下なら既定値を使います。
 	MaxChapters int
-	// ModelOverride は設定済みのテキストモデル（Config.GeminiModel）を差し替えます。
-	// 空文字なら既定のモデルを使います。画像側の GenerateOptions.ModelOverride と同じ扱いです。
-	ModelOverride string
+	// Model は章立てを書くテキストモデルです（必須）。
+	// 空文字の呼び出しは ErrInvalidRequest で、AI API は呼びません。
+	Model string
 }
 
 // OutlineGenerator は、原稿から章立て（Chapters）のみを持つ MangaState を生成する契約です。
@@ -36,12 +36,11 @@ type OutlineGenerator interface {
 // ChapterScriptOptions は章台本生成（GenerateChapterScript）のオプションです。
 // プロンプトのモードは state.ScriptMode（章立て時に決めた値）から引くため、ここには含めません。
 type ChapterScriptOptions struct {
-	// ModelOverride は設定済みのテキストモデル（Config.GeminiModel）を差し替えます。
-	// 空文字なら既定のモデルを使います。
+	// Model は章台本を書くテキストモデルです（必須）。
 	//
 	// 1作品の台本は章立てと全章で同じモデルが書くべきなので、呼び出し側は
-	// OutlineRequest.ModelOverride と同じ値を渡してください。
-	ModelOverride string
+	// OutlineRequest.Model と同じ値を渡してください。
+	Model string
 }
 
 // ChapterScriptGenerator は、章立て全体を文脈としつつ指定章のパネル群（台本）を生成し、
@@ -77,19 +76,21 @@ type DesignSheetRequest struct {
 	// （例: "gs://bucket"）を渡します。相対パスは OutputDir に対して
 	// "character/{tag}/{JobID}.ext" として解決されます。
 	OutputDir string
-	// AspectRatio は "1:1" / "3:4" / "9:16" / "16:9" のいずれかで、未サポート値や空文字の
-	// 場合は既定値（16:9）にフォールバックします。パネルやページの参照アンカーとして使う
-	// シートは "3:4" で生成してください（コマ・ページと同じ比率でないと、参照画像の
+	// AspectRatio は "1:1" / "3:4" / "9:16" / "16:9" のいずれかです。空ならキット既定、
+	// 未サポート値は ErrInvalidRequest です。パネルやページの参照アンカーとして使う
+	// シートは、コマ・ページと同じ比率で生成してください（比率が違うと、参照画像の
 	// アスペクト比一致による細部のブレ抑制が効きません）。
 	AspectRatio string
+	// ImageSize は解像度です。空ならキット既定（2K）。シートは全生成物の同一性
+	// アンカーなので、既定はパネルではなくページ側に揃えています。
+	ImageSize string
 	// Layout に DesignLayoutSingleView を渡すと単一ポーズ（参照アンカー向け）、
 	// 空文字なら3面図ターンアラウンドになります。
 	Layout string
 	// Override は単一キャラクター指定時のみ適用されるその場限りの上書きです。
 	Override DesignOverride
-	// ModelOverride は設定済みモデル（DesignSheetRunner 構築時の model）を差し替えます。
-	// 空文字なら既定のモデルを使います。
-	ModelOverride string
+	// Model はシートを描く画像生成モデルです（必須）。
+	Model string
 	// StyleMode はこのシートの画風モードです（GenerateOptions.StyleMode と同じ扱い）。
 	// キットは中身を解釈せず、DesignSheetPromptData.StyleMode へ素通しします。
 	//
@@ -122,8 +123,16 @@ type GenerateOptions struct {
 	// 保ったまま指示した箇所だけを変更します（go-veo-orchestrator の EditCut と同方式）。
 	// 対象パネルに生成済み画像が無い場合はエラーになります。
 	EditPrompt string
-	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
-	ModelOverride string
+	// Model はこの生成に使う画像生成モデルです（必須）。
+	// 空文字の呼び出しは ErrInvalidRequest で、画像 API は呼びません。
+	Model string
+	// AspectRatio / ImageSize は生成する画像の比率と解像度です。
+	// 空ならキット既定（3:4、パネル 1K・ページ 2K）。未サポート値は ErrInvalidRequest です
+	// （黙って既定へ落とすと「指定したつもりの比率で生成されない」状態が続きます）。
+	//
+	// 比率はパネル・ページ・デザインシートで揃えてください（Config の説明を参照）。
+	AspectRatio string
+	ImageSize   string
 	// StyleMode はこの生成の画風モードです。空文字ならプロンプト実装の既定になります。
 	//
 	// キットは中身を解釈せず、プロンプト実装へ PanelPromptData.StyleMode /
@@ -168,8 +177,11 @@ type BatchOptions struct {
 	// GenerateOptions.Seed が nil のときと同じ解決規則
 	// （前回値 → 主役キャラクター → 新規採番）に従います。
 	Seed *int64
-	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
-	ModelOverride string
+	// Model はこの一括生成に使う画像生成モデルです（必須）。
+	Model string
+	// AspectRatio / ImageSize は GenerateOptions と同じ扱いです。
+	AspectRatio string
+	ImageSize   string
 	// StyleMode はこの一括生成の画風モードです（GenerateOptions.StyleMode と同じ扱い）。
 	StyleMode string
 	// OutputDir は生成画像の保存先ベースディレクトリです。

@@ -58,7 +58,7 @@ func newChapterRunner(t *testing.T, ai *fakeContentGenerator) (*ChapterScriptRun
 	if err != nil {
 		t.Fatalf("NewCharacters failed: %v", err)
 	}
-	return NewChapterScriptRunner(p, ai, cm, "test-model", 0, 0), p
+	return NewChapterScriptRunner(p, ai, cm, 0, 0), p
 }
 
 func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
@@ -70,7 +70,7 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	// 既存パネルが置き換わることの検証用
 	state.Panels = []comic.Panel{{ID: "ch01-p01", ChapterID: "ch01", Shot: "old"}}
 
-	state, err := r.GenerateChapterScript(context.Background(), state, "ch01", ports.ChapterScriptOptions{})
+	state, err := r.GenerateChapterScript(context.Background(), state, "ch01", ports.ChapterScriptOptions{Model: "test-model"})
 	if err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestGenerateChapterScriptDemotesUnknownCharacters(t *testing.T) {
 	ai := &fakeContentGenerator{text: chapterJSON}
 	r, _ := newChapterRunner(t, ai)
 
-	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01", ports.ChapterScriptOptions{})
+	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01", ports.ChapterScriptOptions{Model: "test-model"})
 	if err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestGenerateChapterScriptUnknownChapterFails(t *testing.T) {
 	t.Parallel()
 
 	r, _ := newChapterRunner(t, &fakeContentGenerator{text: chapterJSON})
-	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch99", ports.ChapterScriptOptions{}); err == nil {
+	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch99", ports.ChapterScriptOptions{Model: "test-model"}); err == nil {
 		t.Error("GenerateChapterScript(ch99) succeeded, want error")
 	}
 }
@@ -158,7 +158,7 @@ func TestGenerateChapterScriptNilStateFails(t *testing.T) {
 	t.Parallel()
 
 	r, _ := newChapterRunner(t, &fakeContentGenerator{text: chapterJSON})
-	if _, err := r.GenerateChapterScript(context.Background(), nil, "ch01", ports.ChapterScriptOptions{}); err == nil {
+	if _, err := r.GenerateChapterScript(context.Background(), nil, "ch01", ports.ChapterScriptOptions{Model: "test-model"}); err == nil {
 		t.Error("GenerateChapterScript(nil state) succeeded, want error")
 	}
 }
@@ -167,7 +167,7 @@ func TestGenerateChapterScriptEmptyPanelsFails(t *testing.T) {
 	t.Parallel()
 
 	r, _ := newChapterRunner(t, &fakeContentGenerator{text: `{"panels":[]}`})
-	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01", ports.ChapterScriptOptions{}); err == nil {
+	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01", ports.ChapterScriptOptions{Model: "test-model"}); err == nil {
 		t.Error("GenerateChapterScript with empty panels succeeded, want error")
 	}
 }
@@ -179,7 +179,7 @@ func TestGenerateChapterScriptUsesModelOverride(t *testing.T) {
 	r, _ := newChapterRunner(t, ai)
 
 	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01",
-		ports.ChapterScriptOptions{ModelOverride: "override-model"}); err != nil {
+		ports.ChapterScriptOptions{Model: "override-model"}); err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
 	if ai.lastModel != "override-model" {
@@ -194,7 +194,7 @@ func TestGenerateChapterScriptEmptyModelOverrideKeepsConfigured(t *testing.T) {
 	r, _ := newChapterRunner(t, ai)
 
 	if _, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01",
-		ports.ChapterScriptOptions{}); err != nil {
+		ports.ChapterScriptOptions{Model: "test-model"}); err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
 	if ai.lastModel != "test-model" {
