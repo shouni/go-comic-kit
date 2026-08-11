@@ -84,8 +84,12 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	}
 
 	// 3. 生成（構造化出力: スキーマで文法レベルに制約する）
-	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", r.model, "max_chapters", maxChapters)
-	resp, err := r.aiClient.GenerateWithAttachments(ctx, r.model, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
+	targetModel := r.model
+	if req.ModelOverride != "" {
+		targetModel = req.ModelOverride
+	}
+	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", targetModel, "max_chapters", maxChapters)
+	resp, err := r.aiClient.GenerateWithAttachments(ctx, targetModel, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
 	}

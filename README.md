@@ -94,7 +94,7 @@ defer func() { _ = ops.Close() }()
 // 章立て → 章ごとの台本 → デザインシート → パネル → ページ
 state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{SourceURL: "gs://bucket/article.md"})
 state.ID = workID // 作品IDはキットが設定しないため、アプリ側で採番して設定する
-state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01")
+state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01", ports.ChapterScriptOptions{})
 state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequest{
 	CharacterIDs: []string{"zundamon"}, JobID: jobID, OutputDir: outDir,
 })

@@ -52,6 +52,8 @@ type MangaState struct {
 	Description  string           `json:"description"`
 	StyleMode    string           `json:"style_mode"`
 	ScriptMode   string           `json:"script_mode,omitempty"`
+	TextModel    string           `json:"text_model,omitempty"`
+	ImageModel   string           `json:"image_model,omitempty"`
 	Chapters     []Chapter        `json:"chapters,omitempty"`
 	DesignSheets []DesignSheetRef `json:"design_sheets,omitempty"`
 	Panels       []Panel          `json:"panels"`

@@ -14,6 +14,8 @@ type MangaState struct {
 	Description  string
 	StyleMode    string           // アプリ側で使う画像スタイル識別子（記録されるのみで、キット内では生成に未使用）
 	ScriptMode   string           // 台本プロンプトテンプレートの選択（再生成時に同一モードを使うため永続化）
+	TextModel    string           // この作品の台本を書いたモデル（記録のみ。呼び出し側が設定・参照する）
+	ImageModel   string           // この作品の画像を描いたモデル（記録のみ。呼び出し側が設定・参照する）
 	Chapters     []Chapter        // 章立て（GenerateOutline の成果物）
 	DesignSheets []DesignSheetRef // 使用したデザインシートの記録
 	Panels       []Panel

@@ -68,7 +68,7 @@ func TestGenerateChapterScriptNormalizesDialogues(t *testing.T) {
 	t.Parallel()
 
 	r, _ := newChapterRunner(t, &fakeContentGenerator{text: normalizeChapterJSON})
-	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01")
+	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01", ports.ChapterScriptOptions{})
 	if err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestGenerateChapterScriptCapsReferencedCharacters(t *testing.T) {
 
 	r := newChapterRunnerWithCast(t, &fakeContentGenerator{text: normalizeChapterJSON},
 		"zundamon", "metan", "tsumugi", "hau", "ritsu")
-	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01")
+	state, err := r.GenerateChapterScript(context.Background(), outlineState(), "ch01", ports.ChapterScriptOptions{})
 	if err != nil {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
@@ -149,15 +149,15 @@ func TestOperationErrorsAreClassifiable(t *testing.T) {
 	r, _ := newChapterRunner(t, &fakeContentGenerator{text: normalizeChapterJSON})
 	ctx := context.Background()
 
-	if _, err := r.GenerateChapterScript(ctx, outlineState(), "ch99"); !errors.Is(err, ports.ErrNotFound) {
+	if _, err := r.GenerateChapterScript(ctx, outlineState(), "ch99", ports.ChapterScriptOptions{}); !errors.Is(err, ports.ErrNotFound) {
 		t.Errorf("未知の章のエラー = %v, want ports.ErrNotFound", err)
 	}
-	if _, err := r.GenerateChapterScript(ctx, nil, "ch01"); !errors.Is(err, ports.ErrInvalidRequest) {
+	if _, err := r.GenerateChapterScript(ctx, nil, "ch01", ports.ChapterScriptOptions{}); !errors.Is(err, ports.ErrInvalidRequest) {
 		t.Errorf("state=nil のエラー = %v, want ports.ErrInvalidRequest", err)
 	}
 
 	empty, _ := newChapterRunner(t, &fakeContentGenerator{text: `{"panels":[]}`})
-	if _, err := empty.GenerateChapterScript(ctx, outlineState(), "ch01"); !errors.Is(err, ports.ErrGeneration) {
+	if _, err := empty.GenerateChapterScript(ctx, outlineState(), "ch01", ports.ChapterScriptOptions{}); !errors.Is(err, ports.ErrGeneration) {
 		t.Errorf("空応答のエラー = %v, want ports.ErrGeneration", err)
 	}
 }
