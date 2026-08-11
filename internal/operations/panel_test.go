@@ -270,3 +270,30 @@ func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 		t.Error("Seed = nil, want a freshly drawn seed so the panel can be reproduced")
 	}
 }
+
+func TestGeneratePanelStyleSuffixOverride(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		override string
+		want     string
+	}{
+		{name: "上書きあり", override: "水彩画風", want: "水彩画風"},
+		{name: "上書きなしは設定値", override: "", want: "test panel style"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			prompt := &fakePanelPrompt{}
+			r, _, _ := newPanelRunner(t, prompt)
+
+			if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
+				ports.GenerateOptions{StyleSuffixOverride: tc.override}); err != nil {
+				t.Fatalf("GeneratePanel failed: %v", err)
+			}
+			if got := prompt.data.StyleSuffix; got != tc.want {
+				t.Errorf("StyleSuffix = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

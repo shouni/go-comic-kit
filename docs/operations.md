@@ -28,6 +28,8 @@ HTML/Markdown 等への出力工程はキットに含めません。閲覧・配
 | `GenerateOptions.EditPrompt` | パネル・ページ | 既存の生成済み画像に対する指示ベースの部分編集（「構図はそのままで表情だけ笑顔に」） |
 | `GenerateOptions.PromptOverride` | パネル・ページ | プロンプト本文の差し替え（システム指示・ネガティブプロンプトは残ります） |
 | `GenerateOptions.ModelOverride` / `DesignSheetRequest.ModelOverride` | 各画像操作 | 構築時のモデルをその呼び出しに限って差し替え |
+| `OutlineRequest.ModelOverride` / `ChapterScriptOptions.ModelOverride` | 章立て・章台本 | 構築時のテキストモデル（`Config.GeminiModel`）をその呼び出しに限って差し替え。1作品の台本は同じモデルが書くべきなので、章立てと全章へ同じ値を渡してください |
+| `GenerateOptions.StyleSuffixOverride` / `BatchOptions.StyleSuffixOverride` | パネル・ページ | 構築時の画風指定（`Config.StyleSuffix`）をその呼び出しに限って差し替え。キットは中身を解釈せず、プロンプト実装へ `StyleSuffix` として素通しします |
 | `DesignSheetRequest.Override`（`ports.DesignOverride`） | デザインシート | 参照画像・`visual_cues` をその場限りで差し替え（`characters.json` は変更しません）。**単一キャラクター指定時のみ有効** |
 
 ## 一括生成と再開

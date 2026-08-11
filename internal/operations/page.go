@@ -205,9 +205,10 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		"pages", len(targets), "chapter", opts.ChapterID, "concurrency", pg.maxConcurrency)
 
 	single := ports.GenerateOptions{
-		Seed:          opts.Seed,
-		ModelOverride: opts.ModelOverride,
-		OutputDir:     opts.OutputDir,
+		Seed:                opts.Seed,
+		ModelOverride:       opts.ModelOverride,
+		StyleSuffixOverride: opts.StyleSuffixOverride,
+		OutputDir:           opts.OutputDir,
 	}
 	artifacts, errs := runBatch(ctx, pg.maxConcurrency, targets,
 		func(ctx context.Context, page int) (*comic.PageArtifact, error) {
@@ -271,7 +272,7 @@ func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing
 		Characters:    pg.characters,
 		CharacterFile: res.characterFile,
 		PanelFile:     res.panelFile,
-		StyleSuffix:   pg.styleSuffix,
+		StyleSuffix:   resolveStyleSuffix(pg.styleSuffix, opts.StyleSuffixOverride),
 	}))
 	if err != nil {
 		return promptSet{}, nil, err

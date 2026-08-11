@@ -174,3 +174,34 @@ func TestGenerateOutlineEmptyChaptersFails(t *testing.T) {
 		t.Error("GenerateOutline with empty chapters succeeded, want error")
 	}
 }
+
+func TestGenerateOutlineUsesModelOverride(t *testing.T) {
+	t.Parallel()
+
+	ai := &fakeContentGenerator{text: outlineJSON}
+	r := newOutlineRunner(t, ai, nil)
+
+	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{
+		SourceText:    "元文章のテキスト",
+		ModelOverride: "override-model",
+	}); err != nil {
+		t.Fatalf("GenerateOutline failed: %v", err)
+	}
+	if ai.lastModel != "override-model" {
+		t.Errorf("model = %q, want override-model", ai.lastModel)
+	}
+}
+
+func TestGenerateOutlineEmptyModelOverrideKeepsConfigured(t *testing.T) {
+	t.Parallel()
+
+	ai := &fakeContentGenerator{text: outlineJSON}
+	r := newOutlineRunner(t, ai, nil)
+
+	if _, err := r.GenerateOutline(context.Background(), ports.OutlineRequest{SourceText: "元文章のテキスト"}); err != nil {
+		t.Fatalf("GenerateOutline failed: %v", err)
+	}
+	if ai.lastModel != "test-model" {
+		t.Errorf("model = %q, want test-model", ai.lastModel)
+	}
+}

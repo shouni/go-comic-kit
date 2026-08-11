@@ -22,6 +22,9 @@ type OutlineRequest struct {
 	StyleMode string
 	// MaxChapters は章数の上限です。0 以下なら既定値を使います。
 	MaxChapters int
+	// ModelOverride は設定済みのテキストモデル（Config.GeminiModel）を差し替えます。
+	// 空文字なら既定のモデルを使います。画像側の GenerateOptions.ModelOverride と同じ扱いです。
+	ModelOverride string
 }
 
 // OutlineGenerator は、原稿から章立て（Chapters）のみを持つ MangaState を生成する契約です。
@@ -30,10 +33,21 @@ type OutlineGenerator interface {
 	GenerateOutline(ctx context.Context, req OutlineRequest) (*comic.MangaState, error)
 }
 
+// ChapterScriptOptions は章台本生成（GenerateChapterScript）のオプションです。
+// プロンプトのモードは state.ScriptMode（章立て時に決めた値）から引くため、ここには含めません。
+type ChapterScriptOptions struct {
+	// ModelOverride は設定済みのテキストモデル（Config.GeminiModel）を差し替えます。
+	// 空文字なら既定のモデルを使います。
+	//
+	// 1作品の台本は章立てと全章で同じモデルが書くべきなので、呼び出し側は
+	// OutlineRequest.ModelOverride と同じ値を渡してください。
+	ModelOverride string
+}
+
 // ChapterScriptGenerator は、章立て全体を文脈としつつ指定章のパネル群（台本）を生成し、
 // 既存の同章パネルを置き換える契約です（冪等・章単位の再生成に対応）。
 type ChapterScriptGenerator interface {
-	GenerateChapterScript(ctx context.Context, state *comic.MangaState, chapterID string) (*comic.MangaState, error)
+	GenerateChapterScript(ctx context.Context, state *comic.MangaState, chapterID string, opts ChapterScriptOptions) (*comic.MangaState, error)
 }
 
 // DesignOverride は、1回の呼び出しに限定してキャラクターの参照画像・visual_cues を
@@ -104,6 +118,12 @@ type GenerateOptions struct {
 	EditPrompt string
 	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
 	ModelOverride string
+	// StyleSuffixOverride は設定済みの画風指定（Config.StyleSuffix）を差し替えます。
+	// 空文字なら既定の画風を使います。
+	//
+	// 画風は作品ごとの絵作りで、設定（デプロイ単位）よりも細かい単位で変わります。
+	// キットは中身を解釈せず、プロンプト実装へ StyleSuffix として素通しします。
+	StyleSuffixOverride string
 	// OutputDir は生成画像の保存先ベースディレクトリです。
 	OutputDir string
 }
@@ -142,6 +162,9 @@ type BatchOptions struct {
 	Seed *int64
 	// ModelOverride は設定済みモデルを差し替えます（空なら既定）。
 	ModelOverride string
+	// StyleSuffixOverride は設定済みの画風指定（Config.StyleSuffix）を差し替えます。
+	// 空文字なら既定の画風を使います（GenerateOptions.StyleSuffixOverride と同じ扱い）。
+	StyleSuffixOverride string
 	// OutputDir は生成画像の保存先ベースディレクトリです。
 	OutputDir string
 	// SkipGenerated が true の場合、すでに生成済み（comic.GenerationRecord を持つ）対象を飛ばします。

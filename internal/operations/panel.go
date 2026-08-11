@@ -178,9 +178,10 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 		"panels", len(targets), "chapter", opts.ChapterID, "concurrency", pr.maxConcurrency)
 
 	single := ports.GenerateOptions{
-		Seed:          opts.Seed,
-		ModelOverride: opts.ModelOverride,
-		OutputDir:     opts.OutputDir,
+		Seed:                opts.Seed,
+		ModelOverride:       opts.ModelOverride,
+		StyleSuffixOverride: opts.StyleSuffixOverride,
+		OutputDir:           opts.OutputDir,
 	}
 	records, errs := runBatch(ctx, pr.maxConcurrency, targets,
 		func(ctx context.Context, index int) (*comic.GenerationRecord, error) {
@@ -248,7 +249,7 @@ func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.Generate
 		Panel:       *panel,
 		Characters:  pr.characters,
 		SubjectIDs:  subjectIDs,
-		StyleSuffix: pr.styleSuffix,
+		StyleSuffix: resolveStyleSuffix(pr.styleSuffix, opts.StyleSuffixOverride),
 	}))
 	if err != nil {
 		return promptSet{}, nil, err
