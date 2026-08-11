@@ -43,10 +43,10 @@ type Args struct {
 	PagePrompt          ports.PagePrompt
 }
 
-// generationUnit は、1つの AI クライアント・モデルに紐づく画像生成一式です。
+// generationUnit は、1つの AI クライアントに紐づく画像生成一式です。
+// モデル名は呼び出しごとに渡されるため、ここには持ちません。
 type generationUnit struct {
 	imageGenerator operations.ImageGenerator
-	model          string
 	cache          *imageCache
 }
 
@@ -76,7 +76,7 @@ func New(args Args) (*ports.Operations, error) {
 		timeout: cfg.RequestTimeout,
 	}
 
-	images, err := buildGenerationUnit(&args, args.AIClient, cfg.ImageModel, guard)
+	images, err := buildGenerationUnit(&args, args.AIClient, guard)
 	if err != nil {
 		return nil, fmt.Errorf("画像生成ユニットの構築に失敗しました: %w", err)
 	}
@@ -89,9 +89,6 @@ func New(args Args) (*ports.Operations, error) {
 		Prompt:         args.PanelPrompt,
 		Generator:      images.imageGenerator,
 		Writer:         args.Writer,
-		Model:          images.model,
-		AspectRatio:    cfg.AspectRatio,
-		ImageSize:      cfg.PanelImageSize,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
 	})
@@ -100,9 +97,6 @@ func New(args Args) (*ports.Operations, error) {
 		Prompt:         args.PagePrompt,
 		Generator:      images.imageGenerator,
 		Writer:         args.Writer,
-		Model:          images.model,
-		AspectRatio:    cfg.AspectRatio,
-		ImageSize:      cfg.PageImageSize,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
 	})
@@ -110,20 +104,17 @@ func New(args Args) (*ports.Operations, error) {
 	ops := &ports.Operations{
 		Outline: operations.NewOutlineRunner(
 			args.OutlinePrompt, textGenerator, args.Reader, args.Characters,
-			cfg.GeminiModel, cfg.MaxChapters,
+			cfg.MaxChapters,
 		),
 		ChapterScript: operations.NewChapterScriptRunner(
 			args.ChapterScriptPrompt, textGenerator, args.Characters,
-			cfg.GeminiModel, cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
+			cfg.MaxPanelsPerChapter, cfg.MaxPanelsPerPage,
 		),
 		DesignSheet: operations.NewDesignSheetRunner(operations.DesignSheetRunnerArgs{
 			Prompt:       args.DesignSheetPrompt,
 			Characters:   args.Characters,
 			Generator:    images.imageGenerator,
 			Writer:       args.Writer,
-			Model:        images.model,
-			AspectRatio:  cfg.AspectRatio,
-			ImageSize:    cfg.PageImageSize,
 			CacheControl: cfg.CacheControl,
 		}),
 		Panel: panelRunner,
@@ -133,18 +124,16 @@ func New(args Args) (*ports.Operations, error) {
 	return ops, nil
 }
 
-// buildGenerationUnit は、指定クライアント・モデルの画像生成一式（core・generator）を構築します。
-func buildGenerationUnit(args *Args, client gemini.Model, modelName string, guard callGuard) (*generationUnit, error) {
+// buildGenerationUnit は、指定クライアントの画像生成一式（core・generator）を構築します。
+func buildGenerationUnit(args *Args, client gemini.Model, guard callGuard) (*generationUnit, error) {
 	cache := newImageCache(defaultCacheExpiration)
 
 	core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
-		AIClient:   client,
-		Reader:     args.Reader,
-		HTTPClient: args.HTTPClient,
-		Cache:      cache,
-		CacheTTL:   defaultTTL,
-		// 参照画像のアップロードにも AI 呼び出しと同じ上限時間を適用する
-		// （Config.RequestTimeout）。
+		AIClient:      client,
+		Reader:        args.Reader,
+		HTTPClient:    args.HTTPClient,
+		Cache:         cache,
+		CacheTTL:      defaultTTL,
 		UploadTimeout: guard.timeout,
 	})
 	if err != nil {
@@ -162,7 +151,6 @@ func buildGenerationUnit(args *Args, client gemini.Model, modelName string, guar
 	return &generationUnit{
 		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
 		imageGenerator: &singleflightImageGenerator{inner: gen, guard: guard},
-		model:          modelName,
 		cache:          cache,
 	}, nil
 }

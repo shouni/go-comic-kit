@@ -24,9 +24,6 @@ type PageImageRunner struct {
 	prompt         ports.PagePrompt
 	generator      ImageGenerator
 	writer         remoteio.Writer
-	model          string
-	aspectRatio    string
-	imageSize      string
 	maxConcurrency int
 	cacheControl   string
 }
@@ -40,11 +37,6 @@ type PageImageRunnerArgs struct {
 	Prompt    ports.PagePrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	Model     string
-	// AspectRatio が空の場合は layout.PageAspectRatio を使います。
-	AspectRatio string
-	// ImageSize が空の場合は layout.ImageSize2K を使います。
-	ImageSize string
 	// MaxConcurrency は ComposeAllPages の並列数です（ports.Config.MaxConcurrency）。
 	// 0 以下の場合は 1（逐次実行）になります。
 	MaxConcurrency int
@@ -54,12 +46,6 @@ type PageImageRunnerArgs struct {
 
 // NewPageImageRunner は依存関係を注入して初期化します。
 func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
-	if args.AspectRatio == "" {
-		args.AspectRatio = layout.DefaultAspectRatio
-	}
-	if args.ImageSize == "" {
-		args.ImageSize = layout.ImageSize2K
-	}
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
 	}
@@ -68,9 +54,6 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 		prompt:         args.Prompt,
 		generator:      args.Generator,
 		writer:         args.Writer,
-		model:          args.Model,
-		aspectRatio:    args.AspectRatio,
-		imageSize:      args.ImageSize,
 		maxConcurrency: args.MaxConcurrency,
 		cacheControl:   args.CacheControl,
 	}
@@ -109,11 +92,18 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 	if len(panels) == 0 {
 		return nil, fmt.Errorf("%w: ページ %d にパネルがありません", ports.ErrNotFound, page)
 	}
-
-	targetModel := pg.model
-	if opts.ModelOverride != "" {
-		targetModel = opts.ModelOverride
+	if err := requireModel(opts.Model, "ページ画像"); err != nil {
+		return nil, err
 	}
+	aspectRatio, err := resolveAspectRatio(opts.AspectRatio, layout.DefaultAspectRatio)
+	if err != nil {
+		return nil, err
+	}
+	imageSize, err := resolveImageSize(opts.ImageSize, layout.ImageSize2K)
+	if err != nil {
+		return nil, err
+	}
+
 	existing := state.PageArtifactByNumber(page)
 	var prevGeneration *comic.GenerationRecord
 	if existing != nil {
@@ -121,7 +111,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 	}
 	seed := resolveSeedChain(opts.Seed, prevGeneration, pg.characters, panels[0].Characters)
 
-	set, images, err := pg.buildRequest(page, panels, existing, opts)
+	set, images, err := pg.buildRequest(page, panels, existing, opts, aspectRatio)
 	if err != nil {
 		return nil, err
 	}
@@ -129,19 +119,19 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 	slog.Info("Starting page composition",
 		"page", page,
 		"panels", len(panels),
-		"model", targetModel,
+		"model", opts.Model,
 		"edit", opts.EditPrompt != "",
 		"ref_count", len(images),
 	)
 
 	// 生成・保存・生成条件の記録。保存先はページ番号に紐づく安定したパスで上書きする。
 	record, err := renderImage(ctx, pg.generator, pg.writer, imageRenderRequest{
-		Model:          targetModel,
+		Model:          opts.Model,
 		Prompt:         set.user,
 		SystemPrompt:   set.system,
 		NegativePrompt: set.negative,
-		AspectRatio:    pg.aspectRatio,
-		ImageSize:      pg.imageSize,
+		AspectRatio:    aspectRatio,
+		ImageSize:      imageSize,
 		Seed:           seed,
 		Images:         images,
 		CacheControl:   pg.cacheControl,
@@ -201,10 +191,12 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		"pages", len(targets), "chapter", opts.ChapterID, "concurrency", pg.maxConcurrency)
 
 	single := ports.GenerateOptions{
-		Seed:          opts.Seed,
-		ModelOverride: opts.ModelOverride,
-		StyleMode:     opts.StyleMode,
-		OutputDir:     opts.OutputDir,
+		Seed:        opts.Seed,
+		Model:       opts.Model,
+		StyleMode:   opts.StyleMode,
+		AspectRatio: opts.AspectRatio,
+		ImageSize:   opts.ImageSize,
+		OutputDir:   opts.OutputDir,
 	}
 	artifacts, errs := runBatch(ctx, pg.maxConcurrency, targets,
 		func(ctx context.Context, page int) (*comic.PageArtifact, error) {
@@ -250,7 +242,7 @@ func uniquePageNumbers(panels []comic.Panel) []int {
 // buildRequest は、編集モードかページ合成かに応じてプロンプト一式と参照画像を構築します。
 // プロンプト本文の組み立ては ports.PagePrompt の実装（既定はキット内蔵の簡潔版）に委ね、
 // ここは「何番目にどの画像を添付したか」を伝える役に徹します。
-func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions) (promptSet, []imagePorts.ImageURI, error) {
+func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
 	if opts.EditPrompt != "" {
 		if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: ページ %d には編集対象の合成済み画像がありません", ports.ErrInvalidRequest, page)
@@ -262,7 +254,7 @@ func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing
 		return set.withOverride(opts.PromptOverride), []imagePorts.ImageURI{{ReferenceURL: existing.Generation.ImageURL}}, nil
 	}
 
-	res := pg.collectPageResources(panels)
+	res := pg.collectPageResources(panels, aspectRatio)
 	set, err := newPromptSet(pg.prompt.BuildPage(&ports.PagePromptData{
 		Panels:        panels,
 		Characters:    pg.characters,
@@ -278,7 +270,7 @@ func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing
 
 // collectPageResources はページ内の参照画像を「キャラクター → 生成済みパネル」の順で集約し、
 // プロンプトから参照する input_file 番号（1始まり）を割り振ります。
-func (pg *PageImageRunner) collectPageResources(panels []comic.Panel) *pageResources {
+func (pg *PageImageRunner) collectPageResources(panels []comic.Panel, aspectRatio string) *pageResources {
 	res := &pageResources{
 		characterFile: make(map[string]int),
 		panelFile:     make(map[string]int),
@@ -294,7 +286,7 @@ func (pg *PageImageRunner) collectPageResources(panels []comic.Panel) *pageResou
 			if char == nil {
 				continue
 			}
-			referenceURL := char.ReferenceURLFor(pg.aspectRatio)
+			referenceURL := char.ReferenceURLFor(aspectRatio)
 			if referenceURL == "" {
 				continue
 			}

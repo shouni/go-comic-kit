@@ -23,9 +23,6 @@ type PanelImageRunner struct {
 	prompt         ports.PanelPrompt
 	generator      ImageGenerator
 	writer         remoteio.Writer
-	model          string
-	aspectRatio    string
-	imageSize      string
 	maxConcurrency int
 	cacheControl   string
 }
@@ -39,12 +36,6 @@ type PanelImageRunnerArgs struct {
 	Prompt    ports.PanelPrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	// Model は画像生成に使うモデル名です（ports.Config.ImageModel）。
-	Model string
-	// AspectRatio が空の場合は layout.PanelAspectRatio を使います。
-	AspectRatio string
-	// ImageSize が空の場合は layout.ImageSize1K を使います。
-	ImageSize string
 	// MaxConcurrency は GenerateAllPanels の並列数です（ports.Config.MaxConcurrency）。
 	// 0 以下の場合は 1（逐次実行）になります。
 	MaxConcurrency int
@@ -54,12 +45,6 @@ type PanelImageRunnerArgs struct {
 
 // NewPanelImageRunner は依存関係を注入して初期化します。
 func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
-	if args.AspectRatio == "" {
-		args.AspectRatio = layout.DefaultAspectRatio
-	}
-	if args.ImageSize == "" {
-		args.ImageSize = layout.ImageSize1K
-	}
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
 	}
@@ -68,9 +53,6 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 		prompt:         args.Prompt,
 		generator:      args.Generator,
 		writer:         args.Writer,
-		model:          args.Model,
-		aspectRatio:    args.AspectRatio,
-		imageSize:      args.ImageSize,
 		maxConcurrency: args.MaxConcurrency,
 		cacheControl:   args.CacheControl,
 	}
@@ -103,32 +85,40 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *comic.Mang
 func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions) (*comic.GenerationRecord, error) {
 	panelID := panel.ID
 
-	targetModel := pr.model
-	if opts.ModelOverride != "" {
-		targetModel = opts.ModelOverride
+	if err := requireModel(opts.Model, "パネル画像"); err != nil {
+		return nil, err
 	}
+	aspectRatio, err := resolveAspectRatio(opts.AspectRatio, layout.DefaultAspectRatio)
+	if err != nil {
+		return nil, err
+	}
+	imageSize, err := resolveImageSize(opts.ImageSize, layout.ImageSize1K)
+	if err != nil {
+		return nil, err
+	}
+
 	seed := resolveSeedChain(opts.Seed, panel.Generation, pr.characters, panel.Characters)
 
-	set, images, err := pr.buildRequest(panel, opts)
+	set, images, err := pr.buildRequest(panel, opts, aspectRatio)
 	if err != nil {
 		return nil, err
 	}
 
 	slog.Info("Starting panel image generation",
 		"panel", panelID,
-		"model", targetModel,
+		"model", opts.Model,
 		"edit", opts.EditPrompt != "",
 		"ref_count", len(images),
 	)
 
 	// 生成・保存・生成条件の記録（再生成の基礎）。保存先はパネルIDに紐づく安定したパスで上書きする。
 	record, err := renderImage(ctx, pr.generator, pr.writer, imageRenderRequest{
-		Model:          targetModel,
+		Model:          opts.Model,
 		Prompt:         set.user,
 		SystemPrompt:   set.system,
 		NegativePrompt: set.negative,
-		AspectRatio:    pr.aspectRatio,
-		ImageSize:      pr.imageSize,
+		AspectRatio:    aspectRatio,
+		ImageSize:      imageSize,
 		Seed:           seed,
 		Images:         images,
 		CacheControl:   pr.cacheControl,
@@ -174,10 +164,12 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 		"panels", len(targets), "chapter", opts.ChapterID, "concurrency", pr.maxConcurrency)
 
 	single := ports.GenerateOptions{
-		Seed:          opts.Seed,
-		ModelOverride: opts.ModelOverride,
-		StyleMode:     opts.StyleMode,
-		OutputDir:     opts.OutputDir,
+		Seed:        opts.Seed,
+		Model:       opts.Model,
+		StyleMode:   opts.StyleMode,
+		AspectRatio: opts.AspectRatio,
+		ImageSize:   opts.ImageSize,
+		OutputDir:   opts.OutputDir,
 	}
 	records, errs := runBatch(ctx, pr.maxConcurrency, targets,
 		func(ctx context.Context, index int) (*comic.GenerationRecord, error) {
@@ -209,7 +201,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 // buildRequest は、編集モードか通常生成かに応じてプロンプト一式と参照画像を構築します。
 // プロンプト本文の組み立ては ports.PanelPrompt の実装（既定はキット内蔵の簡潔版）に委ね、
 // ここは「どのキャラクターの参照画像をどの順序で添付したか」を伝える役に徹します。
-func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.GenerateOptions) (promptSet, []imagePorts.ImageURI, error) {
+func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
 	if opts.EditPrompt != "" {
 		if panel.Generation == nil || panel.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
@@ -232,7 +224,7 @@ func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.Generate
 			continue
 		}
 		// 生成アスペクト比に一致する参照画像（あれば）を優先し、細部のブレを抑える
-		referenceURL := char.ReferenceURLFor(pr.aspectRatio)
+		referenceURL := char.ReferenceURLFor(aspectRatio)
 		if referenceURL == "" {
 			slog.Warn("キャラクターに参照画像がありません", "character_id", id)
 			continue

@@ -36,11 +36,3 @@ func AspectRatios() []string { return slices.Clone(aspectRatios) }
 func IsAspectRatio(value string) bool {
 	return slices.Contains(aspectRatios, value)
 }
-
-// NormalizeAspectRatio は、value がサポート対象でなければ fallback を返します。
-func NormalizeAspectRatio(value, fallback string) string {
-	if IsAspectRatio(value) {
-		return value
-	}
-	return fallback
-}

@@ -49,7 +49,7 @@ func TestBatchChapterScope(t *testing.T) {
 		runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 		state, err := runner.GenerateAllPanels(context.Background(), chapterBatchState(),
-			ports.BatchOptions{ChapterID: "ch01"})
+			ports.BatchOptions{ChapterID: "ch01", Model: "batch-model"})
 		if err != nil {
 			t.Fatalf("GenerateAllPanels() error = %v", err)
 		}
@@ -66,7 +66,7 @@ func TestBatchChapterScope(t *testing.T) {
 		runner, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 		state, err := runner.ComposeAllPages(context.Background(), chapterBatchState(),
-			ports.BatchOptions{ChapterID: "ch02"})
+			ports.BatchOptions{ChapterID: "ch02", Model: "batch-model"})
 		if err != nil {
 			t.Fatalf("ComposeAllPages() error = %v", err)
 		}
@@ -80,7 +80,7 @@ func TestBatchChapterScope(t *testing.T) {
 	t.Run("存在しない章は ErrNotFound", func(t *testing.T) {
 		panelRunner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 		pageRunner, _, _ := newPageRunner(t, &fakePagePrompt{})
-		opts := ports.BatchOptions{ChapterID: "ch99"}
+		opts := ports.BatchOptions{ChapterID: "ch99", Model: "batch-model"}
 
 		if _, err := panelRunner.GenerateAllPanels(context.Background(), chapterBatchState(), opts); !errors.Is(err, ports.ErrNotFound) {
 			t.Errorf("GenerateAllPanels() error = %v, want ErrNotFound", err)

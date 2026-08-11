@@ -74,14 +74,13 @@ go-comic-kit/
 
 ```go
 ops, err := workflow.New(workflow.Args{
-	Config: ports.Config{ // 必須はモデル名2種だけ。他はゼロ値なら ApplyDefaults が補完する
-		GeminiModel: "gemini-3.6-flash",
-		ImageModel:  "gemini-3.1-flash-image",
-	},
+	// Config は実行制御だけ（並列数・間隔・タイムアウト・各種上限）。すべて任意で、
+	// ゼロ値なら ApplyDefaults が補完する。モデル・画風・比率・解像度は呼び出しごとに渡す
+	Config:          ports.Config{},
 	HTTPClient:      httpClient,      // go-http-kit
 	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
 	Writer:          writer,
-	AIClient:        aiClient,        // go-gemini-client。台本生成・パネル画像（標準品質）に使用
+	AIClient:        aiClient,        // go-gemini-client。台本生成・画像生成の両方に使用
 	Characters:      characters,      // go-character-kit (characters.json)
 })
 if err != nil {
@@ -90,18 +89,21 @@ if err != nil {
 defer func() { _ = ops.Close() }()
 
 // 章立て → 章ごとの台本 → デザインシート → パネル → ページ
-state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{SourceURL: "gs://bucket/article.md"})
-state.ID = workID // 作品IDはキットが設定しないため、アプリ側で採番して設定する
-state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01", ports.ChapterScriptOptions{})
-state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequest{
-	CharacterIDs: []string{"zundamon"}, JobID: jobID, OutputDir: outDir,
+// モデル名は毎回渡す（必須）。画風・比率・解像度も同じくここで指定する
+state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{
+	SourceURL: "gs://bucket/article.md", Model: textModel,
 })
-state, _ = ops.Panel.GeneratePanel(ctx, state, "ch01-p01", ports.GenerateOptions{OutputDir: outDir})
-state, _ = ops.Page.ComposePage(ctx, state, 1, ports.GenerateOptions{OutputDir: outDir})
+state.ID = workID // 作品IDはキットが設定しないため、アプリ側で採番して設定する
+state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01", ports.ChapterScriptOptions{Model: textModel})
+state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequest{
+	CharacterIDs: []string{"zundamon"}, JobID: jobID, OutputDir: outDir, Model: imageModel,
+})
+state, _ = ops.Panel.GeneratePanel(ctx, state, "ch01-p01", ports.GenerateOptions{OutputDir: outDir, Model: imageModel})
+state, _ = ops.Page.ComposePage(ctx, state, 1, ports.GenerateOptions{OutputDir: outDir, Model: imageModel})
 
 // 全パネル・全ページの一括生成（Config.MaxConcurrency で並列化）
-state, _ = ops.Panel.GenerateAllPanels(ctx, state, ports.BatchOptions{OutputDir: outDir})
-state, _ = ops.Page.ComposeAllPages(ctx, state, ports.BatchOptions{OutputDir: outDir})
+state, _ = ops.Panel.GenerateAllPanels(ctx, state, ports.BatchOptions{OutputDir: outDir, Model: imageModel})
+state, _ = ops.Page.ComposeAllPages(ctx, state, ports.BatchOptions{OutputDir: outDir, Model: imageModel})
 
 // state を保存（これが唯一の真実源。再生成はこの state を読み直して同じ操作を呼ぶだけ）
 _, _ = store.Save(ctx, writer, state, outDir)

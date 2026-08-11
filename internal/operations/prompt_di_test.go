@@ -47,7 +47,7 @@ func TestPanelPromptIsInjectable(t *testing.T) {
 	prompt := &recordingPanelPrompt{}
 	r, gen, _ := newPanelRunner(t, prompt)
 
-	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{}); err != nil {
+	if _, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{Model: "di-model"}); err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestPagePromptReceivesAttachmentIndexes(t *testing.T) {
 	prompt := &recordingPagePrompt{}
 	r, gen, _ := newPageRunner(t, prompt)
 
-	if _, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{}); err != nil {
+	if _, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{Model: "di-model"}); err != nil {
 		t.Fatalf("ComposePage failed: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestPanelPromptOverrideReplacesUserPromptOnly(t *testing.T) {
 	r, gen, _ := newPanelRunner(t, &recordingPanelPrompt{})
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01",
-		ports.GenerateOptions{PromptOverride: "独自のプロンプト"})
+		ports.GenerateOptions{PromptOverride: "独自のプロンプト", Model: "di-model"})
 	if err != nil {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}

@@ -97,7 +97,7 @@ func TestGenerateAllPanelsRunsConcurrently(t *testing.T) {
 	runner.maxConcurrency = 4
 
 	state := batchState(t, 8)
-	state, err := runner.GenerateAllPanels(context.Background(), state, ports.BatchOptions{OutputDir: "gs://b/job"})
+	state, err := runner.GenerateAllPanels(context.Background(), state, ports.BatchOptions{OutputDir: "gs://b/job", Model: "batch-model"})
 	if err != nil {
 		t.Fatalf("GenerateAllPanels failed: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestGenerateAllPanelsSerialByDefault(t *testing.T) {
 	// NewPanelImageRunner の既定（MaxConcurrency 未指定 → 1）を模す
 	runner.maxConcurrency = 1
 
-	if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 4), ports.BatchOptions{}); err != nil {
+	if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 4), ports.BatchOptions{Model: "batch-model"}); err != nil {
 		t.Fatalf("GenerateAllPanels failed: %v", err)
 	}
 	if probe.peak != 1 {
@@ -146,7 +146,7 @@ func TestGenerateAllPanelsKeepsSuccessesOnPartialFailure(t *testing.T) {
 	runner.writer = &concurrentWriter{}
 	runner.maxConcurrency = 3
 
-	state, err := runner.GenerateAllPanels(context.Background(), batchState(t, 3), ports.BatchOptions{})
+	state, err := runner.GenerateAllPanels(context.Background(), batchState(t, 3), ports.BatchOptions{Model: "batch-model"})
 	if err == nil {
 		t.Fatal("GenerateAllPanels succeeded, want error")
 	}
@@ -177,7 +177,7 @@ func TestGenerateAllPanelsSkipGenerated(t *testing.T) {
 	state.Panels[0].Generation = &comic.GenerationRecord{ImageURL: "gs://b/done.png"}
 
 	if _, err := runner.GenerateAllPanels(context.Background(), state,
-		ports.BatchOptions{SkipGenerated: true}); err != nil {
+		ports.BatchOptions{SkipGenerated: true, Model: "batch-model"}); err != nil {
 		t.Fatalf("GenerateAllPanels failed: %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestGenerateAllPanelsNilState(t *testing.T) {
 	t.Parallel()
 
 	runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
-	if _, err := runner.GenerateAllPanels(context.Background(), nil, ports.BatchOptions{}); !errors.Is(err, ports.ErrInvalidRequest) {
+	if _, err := runner.GenerateAllPanels(context.Background(), nil, ports.BatchOptions{Model: "batch-model"}); !errors.Is(err, ports.ErrInvalidRequest) {
 		t.Errorf("err = %v, want ports.ErrInvalidRequest", err)
 	}
 }
@@ -246,7 +246,7 @@ func TestComposeAllPagesRunsConcurrently(t *testing.T) {
 	runner.maxConcurrency = 3
 
 	state, err := runner.ComposeAllPages(context.Background(), batchPageState(t, 6),
-		ports.BatchOptions{OutputDir: "gs://b/job"})
+		ports.BatchOptions{OutputDir: "gs://b/job", Model: "batch-model"})
 	if err != nil {
 		t.Fatalf("ComposeAllPages failed: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestComposeAllPagesKeepsSuccessesOnPartialFailure(t *testing.T) {
 	runner.writer = &concurrentWriter{}
 	runner.maxConcurrency = 3
 
-	state, err := runner.ComposeAllPages(context.Background(), batchPageState(t, 3), ports.BatchOptions{})
+	state, err := runner.ComposeAllPages(context.Background(), batchPageState(t, 3), ports.BatchOptions{Model: "batch-model"})
 	if err == nil {
 		t.Fatal("ComposeAllPages succeeded, want error")
 	}
@@ -313,7 +313,7 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 	})
 
 	if _, err := runner.ComposeAllPages(context.Background(), state,
-		ports.BatchOptions{SkipGenerated: true}); err != nil {
+		ports.BatchOptions{SkipGenerated: true, Model: "batch-model"}); err != nil {
 		t.Fatalf("ComposeAllPages failed: %v", err)
 	}
 
@@ -335,7 +335,7 @@ func TestGenerateAllPanelsPassesStyleMode(t *testing.T) {
 	runner, _, _ := newPanelRunner(t, prompt)
 
 	if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 2),
-		ports.BatchOptions{StyleMode: "watercolor"}); err != nil {
+		ports.BatchOptions{StyleMode: "watercolor", Model: "batch-model"}); err != nil {
 		t.Fatalf("GenerateAllPanels failed: %v", err)
 	}
 	if got := prompt.data.StyleMode; got != "watercolor" {

@@ -17,7 +17,6 @@ type OutlineRunner struct {
 	aiClient    StructuredGenerator
 	reader      ports.ContentReader
 	characters  *comic.Characters
-	model       string
 	maxChapters int
 }
 
@@ -30,7 +29,6 @@ func NewOutlineRunner(
 	aiClient StructuredGenerator,
 	reader ports.ContentReader,
 	characters *comic.Characters,
-	model string,
 	maxChapters int,
 ) *OutlineRunner {
 	if maxChapters <= 0 {
@@ -41,7 +39,6 @@ func NewOutlineRunner(
 		aiClient:    aiClient,
 		reader:      reader,
 		characters:  characters,
-		model:       model,
 		maxChapters: maxChapters,
 	}
 }
@@ -84,12 +81,11 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	}
 
 	// 3. 生成（構造化出力: スキーマで文法レベルに制約する）
-	targetModel := r.model
-	if req.ModelOverride != "" {
-		targetModel = req.ModelOverride
+	if err := requireModel(req.Model, "章立て"); err != nil {
+		return nil, err
 	}
-	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", targetModel, "max_chapters", maxChapters)
-	resp, err := r.aiClient.GenerateWithAttachments(ctx, targetModel, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
+	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", req.Model, "max_chapters", maxChapters)
+	resp, err := r.aiClient.GenerateWithAttachments(ctx, req.Model, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
 	}

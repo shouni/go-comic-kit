@@ -79,7 +79,6 @@ func newPageRunner(t *testing.T, prompt ports.PagePrompt) (*PageImageRunner, *mo
 		Prompt:     prompt,
 		Generator:  gen,
 		Writer:     writer,
-		Model:      "page-model",
 	})
 	return r, gen, writer
 }
@@ -92,7 +91,7 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 	r, gen, writer := newPageRunner(t, prompt)
 	state := pageTestState()
 
-	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out"})
+	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{OutputDir: "gs://bucket/out", Model: "page-model"})
 	if err != nil {
 		t.Fatalf("ComposePage failed: %v", err)
 	}
@@ -154,7 +153,7 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 		{PageNumber: 1, Generation: &comic.GenerationRecord{ImageURL: "gs://old.png", UsedSeed: 777}},
 	}
 
-	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{})
+	state, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{Model: "page-model"})
 	if err != nil {
 		t.Fatalf("ComposePage failed: %v", err)
 	}
@@ -181,8 +180,7 @@ func TestComposePageEditMode(t *testing.T) {
 	}
 
 	_, err := r.ComposePage(context.Background(), state, 1, ports.GenerateOptions{
-		EditPrompt: "1コマ目の空を夕焼けにする",
-	})
+		EditPrompt: "1コマ目の空を夕焼けにする", Model: "page-model"})
 	if err != nil {
 		t.Fatalf("ComposePage(edit) failed: %v", err)
 	}
@@ -199,7 +197,7 @@ func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
-	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更"})
+	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更", Model: "page-model"})
 	if err == nil || !strings.Contains(err.Error(), "編集対象") {
 		t.Errorf("err = %v, want missing-image error", err)
 	}
@@ -209,10 +207,10 @@ func TestComposePageEmptyPageFails(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
-	if _, err := r.ComposePage(context.Background(), pageTestState(), 99, ports.GenerateOptions{}); err == nil {
+	if _, err := r.ComposePage(context.Background(), pageTestState(), 99, ports.GenerateOptions{Model: "page-model"}); err == nil {
 		t.Error("ComposePage(empty page) succeeded, want error")
 	}
-	if _, err := r.ComposePage(context.Background(), nil, 1, ports.GenerateOptions{}); err == nil {
+	if _, err := r.ComposePage(context.Background(), nil, 1, ports.GenerateOptions{Model: "page-model"}); err == nil {
 		t.Error("ComposePage(nil state) succeeded, want error")
 	}
 }

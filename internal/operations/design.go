@@ -23,9 +23,6 @@ type DesignSheetRunner struct {
 	characters   *comic.Characters
 	generator    ImageGenerator
 	writer       remoteio.Writer
-	model        string
-	aspectRatio  string
-	imageSize    string
 	cacheControl string
 }
 
@@ -41,36 +38,18 @@ type DesignSheetRunnerArgs struct {
 	Characters *comic.Characters
 	Generator  ImageGenerator
 	Writer     remoteio.Writer
-	Model      string
-	// 画風の設定はありません。DesignSheetRequest.StyleMode として呼び出しごとに渡し、
-	// プロンプト実装がシート用の指定へ解決します。演出を含む画風をそのまま焼くと、
-	// 参照アンカーに演出照明が残り、下流の全生成が汚染されます。
-	// AspectRatio は DesignSheetRequest.AspectRatio が未指定・未サポートのときの
-	// 既定です（ports.Config.AspectRatio）。空なら layout.DefaultAspectRatio。
-	AspectRatio string
-	// ImageSize は解像度です（ports.Config.PageImageSize）。空なら 2K。
-	// シートは全生成物の同一性アンカーなので、パネルではなくページ側に揃えます。
-	ImageSize string
+	ImageSize  string
 	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
 	CacheControl string
 }
 
 // NewDesignSheetRunner は依存関係を注入して初期化します。
 func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
-	if args.AspectRatio == "" {
-		args.AspectRatio = layout.DefaultAspectRatio
-	}
-	if args.ImageSize == "" {
-		args.ImageSize = layout.ImageSize2K
-	}
 	return &DesignSheetRunner{
 		prompt:       args.Prompt,
 		characters:   args.Characters,
 		generator:    args.Generator,
 		writer:       args.Writer,
-		model:        args.Model,
-		aspectRatio:  args.AspectRatio,
-		imageSize:    args.ImageSize,
 		cacheControl: args.CacheControl,
 	}
 }
@@ -81,6 +60,17 @@ func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *comic.MangaState, req ports.DesignSheetRequest) (*comic.MangaState, error) {
 	if strings.TrimSpace(req.JobID) == "" {
 		return nil, fmt.Errorf("%w: デザインシート生成には job_id が必要です", ports.ErrInvalidRequest)
+	}
+	if err := requireModel(req.Model, "デザインシート"); err != nil {
+		return nil, err
+	}
+	aspectRatio, err := resolveAspectRatio(req.AspectRatio, layout.DefaultAspectRatio)
+	if err != nil {
+		return nil, err
+	}
+	imageSize, err := resolveImageSize(req.ImageSize, layout.ImageSize2K)
+	if err != nil {
+		return nil, err
 	}
 
 	// 1. 複数キャラの情報を集約
@@ -107,21 +97,17 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 	}
 
 	// 3. 生成リクエスト
-	targetModel := dr.model
-	if req.ModelOverride != "" {
-		targetModel = req.ModelOverride
-	}
 	// 4. 生成と保存
 	// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
 	// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
 	// 上書きせず履歴として残します。
 	record, err := renderImage(ctx, dr.generator, dr.writer, imageRenderRequest{
-		Model:          targetModel,
+		Model:          req.Model,
 		Prompt:         userPrompt,
 		SystemPrompt:   systemPrompt,
 		NegativePrompt: negativePrompt,
-		AspectRatio:    layout.NormalizeAspectRatio(req.AspectRatio, dr.aspectRatio),
-		ImageSize:      dr.imageSize,
+		AspectRatio:    aspectRatio,
+		ImageSize:      imageSize,
 		Seed:           designSeed(req.Seed),
 		Images:         imageURIs,
 		CacheControl:   dr.cacheControl,
@@ -154,11 +140,6 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 }
 
 // designSeed は、指定が無ければ（nil）新しいシードを採番します。
-//
-// デザインシートはキャラクターの同一性アンカーなので、後から同じシートを出せることが
-// パネル以上に重要です。シードを渡さないと API 側が選んだ値はレスポンスに返らず、
-// DesignSheetRef.UsedSeed に 0 が記録されて再現できなくなります
-// （パネル・ページ側の resolveSeedChain と同じ理由です）。
 func designSeed(v *int64) *int64 {
 	if v == nil {
 		return newSeed()

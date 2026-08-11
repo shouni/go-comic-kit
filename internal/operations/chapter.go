@@ -18,7 +18,6 @@ type ChapterScriptRunner struct {
 	prompt           ports.ChapterScriptPrompt
 	aiClient         StructuredGenerator
 	characters       *comic.Characters
-	model            string
 	maxPanels        int
 	maxPanelsPerPage int
 }
@@ -31,7 +30,6 @@ func NewChapterScriptRunner(
 	prompt ports.ChapterScriptPrompt,
 	aiClient StructuredGenerator,
 	characters *comic.Characters,
-	model string,
 	maxPanels int,
 	maxPanelsPerPage int,
 ) *ChapterScriptRunner {
@@ -45,7 +43,6 @@ func NewChapterScriptRunner(
 		prompt:           prompt,
 		aiClient:         aiClient,
 		characters:       characters,
-		model:            model,
 		maxPanels:        maxPanels,
 		maxPanelsPerPage: maxPanelsPerPage,
 	}
@@ -89,13 +86,12 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 	}
 
 	// 2. 生成（構造化出力: スキーマで文法レベルに制約する）
-	targetModel := r.model
-	if opts.ModelOverride != "" {
-		targetModel = opts.ModelOverride
+	if err := requireModel(opts.Model, "章台本"); err != nil {
+		return nil, err
 	}
 	slog.Info("ChapterScriptRunner: Gemini APIを呼び出し中",
-		"model", targetModel, "chapter", chapterID)
-	resp, err := r.aiClient.GenerateWithAttachments(ctx, targetModel, finalPrompt, nil, buildJSONGenerateOptions(chapterScriptSchema()))
+		"model", opts.Model, "chapter", chapterID)
+	resp, err := r.aiClient.GenerateWithAttachments(ctx, opts.Model, finalPrompt, nil, buildJSONGenerateOptions(chapterScriptSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: 章 %q の台本生成に失敗しました: %w", ports.ErrGeneration, chapterID, err)
 	}
