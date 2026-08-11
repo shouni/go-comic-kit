@@ -2,8 +2,12 @@ package operations
 
 import (
 	"context"
+	"fmt"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/shouni/go-comic-kit/comic"
+	"github.com/shouni/go-comic-kit/ports"
 )
 
 // runBatch は targets の各要素に対して render を最大 maxConcurrency 並列で実行し、
@@ -42,4 +46,17 @@ func runBatch[T any](
 	_ = eg.Wait()
 
 	return results, errs
+}
+
+// validateBatchChapter は BatchOptions.ChapterID が state に存在するかを確かめます。
+// 存在しない ID を 0 件成功として通すと、実行したつもりで何も起きていない状態に
+// 気付けません（打ち間違いは静かに全スキップになります）。
+func validateBatchChapter(state *comic.MangaState, chapterID string) error {
+	if chapterID == "" {
+		return nil
+	}
+	if state.ChapterByID(chapterID) == nil {
+		return fmt.Errorf("%w: 章 %q", ports.ErrNotFound, chapterID)
+	}
+	return nil
 }

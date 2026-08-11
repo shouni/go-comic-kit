@@ -156,8 +156,15 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
 
+	if err := validateBatchChapter(state, opts.ChapterID); err != nil {
+		return nil, err
+	}
+
 	targets := make([]int, 0, len(state.Panels))
 	for i := range state.Panels {
+		if opts.ChapterID != "" && state.Panels[i].ChapterID != opts.ChapterID {
+			continue
+		}
 		if opts.SkipGenerated && state.Panels[i].Generation != nil {
 			continue
 		}
@@ -168,7 +175,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 	}
 
 	slog.Info("Starting batch panel generation",
-		"panels", len(targets), "concurrency", pr.maxConcurrency)
+		"panels", len(targets), "chapter", opts.ChapterID, "concurrency", pr.maxConcurrency)
 
 	single := ports.GenerateOptions{
 		Seed:          opts.Seed,
