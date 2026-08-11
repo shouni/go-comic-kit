@@ -11,10 +11,12 @@
 | `DesignSheet.GenerateDesignSheet` | `ports.DesignSheetGenerator` | キャラのDNA（Seed/特徴）を固定するデザインシートを生成 |
 | `Panel.GeneratePanel` | `ports.PanelImageGenerator` | 指定パネルを個別に生成/再生成（同条件・新Seed・編集指示） |
 | `Page.ComposePage` | `ports.PageImageComposer` | ページ単位で再レイアウト・合成 |
-| `PanelBatch.GenerateAllPanels` | `ports.PanelBatchGenerator` | 全パネルを `MaxConcurrency` 並列で一括生成 |
-| `PageBatch.ComposeAllPages` | `ports.PageBatchComposer` | 全ページを `MaxConcurrency` 並列で一括合成 |
+| `Panel.GenerateAllPanels` | `ports.PanelImageGenerator` | パネルを `MaxConcurrency` 並列で一括生成（章で絞り込み可） |
+| `Page.ComposeAllPages` | `ports.PageImageComposer` | ページを `MaxConcurrency` 並列で一括合成（章で絞り込み可） |
 
 台本生成は2段階（章立て → 章ごとのパネル）に分かれています。1回の LLM 呼び出しに載せる JSON スキーマを小さく保つためと、章単位での再生成の粒度を得るためです。
+
+**画像側も同じ粒度で絞れます。** `BatchOptions.ChapterID` を指定すると、その章のコマ・ページだけが対象になります。画像はこの工程でいちばん高価なので、「1章だけ作って確かめてから残りへ進む」を台本と同じ単位でできるようにしてあります。ページを章で絞れるのは、`Repaginate` が章境界でページを割る（1ページに2章を混ぜない）ためです。存在しない章 ID は `ErrNotFound` で、黙って0件成功にはしません。
 
 HTML/Markdown 等への出力工程はキットに含めません。閲覧・配信はアプリ側の責務で、state ドキュメントと GCS 上の画像を直接読んで表現します。
 

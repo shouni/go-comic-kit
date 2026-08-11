@@ -147,6 +147,13 @@ type BatchOptions struct {
 	// SkipGenerated が true の場合、すでに生成済み（comic.GenerationRecord を持つ）対象を飛ばします。
 	// 途中まで成功した一括生成を、未生成分だけやり直すときに使います。
 	SkipGenerated bool
+	// ChapterID を指定すると、その章のコマ・ページだけを対象にします（空なら全体）。
+	//
+	// 台本が章単位で作れるのに画像だけ全体一括しか無いと、「1章だけ試して確かめる」が
+	// できません。画像はこの工程でいちばん高価なので、確認の単位を台本と揃えます。
+	// 存在しない章 ID は ErrNotFound です（黙って0件成功にすると、実行したつもりで
+	// 何も起きていない状態に気付けません）。
+	ChapterID string
 }
 
 // Operations は、構築済みの全操作を保持します（workflow.New が組み立てて返します）。

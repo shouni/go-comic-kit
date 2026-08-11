@@ -256,6 +256,45 @@ func (s *MangaState) PanelsForPage(page int) []Panel {
 	return panels
 }
 
+// PanelsForChapter は指定章のコマを、state の並び順で返します。
+func (s *MangaState) PanelsForChapter(chapterID string) []Panel {
+	if s == nil {
+		return nil
+	}
+	panels := make([]Panel, 0, len(s.Panels))
+	for _, p := range s.Panels {
+		if p.ChapterID == chapterID {
+			panels = append(panels, p)
+		}
+	}
+	return panels
+}
+
+// PagesForChapter は指定章のコマが載るページ番号を昇順で返します。
+//
+// Repaginate が章境界でページを割る（1ページに2章を混ぜない）ため、ページは必ず
+// どれか1章だけに属します。この前提が崩れると、章単位の再合成が隣の章のページまで
+// 巻き込むことになります。
+func (s *MangaState) PagesForChapter(chapterID string) []int {
+	if s == nil {
+		return nil
+	}
+	seen := make(map[int]struct{})
+	pages := make([]int, 0, len(s.Panels))
+	for _, p := range s.Panels {
+		if p.ChapterID != chapterID || p.Page <= 0 {
+			continue
+		}
+		if _, ok := seen[p.Page]; ok {
+			continue
+		}
+		seen[p.Page] = struct{}{}
+		pages = append(pages, p.Page)
+	}
+	slices.Sort(pages)
+	return pages
+}
+
 // ChapterByID は指定 ID の章へのポインタを返します。見つからない場合は nil を返します。
 func (s *MangaState) ChapterByID(id string) *Chapter {
 	if s == nil {

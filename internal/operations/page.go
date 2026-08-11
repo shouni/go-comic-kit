@@ -179,7 +179,15 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
 	}
 
+	if err := validateBatchChapter(state, opts.ChapterID); err != nil {
+		return nil, err
+	}
+
 	pages := uniquePageNumbers(state.Panels)
+	if opts.ChapterID != "" {
+		// 章境界でページが割られている前提（MangaState.PagesForChapter）に乗ります。
+		pages = state.PagesForChapter(opts.ChapterID)
+	}
 	targets := make([]int, 0, len(pages))
 	for _, page := range pages {
 		if opts.SkipGenerated {
@@ -194,7 +202,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 	}
 
 	slog.Info("Starting batch page composition",
-		"pages", len(targets), "concurrency", pg.maxConcurrency)
+		"pages", len(targets), "chapter", opts.ChapterID, "concurrency", pg.maxConcurrency)
 
 	single := ports.GenerateOptions{
 		Seed:          opts.Seed,
