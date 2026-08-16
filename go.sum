@@ -35,8 +35,8 @@ github.com/jellydator/ttlcache/v3 v3.4.1 h1:bOdXmXiycyK6E6Qjyuj5vl+/vU3SCOoDs8a8
 github.com/jellydator/ttlcache/v3 v3.4.1/go.mod h1:j7LO12PNghFg5+0v9budMAT4rDK4JY969jb9vOdOBBk=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/shouni/gemini-image-kit v1.14.0 h1:nVKxGNKljP+VtMITgejPa6O76pzLZqairusiSuOkd5Q=
-github.com/shouni/gemini-image-kit v1.14.0/go.mod h1:lo79/tCv2vhK4jhZBxRQoWhv9ReeovpXVRx1Rnouu7U=
+github.com/shouni/gemini-image-kit v1.14.1 h1:MLgPi+oPsorXOuLKC+esdUibXeCAfi0ZGnhKN3z1LbU=
+github.com/shouni/gemini-image-kit v1.14.1/go.mod h1:lo79/tCv2vhK4jhZBxRQoWhv9ReeovpXVRx1Rnouu7U=
 github.com/shouni/go-character-kit v1.1.0 h1:d2fSP6V/j19ndYetFrV+98zoBSXTUBHWGDJe6G6mm1Q=
 github.com/shouni/go-character-kit v1.1.0/go.mod h1:P+RtKl6YoGQrEROnjpsFHw91cwXdO12wPFDsNUsNHfA=
 github.com/shouni/go-gemini-client v1.17.2 h1:inYUuF1pc6Dixy7El6wAOOM9jbc+0aZDSw0EnHNNDHo=
