@@ -138,3 +138,47 @@ func TestOperationsCloseIsIdempotent(t *testing.T) {
 		t.Fatalf("nil レシーバの Close() error = %v", err)
 	}
 }
+
+// vertexClient / geminiAPIClient は、バックエンド判定だけを変えた AI クライアントです。
+type geminiAPIClient struct{ fakeAIClient }
+
+func (f *geminiAPIClient) IsVertexAI() bool { return false }
+
+// TestBuildReferenceResolverSkipsCacheOnVertex は、Vertex AI では参照画像の
+// キャッシュを作らないことを確認します。gs:// はモデル側で解決されるため
+// アップロードが発生せず、キャッシュは一度も読まれないまま TTL 失効用の
+// goroutine と Close の配線だけが残ります。
+func TestBuildReferenceResolverSkipsCacheOnVertex(t *testing.T) {
+	args := validArgs(t)
+	guard := callGuard{timeout: time.Minute}
+
+	resolver, cache, err := buildReferenceResolver(&args, &fakeAIClient{}, guard)
+	if err != nil {
+		t.Fatalf("buildReferenceResolver() error = %v", err)
+	}
+	if resolver == nil {
+		t.Fatal("resolver が組み立てられていません")
+	}
+	if cache != nil {
+		t.Error("Vertex AI では読まれないキャッシュを作ってはいけません")
+	}
+}
+
+// TestBuildReferenceResolverUsesCacheOnGeminiAPI は、Gemini API バックエンドでは
+// File API のアップロード結果を使い回すキャッシュを用意することを確認します。
+func TestBuildReferenceResolverUsesCacheOnGeminiAPI(t *testing.T) {
+	args := validArgs(t)
+	guard := callGuard{timeout: time.Minute}
+
+	resolver, cache, err := buildReferenceResolver(&args, &geminiAPIClient{}, guard)
+	if err != nil {
+		t.Fatalf("buildReferenceResolver() error = %v", err)
+	}
+	if resolver == nil {
+		t.Fatal("resolver が組み立てられていません")
+	}
+	if cache == nil {
+		t.Fatal("Gemini API ではアップロード結果のキャッシュが必要です")
+	}
+	cache.Stop()
+}

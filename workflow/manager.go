@@ -124,35 +124,63 @@ func New(args Args) (*ports.Operations, error) {
 	return ops, nil
 }
 
-// buildGenerationUnit は、指定クライアントの画像生成一式（core・generator）を構築します。
+// buildGenerationUnit は、指定クライアントの画像生成一式を構築します。
 func buildGenerationUnit(args *Args, client gemini.Model, guard callGuard) (*generationUnit, error) {
-	cache := newImageCache(defaultCacheExpiration)
+	resolver, cache, err := buildReferenceResolver(args, client, guard)
+	if err != nil {
+		return nil, fmt.Errorf("参照画像の解決経路の構築に失敗しました: %w", err)
+	}
 
-	core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
-		AIClient:      client,
-		Reader:        args.Reader,
-		HTTPClient:    args.HTTPClient,
-		Cache:         cache,
-		CacheTTL:      defaultTTL,
-		UploadTimeout: guard.timeout,
-	})
+	gen, err := generator.New(client, resolver)
 	if err != nil {
 		cache.Stop()
 		return nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)
 	}
-
-	gen, err := generator.NewGeminiGenerator(core)
-	if err != nil {
-		cache.Stop()
-		return nil, fmt.Errorf("GeminiGenerator の初期化に失敗しました: %w", err)
-	}
-	cache.Start()
 
 	return &generationUnit{
 		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
 		imageGenerator: &singleflightImageGenerator{inner: gen, guard: guard},
 		cache:          cache,
 	}, nil
+}
+
+// buildReferenceResolver は、バックエンドに応じた参照画像の解決経路を組み立てます。
+//
+// 経路はバックエンドで変わります。Vertex AI は gs:// をモデル側で解決できるため、
+// 参照画像を一切転送せずに済み、アップロードもキャッシュも要りません（返る cache は
+// nil で、停止すべき goroutine もありません）。Gemini API には gs:// を直接渡す手段が
+// 無いので、File API へ上げて URI で使い回します。
+//
+// どちらの経路でも最後段に取得 → インライン送信を置きます。参照画像は gs:// とは
+// 限らず、呼び出し側が一時的な上書きとして http(s) の URL を渡してくるためです。
+func buildReferenceResolver(args *Args, client gemini.Model, guard callGuard) (*generator.ResolverChain, *imageCache, error) {
+	inline, err := generator.NewFetchResolver(generator.FetchResolverConfig{
+		Reader:     args.Reader,
+		Downloader: args.HTTPClient,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if client.IsVertexAI() {
+		return generator.NewResolverChain(generator.NewGCSResolver(), inline), nil, nil
+	}
+
+	cache := newImageCache(defaultCacheExpiration)
+	upload, err := generator.NewFileAPIResolver(generator.FileAPIResolverConfig{
+		Files:         client,
+		Reader:        args.Reader,
+		Downloader:    args.HTTPClient,
+		Cache:         cache,
+		CacheTTL:      defaultTTL,
+		UploadTimeout: guard.timeout,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	cache.Start()
+
+	return generator.NewResolverChain(upload, inline), cache, nil
 }
 
 // validateArgs は引数のバリデーションを行います。
