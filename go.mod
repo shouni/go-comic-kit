@@ -5,9 +5,9 @@ go 1.26
 require (
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/shouni/gemini-image-kit v1.14.1
-	github.com/shouni/go-character-kit v1.1.0
+	github.com/shouni/go-character-kit v1.1.2
 	github.com/shouni/go-gemini-client v1.17.2
-	github.com/shouni/go-http-kit v1.8.0
+	github.com/shouni/go-http-kit v1.8.1
 	github.com/shouni/go-remote-io v1.8.0
 	github.com/shouni/go-utils v1.5.1
 	golang.org/x/sync v0.22.0
