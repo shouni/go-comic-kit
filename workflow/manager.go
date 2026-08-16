@@ -17,14 +17,17 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-const (
-	// defaultTTL は、File API へのアップロード結果を保持する期間です。
-	// File API 側の保持期限より短くしておく必要があります（失効した files/... の
-	// URI を参照し続けると生成が失敗するため）。
-	defaultTTL = 10 * time.Minute
-	// defaultCacheExpiration は画像キャッシュ自体の既定の失効期間です。
-	defaultCacheExpiration = 10 * time.Minute
-)
+// defaultCacheExpiration は、File API へのアップロード結果を保持する期間です。
+//
+// 保持期間はこの 1 か所だけで決めます。gemini-image-kit の CacheTTL には何も渡さず
+// 0 のままにしており、ttlcache では 0 が DefaultTTL、つまり「キャッシュに設定した
+// 既定の有効期間に従う」を意味するためです。CacheTTL にも値を書くと、同じ意味の
+// 数字が 2 か所に増えて片方だけ変わります。
+//
+// File API 側の保持期限より短くしておく必要があります（失効した files/... の URI を
+// 参照し続けると生成が失敗するため）。無期限にしたい場合でも 0 ではなく
+// ttlcache.NoTTL を使ってください — 0 は「無期限」ではありません。
+const defaultCacheExpiration = 10 * time.Minute
 
 // Args は、全操作の組み立てに必要な依存の集合です。
 type Args struct {
@@ -156,11 +159,12 @@ func buildReferenceResolver(args *Args, client gemini.Model, guard callGuard) (*
 
 	cache := newImageCache(defaultCacheExpiration)
 	upload, err := generator.NewFileAPIResolver(generator.FileAPIResolverConfig{
-		Files:         client,
-		Reader:        args.Reader,
-		Downloader:    args.HTTPClient,
-		Cache:         cache,
-		CacheTTL:      defaultTTL,
+		Files:      client,
+		Reader:     args.Reader,
+		Downloader: args.HTTPClient,
+		Cache:      cache,
+		// CacheTTL は渡さない。0 のままにすると cache 側の既定
+		// （defaultCacheExpiration）が使われる。
 		UploadTimeout: guard.timeout,
 	})
 	if err != nil {
