@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	// defaultTTL は gemini-image-kit の内部キャッシュに適用する既定の有効期間です。
+	// defaultTTL は、File API へのアップロード結果を保持する期間です。
+	// File API 側の保持期限より短くしておく必要があります（失効した files/... の
+	// URI を参照し続けると生成が失敗するため）。
 	defaultTTL = 10 * time.Minute
-	// defaultCacheExpiration は画像キャッシュの既定の失効期間です。
+	// defaultCacheExpiration は画像キャッシュ自体の既定の失効期間です。
 	defaultCacheExpiration = 10 * time.Minute
 )
 
@@ -43,19 +45,6 @@ type Args struct {
 	PagePrompt          ports.PagePrompt
 }
 
-// generationUnit は、1つの AI クライアントに紐づく画像生成一式です。
-// モデル名は呼び出しごとに渡されるため、ここには持ちません。
-type generationUnit struct {
-	imageGenerator operations.ImageGenerator
-	cache          *imageCache
-}
-
-func (u *generationUnit) stop() {
-	if u != nil {
-		u.cache.Stop()
-	}
-}
-
 // New は、設定とキャラクター定義を基に全操作を組み立てて返します。
 // 返された Operations は使い終わったら Close を呼んでください（内部キャッシュの停止）。
 func New(args Args) (*ports.Operations, error) {
@@ -76,9 +65,9 @@ func New(args Args) (*ports.Operations, error) {
 		timeout: cfg.RequestTimeout,
 	}
 
-	images, err := buildGenerationUnit(&args, args.AIClient, guard)
+	imageGenerator, cache, err := buildImageGenerator(&args, args.AIClient, guard)
 	if err != nil {
-		return nil, fmt.Errorf("画像生成ユニットの構築に失敗しました: %w", err)
+		return nil, err
 	}
 
 	// 同一内容のテキスト生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
@@ -87,7 +76,7 @@ func New(args Args) (*ports.Operations, error) {
 	panelRunner := operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
 		Characters:     args.Characters,
 		Prompt:         args.PanelPrompt,
-		Generator:      images.imageGenerator,
+		Generator:      imageGenerator,
 		Writer:         args.Writer,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
@@ -95,7 +84,7 @@ func New(args Args) (*ports.Operations, error) {
 	pageRunner := operations.NewPageImageRunner(operations.PageImageRunnerArgs{
 		Characters:     args.Characters,
 		Prompt:         args.PagePrompt,
-		Generator:      images.imageGenerator,
+		Generator:      imageGenerator,
 		Writer:         args.Writer,
 		MaxConcurrency: cfg.MaxConcurrency,
 		CacheControl:   cfg.CacheControl,
@@ -113,35 +102,34 @@ func New(args Args) (*ports.Operations, error) {
 		DesignSheet: operations.NewDesignSheetRunner(operations.DesignSheetRunnerArgs{
 			Prompt:       args.DesignSheetPrompt,
 			Characters:   args.Characters,
-			Generator:    images.imageGenerator,
+			Generator:    imageGenerator,
 			Writer:       args.Writer,
 			CacheControl: cfg.CacheControl,
 		}),
 		Panel: panelRunner,
 		Page:  pageRunner,
 	}
-	ops.SetCloseFunc(images.stop)
+	// Vertex AI 経路では cache が nil で、Stop は nil レシーバでも安全に何もしません。
+	ops.SetCloseFunc(cache.Stop)
 	return ops, nil
 }
 
-// buildGenerationUnit は、指定クライアントの画像生成一式を構築します。
-func buildGenerationUnit(args *Args, client gemini.Model, guard callGuard) (*generationUnit, error) {
+// buildImageGenerator は画像生成器を組み立て、併せて解放が必要なキャッシュを返します。
+// キャッシュは Gemini API 経路でしか作られないため、Vertex AI では nil です。
+func buildImageGenerator(args *Args, client gemini.Model, guard callGuard) (operations.ImageGenerator, *imageCache, error) {
 	resolver, cache, err := buildReferenceResolver(args, client, guard)
 	if err != nil {
-		return nil, fmt.Errorf("参照画像の解決経路の構築に失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("参照画像の解決経路の構築に失敗しました: %w", err)
 	}
 
 	gen, err := generator.New(client, resolver)
 	if err != nil {
 		cache.Stop()
-		return nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)
 	}
 
-	return &generationUnit{
-		// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
-		imageGenerator: &singleflightImageGenerator{inner: gen, guard: guard},
-		cache:          cache,
-	}, nil
+	// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
+	return &singleflightImageGenerator{inner: gen, guard: guard}, cache, nil
 }
 
 // buildReferenceResolver は、バックエンドに応じた参照画像の解決経路を組み立てます。
