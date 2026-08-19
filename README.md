@@ -6,7 +6,7 @@
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-comic-kit)](https://github.com/shouni/go-comic-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-comic-kit.svg)](https://pkg.go.dev/github.com/shouni/go-comic-kit)
-[![Status](https://img.shields.io/badge/Status-In%20Development-yellow)](#)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
 ## 🚀 概要 (About)
 
