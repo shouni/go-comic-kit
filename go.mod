@@ -4,12 +4,11 @@ go 1.26
 
 require (
 	github.com/jellydator/ttlcache/v3 v3.4.1
-	github.com/shouni/gemini-image-kit v1.14.1
+	github.com/shouni/gemini-image-kit v1.14.2
 	github.com/shouni/go-character-kit v1.2.0
 	github.com/shouni/go-gemini-client v1.17.3
 	github.com/shouni/go-http-kit v1.8.2
-	github.com/shouni/go-remote-io v1.8.2
-	github.com/shouni/go-utils v1.5.1
+	github.com/shouni/go-remote-io v1.9.0
 	golang.org/x/sync v0.22.0
 )
 
@@ -40,7 +39,7 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/api v0.293.0 // indirect
 	google.golang.org/genai v1.68.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
-	google.golang.org/grpc v1.83.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
+	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )

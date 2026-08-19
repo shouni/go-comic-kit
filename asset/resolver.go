@@ -3,7 +3,7 @@
 //
 // このパッケージが「成果物がどこに置かれるか」を知る唯一の場所です。パス組み立てを
 // 各操作や消費側アプリに散らすと、履歴一覧・削除・再生成のどれかが規約からずれて
-// 静かに壊れます。汎用のパス操作（go-utils/urlpath）はここで閉じ込め、外には
+// 静かに壊れます。汎用のパス操作（go-remote-io/remoteio）はここで閉じ込め、外には
 // 用途ごとの名前の付いた関数だけを出します。
 package asset
 
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/shouni/go-utils/urlpath"
+	"github.com/shouni/go-remote-io/remoteio"
 )
 
 const (
@@ -35,7 +35,7 @@ const (
 // StatePath は state ドキュメント（comic_state.json）の保存先パスを返します。
 // baseDir はローカルパスでも gs:// URI でもかまいません。
 func StatePath(baseDir string) (string, error) {
-	return urlpath.ResolvePath(baseDir, DefaultStateJSON)
+	return remoteio.ResolvePath(baseDir, DefaultStateJSON)
 }
 
 // IsStateFileName は、ファイル名が state ドキュメントのものかを判定します。
@@ -48,17 +48,17 @@ func IsStateFileName(name string) bool {
 // パネルIDに紐づく安定したパスなので、再生成は同じ場所を上書きします。
 func PanelImagePath(baseDir, panelID, extension string) (string, error) {
 	fileName := panelFilePrefix + SanitizeFileName(panelID) + extension
-	return urlpath.ResolvePath(baseDir, path.Join(DefaultImageDir, fileName))
+	return remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, fileName))
 }
 
 // PageImagePath はページ画像の保存先パスを返します（images/comic_page_{page}.png）。
 // page は1以上である必要があります。
 func PageImagePath(baseDir string, page int) (string, error) {
-	base, err := urlpath.ResolvePath(baseDir, path.Join(DefaultImageDir, pageFileBaseName))
+	base, err := remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, pageFileBaseName))
 	if err != nil {
 		return "", err
 	}
-	return urlpath.GenerateIndexedPath(base, page)
+	return remoteio.GenerateIndexedPath(base, page)
 }
 
 // DesignSheetPath はデザインシートの保存先パスを返します
@@ -66,13 +66,13 @@ func PageImagePath(baseDir string, page int) (string, error) {
 // 同一キャラクターへの複数回の生成を上書きせず、jobID 別に履歴として残すための構成です。
 func DesignSheetPath(baseDir string, characterIDs []string, jobID, extension string) (string, error) {
 	relative := path.Join(CharacterDesignDir, DesignFileTag(characterIDs), SanitizeFileName(jobID)+extension)
-	return urlpath.ResolvePath(baseDir, relative)
+	return remoteio.ResolvePath(baseDir, relative)
 }
 
 // CharacterDesignPrefix は、あるキャラクターのデザインシートが並ぶディレクトリの URI を
 // 末尾スラッシュ付きで返します。消費側が生成履歴を一覧・削除するときの前方一致キーです。
 func CharacterDesignPrefix(baseDir, characterID string) (string, error) {
-	resolved, err := urlpath.ResolvePath(baseDir, path.Join(CharacterDesignDir, SanitizeFileName(characterID)))
+	resolved, err := remoteio.ResolvePath(baseDir, path.Join(CharacterDesignDir, SanitizeFileName(characterID)))
 	if err != nil {
 		return "", err
 	}
