@@ -112,7 +112,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		Images:         imageURIs,
 		CacheControl:   dr.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
-			return asset.DesignSheetPath(req.OutputDir, req.CharacterIDs, req.JobID, getPreferredExtension(mimeType))
+			return asset.DesignSheetPath(req.OutputDir, req.CharacterIDs, req.JobID, imagePorts.ExtensionByMIMEType(mimeType))
 		},
 	})
 	if err != nil {

@@ -101,28 +101,6 @@ func (f *failingImageGenerator) Generate(context.Context, imagePorts.ImageReques
 	return nil, f.err
 }
 
-// TestGetPreferredExtension は、モデルが返しうる画像形式に拡張子が追随することを確認します。
-// 以前は png/jpeg しか知らず、WebP を .png という名前で保存していました
-// （Content-Type は正しいので中身と名前だけが食い違う状態）。
-func TestGetPreferredExtension(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct{ mimeType, want string }{
-		{"image/png", ".png"},
-		{"image/jpeg", ".jpg"},
-		{"image/webp", ".webp"},
-		{"image/gif", ".gif"},
-		{"IMAGE/WEBP ", ".webp"}, // 大文字・前後の空白も揃える
-		{"", ".png"},             // 不明なものは既定のまま
-		{"text/plain", ".png"},
-	}
-	for _, tt := range tests {
-		if got := getPreferredExtension(tt.mimeType); got != tt.want {
-			t.Errorf("getPreferredExtension(%q) = %q, want %q", tt.mimeType, got, tt.want)
-		}
-	}
-}
-
 // TestRenderImageCacheControl は、保存時の Cache-Control が設定で差し替えられ、
 // 未設定なら既定値になることを確認します。"public" はライブラリが決めてよい値ではなく、
 // 生成物を公開配信してよいかというデプロイ側の判断です。
