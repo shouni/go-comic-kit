@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/shouni/go-comic-kit/comic"
@@ -24,22 +23,6 @@ import (
 // 使わないのは、テスト用フェイクをこのパッケージ内で完結させるためです。
 type ImageGenerator interface {
 	Generate(ctx context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error)
-}
-
-// getPreferredExtension は MimeType に対応するファイル拡張子を返します。
-// 未知の MIME type は .png のままにします（Content-Type は resp.MimeType から別途
-// 正しく付くため、実害は拡張子の見た目だけです）。
-func getPreferredExtension(mimeType string) string {
-	switch strings.ToLower(strings.TrimSpace(mimeType)) {
-	case "image/jpeg":
-		return ".jpg"
-	case "image/webp":
-		return ".webp"
-	case "image/gif":
-		return ".gif"
-	default:
-		return ".png"
-	}
 }
 
 // writeGeneratedImage は生成された画像データを Content-Type と Cache-Control 付きで

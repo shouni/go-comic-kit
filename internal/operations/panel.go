@@ -123,7 +123,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 		Images:         images,
 		CacheControl:   pr.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
-			return asset.PanelImagePath(opts.OutputDir, panelID, getPreferredExtension(mimeType))
+			return asset.PanelImagePath(opts.OutputDir, panelID, imagePorts.ExtensionByMIMEType(mimeType))
 		},
 	})
 	if err != nil {
