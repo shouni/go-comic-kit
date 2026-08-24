@@ -2,9 +2,10 @@ package comic
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func sampleState() *MangaState {
@@ -70,8 +71,8 @@ func TestMangaStateJSONRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &restored); err != nil {
 		t.Fatalf("Unmarshal failed: %v", err)
 	}
-	if !reflect.DeepEqual(original, &restored) {
-		t.Errorf("round trip mismatch:\noriginal: %+v\nrestored: %+v", original, &restored)
+	if diff := cmp.Diff(original, &restored); diff != "" {
+		t.Errorf("round trip mismatch (-original +restored):\n%s", diff)
 	}
 }
 
@@ -105,8 +106,8 @@ func TestMangaStateUniqueCharacterIDs(t *testing.T) {
 
 	s := sampleState()
 	want := []string{"zundamon", "metan", "mob-students"}
-	if got := s.UniqueCharacterIDs(); !reflect.DeepEqual(got, want) {
-		t.Errorf("UniqueCharacterIDs = %v, want %v", got, want)
+	if diff := cmp.Diff(want, s.UniqueCharacterIDs()); diff != "" {
+		t.Errorf("UniqueCharacterIDs mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -115,8 +116,8 @@ func TestPanelReferencedCharacterIDsExcludesBackground(t *testing.T) {
 
 	s := sampleState()
 	want := []string{"zundamon", "metan"}
-	if got := s.Panels[0].ReferencedCharacterIDs(); !reflect.DeepEqual(got, want) {
-		t.Errorf("ReferencedCharacterIDs = %v, want %v (background must be excluded)", got, want)
+	if diff := cmp.Diff(want, s.Panels[0].ReferencedCharacterIDs()); diff != "" {
+		t.Errorf("ReferencedCharacterIDs mismatch (-want +got, background must be excluded):\n%s", diff)
 	}
 }
 
@@ -125,8 +126,8 @@ func TestMangaStateUniqueReferencedCharacterIDs(t *testing.T) {
 
 	s := sampleState()
 	want := []string{"zundamon", "metan"}
-	if got := s.UniqueReferencedCharacterIDs(); !reflect.DeepEqual(got, want) {
-		t.Errorf("UniqueReferencedCharacterIDs = %v, want %v", got, want)
+	if diff := cmp.Diff(want, s.UniqueReferencedCharacterIDs()); diff != "" {
+		t.Errorf("UniqueReferencedCharacterIDs mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -162,16 +163,16 @@ func TestMangaStateReplaceChapterPanels(t *testing.T) {
 		gotIDs[i] = p.ID
 	}
 	wantIDs := []string{"ch01-p01", "ch02-p01", "ch02-p02", "ch02-p03", "ch03-p01", "orphan"}
-	if !reflect.DeepEqual(gotIDs, wantIDs) {
-		t.Errorf("panel order = %v, want %v", gotIDs, wantIDs)
+	if diff := cmp.Diff(wantIDs, gotIDs); diff != "" {
+		t.Errorf("panel order mismatch (-want +got):\n%s", diff)
 	}
 	if s.Panels[1].Shot != "wide" {
 		t.Error("new panel content was not applied")
 	}
 
 	ch := s.ChapterByID("ch02")
-	if !reflect.DeepEqual(ch.PanelIDs, []string{"ch02-p01", "ch02-p02", "ch02-p03"}) {
-		t.Errorf("chapter PanelIDs = %v, want new panel IDs", ch.PanelIDs)
+	if diff := cmp.Diff([]string{"ch02-p01", "ch02-p02", "ch02-p03"}, ch.PanelIDs); diff != "" {
+		t.Errorf("chapter PanelIDs mismatch (-want +got):\n%s", diff)
 	}
 
 	if s.ReplaceChapterPanels("missing", nil) {

@@ -31,12 +31,12 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/jellydator/ttlcache/v3 v3.4.1 h1:bOdXmXiycyK6E6Qjyuj5vl+/vU3SCOoDs8a86NbHjAQ=
 github.com/jellydator/ttlcache/v3 v3.4.1/go.mod h1:j7LO12PNghFg5+0v9budMAT4rDK4JY969jb9vOdOBBk=
-github.com/shouni/gemini-image-kit v1.15.0 h1:Zn90cK0vDdF8YkuEvOb6EcZ6+NVt8N+o7+Ox1jGkNZs=
-github.com/shouni/gemini-image-kit v1.15.0/go.mod h1:xflaSBT9zHYHkrtB1hH3ueSAO11meo0XKKqrAurUkM4=
+github.com/shouni/gemini-image-kit v1.15.1 h1:qBizNTF7A5Lr3Yne7M6LvkrClzXsQWWoOep/SjBXYGU=
+github.com/shouni/gemini-image-kit v1.15.1/go.mod h1:TCsN0fV7mKgtxscel3OjJ+Qw5ZCRD6B44WOjlYCISJM=
 github.com/shouni/go-character-kit v1.2.0 h1:05i4cSee0GLDNYr+0tUqqrb8ke5IRG3BL8dPzjyHS+Q=
 github.com/shouni/go-character-kit v1.2.0/go.mod h1:ToInOMBIk1G9MO4CxzJ/g0eXTW1d6Wycp8ShKIG4inM=
-github.com/shouni/go-gemini-client v1.18.0 h1:kZctiTZljOwltab+ebKvKpd/hT2EtLNoiBkPl6l203c=
-github.com/shouni/go-gemini-client v1.18.0/go.mod h1:9srP/AW7TL+iHxHQ8a9sm9QFBFwZk3zSDIuCLiTZzok=
+github.com/shouni/go-gemini-client v1.18.1 h1:6hGwqnIb8vsq2r6LSz6wp3ftBm+m5GAsmCNXvSRO36M=
+github.com/shouni/go-gemini-client v1.18.1/go.mod h1:9srP/AW7TL+iHxHQ8a9sm9QFBFwZk3zSDIuCLiTZzok=
 github.com/shouni/go-http-kit v1.8.4 h1:psm/YCQ50YOffS87jNe81cVgy5gzsIuxb4rjzjON/EQ=
 github.com/shouni/go-http-kit v1.8.4/go.mod h1:idZWpx/6lj1afNpfeeU50suUN5fzMyIuBLbBqgbuzuk=
 github.com/shouni/go-remote-io v1.9.0 h1:soOCs80UMvAC/wbyess4sn+WafKJZxdOArNsXeCafEM=

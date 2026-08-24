@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -15,15 +16,19 @@ import (
 func TestImageCacheZeroTTLFollowsCacheDefault(t *testing.T) {
 	t.Parallel()
 
-	c := newImageCache(20 * time.Millisecond)
-	c.Set("k", "v", 0)
+	// バブル内の time.Sleep は仮想時間を進めるだけなので、有効期間の経過を
+	// 実時間を待たずに再現できます。
+	synctest.Test(t, func(t *testing.T) {
+		c := newImageCache(20 * time.Millisecond)
+		c.Set("k", "v", 0)
 
-	if _, ok := c.Get("k"); !ok {
-		t.Fatal("保存直後に取得できません")
-	}
+		if _, ok := c.Get("k"); !ok {
+			t.Fatal("保存直後に取得できません")
+		}
 
-	time.Sleep(60 * time.Millisecond)
-	if _, ok := c.Get("k"); ok {
-		t.Error("TTL 0 が無期限として扱われています（キャッシュ既定の有効期間に従うべき）")
-	}
+		time.Sleep(60 * time.Millisecond)
+		if _, ok := c.Get("k"); ok {
+			t.Error("TTL 0 が無期限として扱われています（キャッシュ既定の有効期間に従うべき）")
+		}
+	})
 }
