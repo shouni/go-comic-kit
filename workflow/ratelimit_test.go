@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -25,22 +26,26 @@ func TestNewRateLimiterDisabled(t *testing.T) {
 func TestRateLimiterSpacesCalls(t *testing.T) {
 	t.Parallel()
 
-	const interval = 20 * time.Millisecond
-	l := newRateLimiter(interval)
-	ctx := context.Background()
+	// バブル内は仮想時計なので、実時間を消費せず経過時間が誤差なく決まります。
+	synctest.Test(t, func(t *testing.T) {
+		const interval = 20 * time.Millisecond
+		l := newRateLimiter(interval)
+		ctx := context.Background()
 
-	start := time.Now()
-	for range 3 {
-		if err := l.wait(ctx); err != nil {
-			t.Fatalf("wait() = %v", err)
+		start := time.Now()
+		for range 3 {
+			if err := l.wait(ctx); err != nil {
+				t.Fatalf("wait() = %v", err)
+			}
 		}
-	}
-	elapsed := time.Since(start)
+		elapsed := time.Since(start)
 
-	// 1回目は即時、2・3回目がそれぞれ interval 待つ
-	if want := 2 * interval; elapsed < want {
-		t.Errorf("3回の待機 = %v, want %v 以上", elapsed, want)
-	}
+		// 1回目は即時、2・3回目がそれぞれ interval 待つ。
+		// 仮想時計なので経過時間はちょうど 2 周期に一致する。
+		if want := 2 * interval; elapsed != want {
+			t.Errorf("3回の待機 = %v, want %v", elapsed, want)
+		}
+	})
 }
 
 func TestRateLimiterRespectsContextCancellation(t *testing.T) {
