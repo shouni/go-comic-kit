@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
@@ -41,39 +42,44 @@ func imageReq(seed *int64) imagePorts.ImageRequest {
 func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 	t.Parallel()
 
-	inner := &blockingImageGenerator{release: make(chan struct{})}
-	g := &singleflightImageGenerator{inner: inner}
+	// synctest.Test はこの関数を隔離された「バブル」で実行します。合流待ちを
+	// synctest.Wait で表現できるため、待ち時間を秒数で見積もらずに済みます。
+	synctest.Test(t, func(t *testing.T) {
+		inner := &blockingImageGenerator{release: make(chan struct{})}
+		g := &singleflightImageGenerator{inner: inner}
 
-	const callers = 5
-	var wg sync.WaitGroup
-	results := make([]*imagePorts.ImageResponse, callers)
-	for i := range callers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, err := g.Generate(context.Background(), imageReq(nil))
-			if err != nil {
-				t.Errorf("Generate failed: %v", err)
-				return
-			}
-			results[i] = resp
-		}()
-	}
+		const callers = 5
+		var wg sync.WaitGroup
+		results := make([]*imagePorts.ImageResponse, callers)
+		for i := range callers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				resp, err := g.Generate(context.Background(), imageReq(nil))
+				if err != nil {
+					t.Errorf("Generate failed: %v", err)
+					return
+				}
+				results[i] = resp
+			}()
+		}
 
-	// 全ゴルーチンが in-flight に相乗りするまで少し待ってから解放する
-	time.Sleep(100 * time.Millisecond)
-	close(inner.release)
-	wg.Wait()
+		// 全ゴルーチンが in-flight に相乗りするまで待ってから解放する。
+		// Wait はバブル内の他のゴルーチンがすべて継続的にブロックした時点で返ります。
+		synctest.Wait()
+		close(inner.release)
+		wg.Wait()
 
-	if got := atomic.LoadInt32(&inner.calls); got != 1 {
-		t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
-	}
+		if got := atomic.LoadInt32(&inner.calls); got != 1 {
+			t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
+		}
 
-	// 応答は呼び出し元ごとに複製され、変更が他に波及しない
-	results[0].Data[0] = 'X'
-	if results[1].Data[0] == 'X' {
-		t.Error("response Data is shared between callers, want cloned")
-	}
+		// 応答は呼び出し元ごとに複製され、変更が他に波及しない
+		results[0].Data[0] = 'X'
+		if results[1].Data[0] == 'X' {
+			t.Error("response Data is shared between callers, want cloned")
+		}
+	})
 }
 
 func TestSingleflightFusionDifferentSeedsAreSeparate(t *testing.T) {
@@ -102,43 +108,47 @@ func TestSingleflightFusionDifferentSeedsAreSeparate(t *testing.T) {
 func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 	t.Parallel()
 
-	inner := &blockingImageGenerator{release: make(chan struct{})}
-	g := &singleflightImageGenerator{inner: inner}
+	synctest.Test(t, func(t *testing.T) {
+		inner := &blockingImageGenerator{release: make(chan struct{})}
+		g := &singleflightImageGenerator{inner: inner}
 
-	// 呼び出し元A: すぐキャンセルする
-	ctxA, cancelA := context.WithCancel(context.Background())
-	errA := make(chan error, 1)
-	go func() {
-		_, err := g.Generate(ctxA, imageReq(nil))
-		errA <- err
-	}()
+		// 呼び出し元A: すぐキャンセルする
+		ctxA, cancelA := context.WithCancel(context.Background())
+		errA := make(chan error, 1)
+		go func() {
+			_, err := g.Generate(ctxA, imageReq(nil))
+			errA <- err
+		}()
 
-	// 呼び出し元B: 同一キーで相乗りし、完走を期待する
-	respB := make(chan *imagePorts.ImageResponse, 1)
-	go func() {
-		resp, err := g.Generate(context.Background(), imageReq(nil))
-		if err != nil {
-			t.Errorf("caller B failed: %v", err)
+		// 呼び出し元B: 同一キーで相乗りし、完走を期待する
+		respB := make(chan *imagePorts.ImageResponse, 1)
+		go func() {
+			resp, err := g.Generate(context.Background(), imageReq(nil))
+			if err != nil {
+				t.Errorf("caller B failed: %v", err)
+			}
+			respB <- resp
+		}()
+
+		// A と B の双方が in-flight に入るまで待つ
+		synctest.Wait()
+		cancelA()
+		if err := <-errA; err == nil {
+			t.Error("caller A returned nil error after cancel, want context error")
 		}
-		respB <- resp
-	}()
 
-	time.Sleep(100 * time.Millisecond)
-	cancelA()
-	if err := <-errA; err == nil {
-		t.Error("caller A returned nil error after cancel, want context error")
-	}
-
-	// A のキャンセル後に実行を解放しても B は結果を受け取れる
-	close(inner.release)
-	select {
-	case resp := <-respB:
-		if resp == nil || string(resp.Data) != "img" {
-			t.Errorf("caller B response = %+v, want shared result", resp)
+		// A のキャンセル後に実行を解放しても B は結果を受け取れる
+		close(inner.release)
+		select {
+		case resp := <-respB:
+			if resp == nil || string(resp.Data) != "img" {
+				t.Errorf("caller B response = %+v, want shared result", resp)
+			}
+		case <-time.After(5 * time.Second):
+			// バブル内の時計は仮想時間なので、この 5 秒で実時間は消費しません。
+			t.Fatal("caller B timed out, shared execution was killed by caller A's cancel")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("caller B timed out, shared execution was killed by caller A's cancel")
-	}
+	})
 }
 
 // countingStructuredGenerator は呼び出し回数を数える fake です。
@@ -160,27 +170,29 @@ func (g *countingStructuredGenerator) GenerateWithAttachments(ctx context.Contex
 func TestSingleflightStructuredDeduplicatesConcurrentCalls(t *testing.T) {
 	t.Parallel()
 
-	inner := &countingStructuredGenerator{release: make(chan struct{})}
-	g := &singleflightStructuredGenerator{inner: inner}
+	synctest.Test(t, func(t *testing.T) {
+		inner := &countingStructuredGenerator{release: make(chan struct{})}
+		g := &singleflightStructuredGenerator{inner: inner}
 
-	const prompt = "same prompt"
-	opts := gemini.GenerateOptions{ResponseMIMEType: "application/json"}
+		const prompt = "same prompt"
+		opts := gemini.GenerateOptions{ResponseMIMEType: "application/json"}
 
-	var wg sync.WaitGroup
-	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := g.GenerateWithAttachments(context.Background(), "m", prompt, nil, opts); err != nil {
-				t.Errorf("GenerateWithAttachments failed: %v", err)
-			}
-		}()
-	}
-	time.Sleep(100 * time.Millisecond)
-	close(inner.release)
-	wg.Wait()
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := g.GenerateWithAttachments(context.Background(), "m", prompt, nil, opts); err != nil {
+					t.Errorf("GenerateWithAttachments failed: %v", err)
+				}
+			}()
+		}
+		synctest.Wait()
+		close(inner.release)
+		wg.Wait()
 
-	if got := atomic.LoadInt32(&inner.calls); got != 1 {
-		t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
-	}
+		if got := atomic.LoadInt32(&inner.calls); got != 1 {
+			t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
+		}
+	})
 }

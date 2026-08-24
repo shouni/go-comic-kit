@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/shouni/go-comic-kit/comic"
 
@@ -64,8 +65,8 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if !reflect.DeepEqual(original, restored) {
-		t.Errorf("round trip mismatch:\noriginal: %+v\nrestored: %+v", original, restored)
+	if diff := cmp.Diff(original, restored); diff != "" {
+		t.Errorf("round trip mismatch (-original +restored):\n%s", diff)
 	}
 }
 

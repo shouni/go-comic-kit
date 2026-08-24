@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shouni/go-comic-kit/comic"
@@ -90,50 +91,54 @@ func batchState(t *testing.T, panelCount int) *comic.MangaState {
 func TestGenerateAllPanelsRunsConcurrently(t *testing.T) {
 	t.Parallel()
 
-	probe := &concurrencyProbe{hold: 30 * time.Millisecond}
-	runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
-	runner.generator = probe
-	runner.writer = &concurrentWriter{}
-	runner.maxConcurrency = 4
+	// バブル内では hold の time.Sleep が仮想時間を進めるだけになり、枠が埋まるまで
+	// 次のコマが走り出さないことが保証されます。実時間に依存しないため、
+	// 「2 以上 4 以下」ではなく MaxConcurrency ちょうどを期待できます。
+	synctest.Test(t, func(t *testing.T) {
+		probe := &concurrencyProbe{hold: 30 * time.Millisecond}
+		runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
+		runner.generator = probe
+		runner.writer = &concurrentWriter{}
+		runner.maxConcurrency = 4
 
-	state := batchState(t, 8)
-	state, err := runner.GenerateAllPanels(context.Background(), state, ports.BatchOptions{OutputDir: "gs://b/job", Model: "batch-model"})
-	if err != nil {
-		t.Fatalf("GenerateAllPanels failed: %v", err)
-	}
-
-	if got := atomic.LoadInt32(&probe.calls); got != 8 {
-		t.Errorf("生成回数 = %d, want 8", got)
-	}
-	if probe.peak < 2 {
-		t.Errorf("同時実行の最大数 = %d, want 2 以上（並列に走っていない）", probe.peak)
-	}
-	if probe.peak > 4 {
-		t.Errorf("同時実行の最大数 = %d, want 4 以下（MaxConcurrency を超えている）", probe.peak)
-	}
-	for i := range state.Panels {
-		if state.Panels[i].Generation == nil {
-			t.Fatalf("パネル %q に生成記録がない", state.Panels[i].ID)
+		state := batchState(t, 8)
+		state, err := runner.GenerateAllPanels(context.Background(), state, ports.BatchOptions{OutputDir: "gs://b/job", Model: "batch-model"})
+		if err != nil {
+			t.Fatalf("GenerateAllPanels failed: %v", err)
 		}
-	}
+
+		if got := atomic.LoadInt32(&probe.calls); got != 8 {
+			t.Errorf("生成回数 = %d, want 8", got)
+		}
+		if probe.peak != 4 {
+			t.Errorf("同時実行の最大数 = %d, want 4（少なければ並列に走っておらず、多ければ MaxConcurrency を超えている）", probe.peak)
+		}
+		for i := range state.Panels {
+			if state.Panels[i].Generation == nil {
+				t.Fatalf("パネル %q に生成記録がない", state.Panels[i].ID)
+			}
+		}
+	})
 }
 
 func TestGenerateAllPanelsSerialByDefault(t *testing.T) {
 	t.Parallel()
 
-	probe := &concurrencyProbe{hold: 10 * time.Millisecond}
-	runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
-	runner.generator = probe
-	runner.writer = &concurrentWriter{}
-	// NewPanelImageRunner の既定（MaxConcurrency 未指定 → 1）を模す
-	runner.maxConcurrency = 1
+	synctest.Test(t, func(t *testing.T) {
+		probe := &concurrencyProbe{hold: 10 * time.Millisecond}
+		runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
+		runner.generator = probe
+		runner.writer = &concurrentWriter{}
+		// NewPanelImageRunner の既定（MaxConcurrency 未指定 → 1）を模す
+		runner.maxConcurrency = 1
 
-	if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 4), ports.BatchOptions{Model: "batch-model"}); err != nil {
-		t.Fatalf("GenerateAllPanels failed: %v", err)
-	}
-	if probe.peak != 1 {
-		t.Errorf("同時実行の最大数 = %d, want 1（既定は逐次実行）", probe.peak)
-	}
+		if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 4), ports.BatchOptions{Model: "batch-model"}); err != nil {
+			t.Fatalf("GenerateAllPanels failed: %v", err)
+		}
+		if probe.peak != 1 {
+			t.Errorf("同時実行の最大数 = %d, want 1（既定は逐次実行）", probe.peak)
+		}
+	})
 }
 
 func TestGenerateAllPanelsKeepsSuccessesOnPartialFailure(t *testing.T) {
@@ -239,38 +244,37 @@ func batchPageState(t *testing.T, pageCount int) *comic.MangaState {
 func TestComposeAllPagesRunsConcurrently(t *testing.T) {
 	t.Parallel()
 
-	probe := &concurrencyProbe{hold: 30 * time.Millisecond}
-	runner, _, _ := newPageRunner(t, &fakePagePrompt{})
-	runner.generator = probe
-	runner.writer = &concurrentWriter{}
-	runner.maxConcurrency = 3
+	synctest.Test(t, func(t *testing.T) {
+		probe := &concurrencyProbe{hold: 30 * time.Millisecond}
+		runner, _, _ := newPageRunner(t, &fakePagePrompt{})
+		runner.generator = probe
+		runner.writer = &concurrentWriter{}
+		runner.maxConcurrency = 3
 
-	state, err := runner.ComposeAllPages(context.Background(), batchPageState(t, 6),
-		ports.BatchOptions{OutputDir: "gs://b/job", Model: "batch-model"})
-	if err != nil {
-		t.Fatalf("ComposeAllPages failed: %v", err)
-	}
-
-	if got := atomic.LoadInt32(&probe.calls); got != 6 {
-		t.Errorf("合成回数 = %d, want 6", got)
-	}
-	if probe.peak < 2 {
-		t.Errorf("同時実行の最大数 = %d, want 2 以上（並列に走っていない）", probe.peak)
-	}
-	if probe.peak > 3 {
-		t.Errorf("同時実行の最大数 = %d, want 3 以下（MaxConcurrency を超えている）", probe.peak)
-	}
-
-	if len(state.Pages) != 6 {
-		t.Fatalf("Pages = %d 件, want 6", len(state.Pages))
-	}
-	// ページ番号ごとに1件ずつ upsert されていること
-	for page := 1; page <= 6; page++ {
-		artifact := state.PageArtifactByNumber(page)
-		if artifact == nil || artifact.Generation == nil {
-			t.Errorf("ページ %d の記録がない", page)
+		state, err := runner.ComposeAllPages(context.Background(), batchPageState(t, 6),
+			ports.BatchOptions{OutputDir: "gs://b/job", Model: "batch-model"})
+		if err != nil {
+			t.Fatalf("ComposeAllPages failed: %v", err)
 		}
-	}
+
+		if got := atomic.LoadInt32(&probe.calls); got != 6 {
+			t.Errorf("合成回数 = %d, want 6", got)
+		}
+		if probe.peak != 3 {
+			t.Errorf("同時実行の最大数 = %d, want 3（少なければ並列に走っておらず、多ければ MaxConcurrency を超えている）", probe.peak)
+		}
+
+		if len(state.Pages) != 6 {
+			t.Fatalf("Pages = %d 件, want 6", len(state.Pages))
+		}
+		// ページ番号ごとに1件ずつ upsert されていること
+		for page := 1; page <= 6; page++ {
+			artifact := state.PageArtifactByNumber(page)
+			if artifact == nil || artifact.Generation == nil {
+				t.Errorf("ページ %d の記録がない", page)
+			}
+		}
+	})
 }
 
 func TestComposeAllPagesKeepsSuccessesOnPartialFailure(t *testing.T) {
