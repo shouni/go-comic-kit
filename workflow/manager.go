@@ -179,21 +179,24 @@ func buildReferenceResolver(args *Args, client gemini.Model, uploadTimeout time.
 }
 
 // validateArgs は引数のバリデーションを行います。
+//
+// 文面は Args の実際のフィールド名で書きます。呼び出し側がメッセージを頼りに
+// 直す場所を探すため、名前がずれると grep しても当たりません。
 func validateArgs(args *Args) error {
 	if args.HTTPClient == nil {
-		return fmt.Errorf("httpClient is required")
+		return fmt.Errorf("Args.HTTPClient は必須です")
 	}
 	if args.Reader == nil {
-		return fmt.Errorf("reader is required")
+		return fmt.Errorf("Args.Reader は必須です")
 	}
 	if args.Writer == nil {
-		return fmt.Errorf("writer is required")
+		return fmt.Errorf("Args.Writer は必須です")
 	}
 	if args.AIClient == nil {
-		return fmt.Errorf("aiClient is required")
+		return fmt.Errorf("Args.AIClient は必須です")
 	}
 	if args.Characters == nil {
-		return fmt.Errorf("characters is required")
+		return fmt.Errorf("Args.Characters は必須です")
 	}
 	// プロンプトはキットが持ちません。作品ごとに調整する文言なので、キットのリリースを
 	// 挟まずに変えられる側（アプリ）が実装します（画風指定・モデル名と同じ理由）。
@@ -201,14 +204,14 @@ func validateArgs(args *Args) error {
 		name  string
 		value any
 	}{
-		{"outlinePrompt", args.OutlinePrompt},
-		{"chapterScriptPrompt", args.ChapterScriptPrompt},
-		{"designSheetPrompt", args.DesignSheetPrompt},
-		{"panelPrompt", args.PanelPrompt},
-		{"pagePrompt", args.PagePrompt},
+		{"Args.OutlinePrompt", args.OutlinePrompt},
+		{"Args.ChapterScriptPrompt", args.ChapterScriptPrompt},
+		{"Args.DesignSheetPrompt", args.DesignSheetPrompt},
+		{"Args.PanelPrompt", args.PanelPrompt},
+		{"Args.PagePrompt", args.PagePrompt},
 	} {
 		if p.value == nil {
-			return fmt.Errorf("%s is required", p.name)
+			return fmt.Errorf("%s は必須です", p.name)
 		}
 	}
 	return nil
