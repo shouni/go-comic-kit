@@ -44,8 +44,6 @@ func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, opts ...
 
 // --- Helpers ---
 
-func ptr[T any](v T) *T { return &v }
-
 func newTestRunner(t *testing.T) (*DesignSheetRunner, *mockDesignGenerator, *mockWriter, *fakeDesignPrompt) {
 	t.Helper()
 	cm, err := characterkit.NewCharacters([]comic.Character{
@@ -88,7 +86,7 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		CharacterIDs: []string{"tsumugi"},
 		JobID:        "job-1",
 		Model:        "design-model",
-		Seed:         ptr(int64(42)),
+		Seed:         new(int64(42)),
 		OutputDir:    "gs://bucket/out",
 	})
 	if err != nil {

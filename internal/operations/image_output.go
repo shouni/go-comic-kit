@@ -9,7 +9,6 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 
 	imagePorts "github.com/shouni/gemini-image-kit/ports"
-	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/ports"
@@ -64,18 +63,14 @@ type imageRenderRequest struct {
 // 直らないので ErrInvalidRequest、保存の失敗は一時的なことが多いので ErrGeneration です。
 func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.Writer, req imageRenderRequest) (*comic.GenerationRecord, error) {
 	resp, err := generator.Generate(ctx, imagePorts.ImageRequest{
-		GenerationOptions: imagePorts.GenerationOptions{
-			Model:          req.Model,
-			Prompt:         req.Prompt,
-			NegativePrompt: req.NegativePrompt,
-			GenerateOptions: gemini.GenerateOptions{
-				SystemPrompt: req.SystemPrompt,
-				AspectRatio:  req.AspectRatio,
-				ImageSize:    req.ImageSize,
-				Seed:         req.Seed,
-			},
-		},
-		Images: req.Images,
+		Model:          req.Model,
+		Prompt:         req.Prompt,
+		NegativePrompt: req.NegativePrompt,
+		SystemPrompt:   req.SystemPrompt,
+		AspectRatio:    req.AspectRatio,
+		ImageSize:      req.ImageSize,
+		Seed:           req.Seed,
+		Images:         req.Images,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: 画像の生成に失敗しました: %w", ports.ErrGeneration, err)
