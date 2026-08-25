@@ -14,16 +14,16 @@ import "errors"
 var (
 	// ErrNotFound は、指定された章・パネル・ページが state に存在しないことを表します。
 	// 呼び出し側の指定ミスであり、同じ引数で再試行しても成功しません。
-	ErrNotFound = errors.New("対象が見つかりません")
+	ErrNotFound = errors.New("comic: target not found")
 
 	// ErrInvalidRequest は、リクエストの内容が不正であることを表します
 	// （必須項目の欠落、編集対象の画像が未生成、参照画像を持つキャラクターが皆無など）。
 	// こちらも同じ引数での再試行では解決しません。
-	ErrInvalidRequest = errors.New("リクエストが不正です")
+	ErrInvalidRequest = errors.New("comic: request is invalid")
 
 	// ErrGeneration は、AI 呼び出しそのものか、その応答の解釈に失敗したことを表します。
 	// 一時的な失敗であることが多く、再試行の価値があります。
-	ErrGeneration = errors.New("生成に失敗しました")
+	ErrGeneration = errors.New("comic: generation failed")
 
 	// ErrConfigInvalid は、組み立て側の設定ミス（リクエストではなく Config の不備）を
 	// 表すために予約された分類です。
@@ -33,5 +33,5 @@ var (
 	// モデル名・画風・比率・解像度は呼び出しごとの値で、各操作が実行前に
 	// ErrInvalidRequest で弾きます。Config に必須項目が戻ったら、Validate が
 	// これを %w で包んで返してください。
-	ErrConfigInvalid = errors.New("設定が不正です")
+	ErrConfigInvalid = errors.New("comic: config is invalid")
 )
