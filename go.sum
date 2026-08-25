@@ -35,8 +35,6 @@ github.com/shouni/gemini-image-kit v1.15.1 h1:qBizNTF7A5Lr3Yne7M6LvkrClzXsQWWoOe
 github.com/shouni/gemini-image-kit v1.15.1/go.mod h1:TCsN0fV7mKgtxscel3OjJ+Qw5ZCRD6B44WOjlYCISJM=
 github.com/shouni/go-character-kit v1.2.0 h1:05i4cSee0GLDNYr+0tUqqrb8ke5IRG3BL8dPzjyHS+Q=
 github.com/shouni/go-character-kit v1.2.0/go.mod h1:ToInOMBIk1G9MO4CxzJ/g0eXTW1d6Wycp8ShKIG4inM=
-github.com/shouni/go-gemini-client v1.18.1 h1:6hGwqnIb8vsq2r6LSz6wp3ftBm+m5GAsmCNXvSRO36M=
-github.com/shouni/go-gemini-client v1.18.1/go.mod h1:9srP/AW7TL+iHxHQ8a9sm9QFBFwZk3zSDIuCLiTZzok=
 github.com/shouni/go-gemini-client v1.19.0 h1:DJBOg4HEUdIQPY0gj7zwtCelq3NpWNwFvpS4nRyXt3k=
 github.com/shouni/go-gemini-client v1.19.0/go.mod h1:9srP/AW7TL+iHxHQ8a9sm9QFBFwZk3zSDIuCLiTZzok=
 github.com/shouni/go-http-kit v1.8.4 h1:psm/YCQ50YOffS87jNe81cVgy5gzsIuxb4rjzjON/EQ=
