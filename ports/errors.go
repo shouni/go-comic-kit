@@ -25,8 +25,13 @@ var (
 	// 一時的な失敗であることが多く、再試行の価値があります。
 	ErrGeneration = errors.New("生成に失敗しました")
 
-	// ErrConfigInvalid は、Config.Validate が必須項目（モデル名）の欠落を検出したことを
-	// 表します。リクエストではなく組み立て側の設定ミスなので、workflow.New の時点で
-	// 返り、実行時のリクエストでは発生しません。
+	// ErrConfigInvalid は、組み立て側の設定ミス（リクエストではなく Config の不備）を
+	// 表すために予約された分類です。
+	//
+	// **現在これを返す経路はありません。** Config に残るのはキットを壊さず動かすための
+	// 実行制御だけで、いずれも ApplyDefaults が埋めるためです（Config.Validate 参照）。
+	// モデル名・画風・比率・解像度は呼び出しごとの値で、各操作が実行前に
+	// ErrInvalidRequest で弾きます。Config に必須項目が戻ったら、Validate が
+	// これを %w で包んで返してください。
 	ErrConfigInvalid = errors.New("設定が不正です")
 )

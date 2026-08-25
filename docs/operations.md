@@ -47,6 +47,6 @@ HTML/Markdown 等への出力工程はキットに含めません。閲覧・配
 | `ports.ErrNotFound` | 指定の章・パネル・ページが state に無い | 404 |
 | `ports.ErrInvalidRequest` | 必須項目の欠落、編集対象の画像が未生成、モデル名が既定も上書きも無い 等 | 400 |
 | `ports.ErrGeneration` | AI 呼び出しまたは応答の解釈に失敗、生成画像の保存に失敗 | 502（再試行の価値あり） |
-| `ports.ErrConfigInvalid` | 現在この番兵を返す設定はありません（`Config` に必須項目が無いため）。将来設定を増やしたときの置き場です | 構築時のみ。`workflow.New` が返すので、起動時に落とします |
+| `ports.ErrConfigInvalid` | 現在この番兵を返す設定はありません（`Config` に必須項目が無いため）。将来設定を増やしたときの置き場です | 構築時のみ。返るようになれば `workflow.New` から出るので、起動時に落とします |
 
 画像の保存先パス生成の失敗（不正な `OutputDir`、ページ番号など）は引数が原因で再試行しても直らないため `ErrInvalidRequest` に分類されます。保存そのものの失敗は一時的なことが多いので `ErrGeneration` です。
