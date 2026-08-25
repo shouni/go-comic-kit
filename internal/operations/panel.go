@@ -99,12 +99,12 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 
 	seed := resolveSeedChain(opts.Seed, panel.Generation, pr.characters, panel.Characters)
 
-	set, images, err := pr.buildRequest(panel, opts, aspectRatio)
+	set, images, err := pr.buildRequest(ctx, panel, opts, aspectRatio)
 	if err != nil {
 		return nil, err
 	}
 
-	slog.Info("Starting panel image generation",
+	slog.InfoContext(ctx, "Starting panel image generation",
 		"panel", panelID,
 		"model", opts.Model,
 		"edit", opts.EditPrompt != "",
@@ -130,7 +130,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 		return nil, fmt.Errorf("パネル %q: %w", panelID, err)
 	}
 
-	slog.Info("Panel image generation completed", "panel", panelID, "path", record.ImageURL)
+	slog.InfoContext(ctx, "Panel image generation completed", "panel", panelID, "path", record.ImageURL)
 	return record, nil
 }
 
@@ -160,7 +160,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 		return state, nil
 	}
 
-	slog.Info("Starting batch panel generation",
+	slog.InfoContext(ctx, "Starting batch panel generation",
 		"panels", len(targets), "chapter", opts.ChapterID, "concurrency", pr.maxConcurrency)
 
 	single := ports.GenerateOptions{
@@ -193,7 +193,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 		state.UpdatedAt = time.Now().UTC()
 	}
 
-	slog.Info("Batch panel generation completed",
+	slog.InfoContext(ctx, "Batch panel generation completed",
 		"succeeded", applied, "failed", len(targets)-applied)
 	return state, errors.Join(errs...)
 }
@@ -201,7 +201,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 // buildRequest は、編集モードか通常生成かに応じてプロンプト一式と参照画像を構築します。
 // プロンプト本文の組み立ては ports.PanelPrompt の実装（既定はキット内蔵の簡潔版）に委ね、
 // ここは「どのキャラクターの参照画像をどの順序で添付したか」を伝える役に徹します。
-func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
+func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
 	if opts.EditPrompt != "" {
 		if panel.Generation == nil || panel.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
@@ -220,13 +220,13 @@ func (pr *PanelImageRunner) buildRequest(panel *comic.Panel, opts ports.Generate
 		if char == nil {
 			// ChapterScriptRunner が background に降格させるため通常は到達しないが、
 			// 手書きの state 等で未知IDが紛れた場合は参照なしで続行する。
-			slog.Warn("未定義のキャラクターIDを参照対象から除外します", "character_id", id)
+			slog.WarnContext(ctx, "未定義のキャラクターIDを参照対象から除外します", "character_id", id)
 			continue
 		}
 		// 生成アスペクト比に一致する参照画像（あれば）を優先し、細部のブレを抑える
 		referenceURL := char.ReferenceURLFor(aspectRatio)
 		if referenceURL == "" {
-			slog.Warn("キャラクターに参照画像がありません", "character_id", id)
+			slog.WarnContext(ctx, "キャラクターに参照画像がありません", "character_id", id)
 			continue
 		}
 		images = append(images, imagePorts.ImageURI{ReferenceURL: referenceURL})

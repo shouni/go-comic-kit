@@ -9,6 +9,7 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 
 	"github.com/shouni/gemini-image-kit/generator"
+	"github.com/shouni/go-gemini-client/callguard"
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-remote-io/remoteio"
@@ -61,14 +62,14 @@ func New(args Args) (*ports.Operations, error) {
 		return nil, err
 	}
 
-	// AI 呼び出しの発射間隔はワークフロー全体で1つのリミッターに集約する
+	// AI 呼び出しの発射間隔はワークフロー全体で1つのガードに集約する
 	// （クォータはプロジェクト単位で、操作の種類ごとではないため）。
-	guard := callGuard{
-		limiter: newRateLimiter(cfg.RateInterval),
-		timeout: cfg.RequestTimeout,
-	}
+	guard := callguard.New(
+		callguard.WithRateInterval(cfg.RateInterval),
+		callguard.WithExecTimeout(cfg.RequestTimeout),
+	)
 
-	imageGenerator, cache, err := buildImageGenerator(&args, args.AIClient, guard)
+	imageGenerator, cache, err := buildImageGenerator(&args, args.AIClient, guard, cfg.RequestTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +120,8 @@ func New(args Args) (*ports.Operations, error) {
 
 // buildImageGenerator は画像生成器を組み立て、併せて解放が必要なキャッシュを返します。
 // キャッシュは Gemini API 経路でしか作られないため、Vertex AI では nil です。
-func buildImageGenerator(args *Args, client gemini.Model, guard callGuard) (operations.ImageGenerator, *imageCache, error) {
-	resolver, cache, err := buildReferenceResolver(args, client, guard)
+func buildImageGenerator(args *Args, client gemini.Model, guard *callguard.Guard, uploadTimeout time.Duration) (operations.ImageGenerator, *imageCache, error) {
+	resolver, cache, err := buildReferenceResolver(args, client, uploadTimeout)
 	if err != nil {
 		return nil, nil, fmt.Errorf("参照画像の解決経路の構築に失敗しました: %w", err)
 	}
@@ -144,7 +145,7 @@ func buildImageGenerator(args *Args, client gemini.Model, guard callGuard) (oper
 //
 // どちらの経路でも最後段に取得 → インライン送信を置きます。参照画像は gs:// とは
 // 限らず、呼び出し側が一時的な上書きとして http(s) の URL を渡してくるためです。
-func buildReferenceResolver(args *Args, client gemini.Model, guard callGuard) (*generator.ResolverChain, *imageCache, error) {
+func buildReferenceResolver(args *Args, client gemini.Model, uploadTimeout time.Duration) (*generator.ResolverChain, *imageCache, error) {
 	inline, err := generator.NewFetchResolver(generator.FetchResolverConfig{
 		Reader:     args.Reader,
 		Downloader: args.HTTPClient,
@@ -165,7 +166,9 @@ func buildReferenceResolver(args *Args, client gemini.Model, guard callGuard) (*
 		Cache:      cache,
 		// CacheTTL は渡さない。0 のままにすると cache 側の既定
 		// （defaultCacheExpiration）が使われる。
-		UploadTimeout: guard.timeout,
+		// アップロードは callguard を通らない（gemini-image-kit の resolver が自前の
+		// singleflight を持つ）ため、同じ Config.RequestTimeout をここへ直接渡します。
+		UploadTimeout: uploadTimeout,
 	})
 	if err != nil {
 		return nil, nil, err

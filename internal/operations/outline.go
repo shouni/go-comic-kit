@@ -84,7 +84,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	if err := requireModel(req.Model, "章立て"); err != nil {
 		return nil, err
 	}
-	slog.Info("OutlineRunner: Gemini APIを呼び出し中", "model", req.Model, "max_chapters", maxChapters)
+	slog.InfoContext(ctx, "OutlineRunner: Gemini APIを呼び出し中", "model", req.Model, "max_chapters", maxChapters)
 	resp, err := r.aiClient.GenerateWithAttachments(ctx, req.Model, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
@@ -99,7 +99,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, fmt.Errorf("%w: 章立てが空です（AI応答に chapters がありません）", ports.ErrGeneration)
 	}
 	if len(parsed.Chapters) > maxChapters {
-		slog.Warn("章数が上限を超えたため切り詰めます",
+		slog.WarnContext(ctx, "章数が上限を超えたため切り詰めます",
 			"got", len(parsed.Chapters), "max", maxChapters)
 		parsed.Chapters = parsed.Chapters[:maxChapters]
 	}
@@ -123,7 +123,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		})
 	}
 
-	slog.Info("OutlineRunner: 章立てを生成しました",
+	slog.InfoContext(ctx, "OutlineRunner: 章立てを生成しました",
 		"title", state.Title, "chapters", len(state.Chapters))
 	return state, nil
 }
