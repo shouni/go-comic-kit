@@ -26,7 +26,7 @@ type concurrencyProbe struct {
 	mu      sync.Mutex
 	inFlite int
 	peak    int
-	calls   int32
+	calls   atomic.Int32
 	hold    time.Duration
 	failOn  string
 }
@@ -39,7 +39,7 @@ func (p *concurrencyProbe) Generate(_ context.Context, req imagePorts.ImageReque
 	}
 	p.mu.Unlock()
 
-	atomic.AddInt32(&p.calls, 1)
+	p.calls.Add(1)
 	if p.hold > 0 {
 		time.Sleep(p.hold)
 	}
@@ -107,7 +107,7 @@ func TestGenerateAllPanelsRunsConcurrently(t *testing.T) {
 			t.Fatalf("GenerateAllPanels failed: %v", err)
 		}
 
-		if got := atomic.LoadInt32(&probe.calls); got != 8 {
+		if got := probe.calls.Load(); got != 8 {
 			t.Errorf("生成回数 = %d, want 8", got)
 		}
 		if probe.peak != 4 {
@@ -186,7 +186,7 @@ func TestGenerateAllPanelsSkipGenerated(t *testing.T) {
 		t.Fatalf("GenerateAllPanels failed: %v", err)
 	}
 
-	if got := atomic.LoadInt32(&probe.calls); got != 2 {
+	if got := probe.calls.Load(); got != 2 {
 		t.Errorf("生成回数 = %d, want 2（生成済みの1コマは飛ばす）", got)
 	}
 	if state.Panels[0].Generation.ImageURL != "gs://b/done.png" {
@@ -257,7 +257,7 @@ func TestComposeAllPagesRunsConcurrently(t *testing.T) {
 			t.Fatalf("ComposeAllPages failed: %v", err)
 		}
 
-		if got := atomic.LoadInt32(&probe.calls); got != 6 {
+		if got := probe.calls.Load(); got != 6 {
 			t.Errorf("合成回数 = %d, want 6", got)
 		}
 		if probe.peak != 3 {
@@ -321,7 +321,7 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 		t.Fatalf("ComposeAllPages failed: %v", err)
 	}
 
-	if got := atomic.LoadInt32(&probe.calls); got != 2 {
+	if got := probe.calls.Load(); got != 2 {
 		t.Errorf("合成回数 = %d, want 2（合成済みの1ページは飛ばす）", got)
 	}
 	if state.PageArtifactByNumber(1).Generation.ImageURL != "gs://b/page_1.png" {
@@ -330,8 +330,8 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 }
 
 // 一括生成でも画風モードがプロンプト実装まで届くことを確かめます。
-// アプリ側が実際に使うのはこちらの経路（PanelBatch / PageBatch）なので、
-// GenerateOptions への詰め替えで落ちていないことを1件見ておきます。
+// 一括生成は BatchOptions を GenerateOptions へ詰め替えて1件ずつ回すので、
+// その詰め替えで落ちていないことを1件見ておきます。
 func TestGenerateAllPanelsPassesStyleMode(t *testing.T) {
 	t.Parallel()
 

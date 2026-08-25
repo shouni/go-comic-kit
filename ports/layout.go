@@ -2,8 +2,8 @@ package ports
 
 import "github.com/shouni/go-comic-kit/internal/layout"
 
-// 画像の解像度と比率の語彙です。Config に文字列で持たせる以上、利用側が
-// マジックストリングを書かずに済むよう公開します（内部の layout パッケージは
+// 画像の解像度と比率の語彙です。どちらも呼び出しごとの値として渡すため、利用側が
+// マジックストリングを書かずに済むよう公開します（実体の internal/layout は
 // internal なのでアプリからは参照できません）。
 
 const (
@@ -18,8 +18,8 @@ const (
 	DefaultAspectRatio = layout.DefaultAspectRatio
 )
 
-// AspectRatios は Config.AspectRatio と DesignSheetRequest.AspectRatio が
-// 受け付ける比率の一覧を返します。
+// AspectRatios は GenerateOptions / BatchOptions / DesignSheetRequest の
+// AspectRatio が受け付ける比率の一覧を返します。
 func AspectRatios() []string { return layout.AspectRatios() }
 
 // IsAspectRatio は、value が受け付ける比率かどうかを判定します。

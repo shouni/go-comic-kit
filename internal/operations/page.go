@@ -33,7 +33,7 @@ var _ ports.PageImageComposer = (*PageImageRunner)(nil)
 // PageImageRunnerArgs は PageImageRunner の構築に必要な依存と設定の集合です。
 type PageImageRunnerArgs struct {
 	Characters *comic.Characters
-	// Prompt はページ合成プロンプトの構築器です（nil ならキット内蔵の簡潔な既定）。
+	// Prompt はページ合成プロンプトの構築器です（必須。キットは既定を持ちません）。
 	Prompt    ports.PagePrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
@@ -111,7 +111,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 	}
 	seed := resolveSeedChain(opts.Seed, prevGeneration, pg.characters, panels[0].Characters)
 
-	set, images, err := pg.buildRequest(page, panels, existing, opts, aspectRatio)
+	set, images, err := pg.buildRequest(ctx, page, panels, existing, opts, aspectRatio)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +135,8 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 		Seed:           seed,
 		Images:         images,
 		CacheControl:   pg.cacheControl,
-		PathFor: func(string) (string, error) {
-			return asset.PageImagePath(opts.OutputDir, page)
+		PathFor: func(mimeType string) (string, error) {
+			return asset.PageImagePath(opts.OutputDir, page, imagePorts.ExtensionByMIMEType(mimeType))
 		},
 	})
 	if err != nil {
@@ -158,8 +158,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 }
 
 // ComposeAllPages は state 内の全ページを maxConcurrency 並列で合成します。
-// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します
-// （ports.PageBatchComposer 参照）。
+// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します。
 func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.MangaState, opts ports.BatchOptions) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
@@ -240,9 +239,9 @@ func uniquePageNumbers(panels []comic.Panel) []int {
 }
 
 // buildRequest は、編集モードかページ合成かに応じてプロンプト一式と参照画像を構築します。
-// プロンプト本文の組み立ては ports.PagePrompt の実装（既定はキット内蔵の簡潔版）に委ね、
+// プロンプト本文の組み立ては ports.PagePrompt の実装に委ね、
 // ここは「何番目にどの画像を添付したか」を伝える役に徹します。
-func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
+func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
 	if opts.EditPrompt != "" {
 		if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: ページ %d には編集対象の合成済み画像がありません", ports.ErrInvalidRequest, page)
@@ -254,7 +253,7 @@ func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing
 		return set.withOverride(opts.PromptOverride), []imagePorts.ImageURI{{ReferenceURL: existing.Generation.ImageURL}}, nil
 	}
 
-	res := pg.collectPageResources(panels, aspectRatio)
+	res := pg.collectPageResources(ctx, panels, aspectRatio)
 	set, err := newPromptSet(pg.prompt.BuildPage(&ports.PagePromptData{
 		Panels:        panels,
 		Characters:    pg.characters,
@@ -268,31 +267,26 @@ func (pg *PageImageRunner) buildRequest(page int, panels []comic.Panel, existing
 	return set.withOverride(opts.PromptOverride), res.images, nil
 }
 
+// pageCharacterRef は、ページ内で参照画像を持つキャラクター1人分の集計です。
+type pageCharacterRef struct {
+	id  string
+	url string
+	// panels はこのキャラクターが登場したコマ数です（上限を超えたときに残す順の基準）。
+	panels int
+}
+
 // collectPageResources はページ内の参照画像を「キャラクター → 生成済みパネル」の順で集約し、
 // プロンプトから参照する input_file 番号（1始まり）を割り振ります。
-func (pg *PageImageRunner) collectPageResources(panels []comic.Panel, aspectRatio string) *pageResources {
+func (pg *PageImageRunner) collectPageResources(ctx context.Context, panels []comic.Panel, aspectRatio string) *pageResources {
 	res := &pageResources{
 		characterFile: make(map[string]int),
 		panelFile:     make(map[string]int),
 	}
 
-	// 1. 登場キャラクターのマスター参照（重複なし・登場順）
-	for _, panel := range panels {
-		for _, id := range panel.ReferencedCharacterIDs() {
-			if _, ok := res.characterFile[id]; ok {
-				continue
-			}
-			char := pg.characters.GetCharacter(id)
-			if char == nil {
-				continue
-			}
-			referenceURL := char.ReferenceURLFor(aspectRatio)
-			if referenceURL == "" {
-				continue
-			}
-			res.images = append(res.images, imagePorts.ImageURI{ReferenceURL: referenceURL})
-			res.characterFile[id] = len(res.images)
-		}
+	// 1. 登場キャラクターのマスター参照（重複なし・初出順、上限あり）
+	for _, ref := range capPageCharacterRefs(ctx, pg.pageCharacterRefs(panels, aspectRatio)) {
+		res.images = append(res.images, imagePorts.ImageURI{ReferenceURL: ref.url})
+		res.characterFile[ref.id] = len(res.images)
 	}
 
 	// 2. 生成済みパネル画像（構図ガイド）
@@ -306,4 +300,63 @@ func (pg *PageImageRunner) collectPageResources(panels []comic.Panel, aspectRati
 	}
 
 	return res
+}
+
+// pageCharacterRefs は、ページ内で参照画像を解決できたキャラクターを初出順で集計します。
+// 参照画像を持たないキャラクターと未定義 ID はここで落ちるため、上限は「実際に添付する
+// 枚数」に対して効きます。
+func (pg *PageImageRunner) pageCharacterRefs(panels []comic.Panel, aspectRatio string) []pageCharacterRef {
+	index := make(map[string]int)
+	refs := make([]pageCharacterRef, 0, len(panels))
+
+	for _, panel := range panels {
+		for _, id := range panel.ReferencedCharacterIDs() {
+			if i, ok := index[id]; ok {
+				refs[i].panels++
+				continue
+			}
+			char := pg.characters.GetCharacter(id)
+			if char == nil {
+				continue
+			}
+			referenceURL := char.ReferenceURLFor(aspectRatio)
+			if referenceURL == "" {
+				continue
+			}
+			index[id] = len(refs)
+			refs = append(refs, pageCharacterRef{id: id, url: referenceURL, panels: 1})
+		}
+	}
+	return refs
+}
+
+// capPageCharacterRefs は、添付するキャラクター参照を
+// comic.MaxReferencedCharactersPerPage まで絞り込みます。
+//
+// 残すのは登場コマ数の多い順、同数なら初出順です（決定的）。単純な先頭切りだと、
+// 1コマだけ顔を出したキャラクターがアンカーを取り、ページのほぼ全コマに出ている
+// 主役が参照なしになることがあります。戻り値の並びは初出順のままで、添付順は変えません。
+func capPageCharacterRefs(ctx context.Context, refs []pageCharacterRef) []pageCharacterRef {
+	if len(refs) <= comic.MaxReferencedCharactersPerPage {
+		return refs
+	}
+
+	byImportance := slices.Clone(refs)
+	slices.SortStableFunc(byImportance, func(a, b pageCharacterRef) int {
+		return b.panels - a.panels
+	})
+
+	dropped := make(map[string]struct{}, len(byImportance)-comic.MaxReferencedCharactersPerPage)
+	for _, ref := range byImportance[comic.MaxReferencedCharactersPerPage:] {
+		dropped[ref.id] = struct{}{}
+		slog.WarnContext(ctx, "ページの参照キャラクターが上限を超えたため参照画像を添付しません",
+			"character_id", ref.id,
+			"appears_in_panels", ref.panels,
+			"max", comic.MaxReferencedCharactersPerPage)
+	}
+
+	return slices.DeleteFunc(refs, func(ref pageCharacterRef) bool {
+		_, ok := dropped[ref.id]
+		return ok
+	})
 }

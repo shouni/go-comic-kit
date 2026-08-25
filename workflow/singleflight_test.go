@@ -14,12 +14,12 @@ import (
 
 // blockingImageGenerator は release されるまで応答を返さない fake です。
 type blockingImageGenerator struct {
-	calls   int32
+	calls   atomic.Int32
 	release chan struct{}
 }
 
 func (g *blockingImageGenerator) Generate(ctx context.Context, _ imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
-	atomic.AddInt32(&g.calls, 1)
+	g.calls.Add(1)
 	select {
 	case <-g.release:
 	case <-ctx.Done():
@@ -30,11 +30,9 @@ func (g *blockingImageGenerator) Generate(ctx context.Context, _ imagePorts.Imag
 
 func imageReq(seed *int64) imagePorts.ImageRequest {
 	return imagePorts.ImageRequest{
-		GenerationOptions: imagePorts.GenerationOptions{
-			Model:           "m",
-			Prompt:          "p",
-			GenerateOptions: gemini.GenerateOptions{Seed: seed},
-		},
+		Model:  "m",
+		Prompt: "p",
+		Seed:   seed,
 		Images: []imagePorts.ImageURI{{ReferenceURL: "gs://b/ref.png"}},
 	}
 }
@@ -52,16 +50,14 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 		var wg sync.WaitGroup
 		results := make([]*imagePorts.ImageResponse, callers)
 		for i := range callers {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				resp, err := g.Generate(context.Background(), imageReq(nil))
 				if err != nil {
 					t.Errorf("Generate failed: %v", err)
 					return
 				}
 				results[i] = resp
-			}()
+			})
 		}
 
 		// 全ゴルーチンが in-flight に相乗りするまで待ってから解放する。
@@ -70,7 +66,7 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 		close(inner.release)
 		wg.Wait()
 
-		if got := atomic.LoadInt32(&inner.calls); got != 1 {
+		if got := inner.calls.Load(); got != 1 {
 			t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
 		}
 
@@ -100,7 +96,7 @@ func TestSingleflightFusionDifferentSeedsAreSeparate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := atomic.LoadInt32(&inner.calls); got != 3 {
+	if got := inner.calls.Load(); got != 3 {
 		t.Errorf("inner calls = %d, want 3 (different seeds must not be deduplicated)", got)
 	}
 }
@@ -153,12 +149,12 @@ func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 
 // countingStructuredGenerator は呼び出し回数を数える fake です。
 type countingStructuredGenerator struct {
-	calls   int32
+	calls   atomic.Int32
 	release chan struct{}
 }
 
 func (g *countingStructuredGenerator) GenerateWithAttachments(ctx context.Context, _ string, _ string, _ []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
-	atomic.AddInt32(&g.calls, 1)
+	g.calls.Add(1)
 	select {
 	case <-g.release:
 	case <-ctx.Done():
@@ -179,19 +175,17 @@ func TestSingleflightStructuredDeduplicatesConcurrentCalls(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range 4 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				if _, err := g.GenerateWithAttachments(context.Background(), "m", prompt, nil, opts); err != nil {
 					t.Errorf("GenerateWithAttachments failed: %v", err)
 				}
-			}()
+			})
 		}
 		synctest.Wait()
 		close(inner.release)
 		wg.Wait()
 
-		if got := atomic.LoadInt32(&inner.calls); got != 1 {
+		if got := inner.calls.Load(); got != 1 {
 			t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
 		}
 	})

@@ -50,6 +50,8 @@ type Config struct {
 	MaxPanelsPerChapter int
 
 	// --- Layout Settings ---
+	// MaxPanelsPerPage は1ページに載せるコマ数の上限です（Repaginate に渡されます）。
+	// 章が変わるところでは、この数に達していなくても必ず改ページします。
 	MaxPanelsPerPage int
 
 	// --- Timeout & Retries ---
@@ -80,10 +82,8 @@ func (c *Config) ApplyDefaults() {
 
 // Validate は設定値の妥当性を検証します。
 //
-// 現在このメソッドが弾くものはありません。Config に残るのはキットを壊さず動かすための
-// 実行制御だけで、いずれも ApplyDefaults が埋めるためです。モデル名・画風・比率・解像度は
-// 呼び出しごとの値になり、検証も各操作が実行前に行います（ErrInvalidRequest）。
-// workflow.New が呼ぶ口は残してあります。設定に必須項目が戻ったときの置き場です。
+// 現在このメソッドが弾くものはありません（理由は ErrConfigInvalid の説明を参照）。
+// workflow.New が呼ぶ口は、設定に必須項目が戻ったときの置き場として残してあります。
 func (c *Config) Validate() error {
 	return nil
 }

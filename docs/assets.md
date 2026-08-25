@@ -8,11 +8,13 @@
 | --- | --- |
 | `asset.StatePath(baseDir)` | state ドキュメント（`comic_state.json`） |
 | `asset.PanelImagePath(baseDir, panelID, ext)` | パネル画像（`images/panel_{id}{ext}`） |
-| `asset.PageImagePath(baseDir, page)` | ページ画像（`images/comic_page_{n}.png`） |
+| `asset.PageImagePath(baseDir, page, ext)` | ページ画像（`images/comic_page_{n}{ext}`） |
 | `asset.DesignSheetPath(baseDir, characterIDs, jobID, ext)` | デザインシート（`character/{tag}/{jobID}{ext}`） |
 | `asset.CharacterDesignPrefix(baseDir, characterID)` | 1キャラクター分のシートのディレクトリ（履歴の一覧に使います） |
 
 `DesignSheetPath` はキャラクターID群（合成シートなら複数）を受け取るのに対し、`CharacterDesignPrefix` は**単一のキャラクターID**を受け取ります。
+
+拡張子（`ext`）を取る3つは、いずれも**生成結果の MIME type から決めた値**を渡してください（`imagePorts.ExtensionByMIMEType(resp.MimeType)`）。保存パスは URL や履歴に残り続けるので、中身と食い違う拡張子は後から直せません。
 
 ## ファイル名の規約
 

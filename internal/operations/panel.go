@@ -32,7 +32,7 @@ var _ ports.PanelImageGenerator = (*PanelImageRunner)(nil)
 // PanelImageRunnerArgs は PanelImageRunner の構築に必要な依存と設定の集合です。
 type PanelImageRunnerArgs struct {
 	Characters *comic.Characters
-	// Prompt はパネル生成プロンプトの構築器です（nil ならキット内蔵の簡潔な既定）。
+	// Prompt はパネル生成プロンプトの構築器です（必須。キットは既定を持ちません）。
 	Prompt    ports.PanelPrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
@@ -135,8 +135,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 }
 
 // GenerateAllPanels は state 内の全パネルを maxConcurrency 並列で生成します。
-// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します
-// （ports.PanelBatchGenerator 参照）。
+// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します。
 func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.MangaState, opts ports.BatchOptions) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
@@ -199,7 +198,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 }
 
 // buildRequest は、編集モードか通常生成かに応じてプロンプト一式と参照画像を構築します。
-// プロンプト本文の組み立ては ports.PanelPrompt の実装（既定はキット内蔵の簡潔版）に委ね、
+// プロンプト本文の組み立ては ports.PanelPrompt の実装に委ね、
 // ここは「どのキャラクターの参照画像をどの順序で添付したか」を伝える役に徹します。
 func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
 	if opts.EditPrompt != "" {

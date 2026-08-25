@@ -29,7 +29,8 @@ const (
 	// panelFilePrefix はパネル画像のファイル名接頭辞です（panel_{パネルID}.ext）。
 	panelFilePrefix = "panel_"
 	// pageFileBaseName はページ画像のベースファイル名です（ページ番号が連番として入ります）。
-	pageFileBaseName = "comic_page.png"
+	// 拡張子は生成結果の MIME type から決まるため、ここには含めません。
+	pageFileBaseName = "comic_page"
 )
 
 // StatePath は state ドキュメント（comic_state.json）の保存先パスを返します。
@@ -51,10 +52,14 @@ func PanelImagePath(baseDir, panelID, extension string) (string, error) {
 	return remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, fileName))
 }
 
-// PageImagePath はページ画像の保存先パスを返します（images/comic_page_{page}.png）。
+// PageImagePath はページ画像の保存先パスを返します（images/comic_page_{page}{extension}）。
 // page は1以上である必要があります。
-func PageImagePath(baseDir string, page int) (string, error) {
-	base, err := remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, pageFileBaseName))
+//
+// extension はパネル・デザインシートと同じく生成結果の MIME type から決めます。
+// ここだけ ".png" を決め打ちにしていた頃は、モデルが JPEG を返したページ画像だけが
+// 中身と食い違う拡張子で保存されていました。
+func PageImagePath(baseDir string, page int, extension string) (string, error) {
+	base, err := remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, pageFileBaseName+extension))
 	if err != nil {
 		return "", err
 	}

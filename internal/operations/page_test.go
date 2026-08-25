@@ -7,14 +7,12 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
+	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// --- Mocks ---
-
-// charPrepared / panelPrepared は事前準備が1回以上呼ばれたかを返します。
 // --- Helpers ---
 
 func pageTestState() *comic.MangaState {
@@ -212,5 +210,122 @@ func TestComposePageEmptyPageFails(t *testing.T) {
 	}
 	if _, err := r.ComposePage(context.Background(), nil, 1, ports.GenerateOptions{Model: "page-model"}); err == nil {
 		t.Error("ComposePage(nil state) succeeded, want error")
+	}
+}
+
+// TestComposePageCapsCharacterReferences は、1ページに添付するキャラクター参照が
+// comic.MaxReferencedCharactersPerPage で頭打ちになり、登場コマ数の多い順に残ることを
+// 確認します。上限が無いと、コマ側の上限で抑えたはずの参照過多が合成時に戻ってきます。
+func TestComposePageCapsCharacterReferences(t *testing.T) {
+	t.Parallel()
+
+	ids := []string{"c1", "c2", "c3", "c4", "c5", "c6"}
+	defs := make([]comic.Character, 0, len(ids))
+	for _, id := range ids {
+		defs = append(defs, comic.Character{
+			ID: id, Name: id,
+			ReferenceURL: "gs://b/" + id + ".png",
+			VisualCues:   []string{id + " hair"},
+		})
+	}
+	defs[0].IsDefault = true
+	cm, err := characterkit.NewCharacters(defs)
+	if err != nil {
+		t.Fatalf("NewCharacters failed: %v", err)
+	}
+
+	prompt := &fakePagePrompt{}
+	gen := &mockImageGenerator{}
+	r := NewPageImageRunner(PageImageRunnerArgs{
+		Characters: cm,
+		Prompt:     prompt,
+		Generator:  gen,
+		Writer:     &mockWriter{},
+	})
+
+	// c1 は初出だが1コマだけ、c6 は初出が最後だが3コマすべてに登場する。
+	// 単純な先頭切りなら c6 が落ち、登場コマ数で選べば c6 が残る。
+	state := &comic.MangaState{
+		Version: comic.StateSchemaVersion,
+		Panels: []comic.Panel{
+			{ID: "p01", Page: 1, Characters: panelChars("c1", "c2", "c6")},
+			{ID: "p02", Page: 1, Characters: panelChars("c3", "c4", "c6")},
+			{ID: "p03", Page: 1, Characters: panelChars("c5", "c6")},
+		},
+	}
+
+	if _, err := r.ComposePage(t.Context(), state, 1, ports.GenerateOptions{
+		OutputDir: "gs://bucket/out", Model: "page-model",
+	}); err != nil {
+		t.Fatalf("ComposePage failed: %v", err)
+	}
+
+	if got := len(gen.lastReq.Images); got != comic.MaxReferencedCharactersPerPage {
+		t.Errorf("Images = %d, want %d", got, comic.MaxReferencedCharactersPerPage)
+	}
+	if _, ok := prompt.data.CharacterFile["c6"]; !ok {
+		t.Errorf("CharacterFile = %v, want c6 kept (このページで最も登場コマ数が多い)", prompt.data.CharacterFile)
+	}
+	if len(prompt.data.CharacterFile) != comic.MaxReferencedCharactersPerPage {
+		t.Errorf("CharacterFile = %v, want %d entries", prompt.data.CharacterFile, comic.MaxReferencedCharactersPerPage)
+	}
+	// 添付順と参照番号は一致していなければ、モデルは別人の参照画像を見て描く。
+	for id, n := range prompt.data.CharacterFile {
+		if n < 1 || n > len(gen.lastReq.Images) {
+			t.Errorf("CharacterFile[%s] = %d, want a valid attachment index", id, n)
+		}
+	}
+}
+
+// panelChars は指定 ID を primary の登場キャラクターに変換します。
+func panelChars(ids ...string) []comic.PanelCharacter {
+	chars := make([]comic.PanelCharacter, 0, len(ids))
+	for _, id := range ids {
+		chars = append(chars, comic.PanelCharacter{CharacterID: id, Prominence: comic.ProminencePrimary})
+	}
+	return chars
+}
+
+// jpegImageGenerator は JPEG を返す画像生成器です。
+type jpegImageGenerator struct{}
+
+func (jpegImageGenerator) Generate(_ context.Context, _ imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+	return &imagePorts.ImageResponse{Data: []byte("fake-jpeg"), MimeType: "image/jpeg", UsedSeed: 7}, nil
+}
+
+// TestComposePageSavesWithResponseExtension は、ページ画像の保存先拡張子が
+// 生成結果の MIME type に従うことを確認します（パネル・デザインシートと同じ規則）。
+func TestComposePageSavesWithResponseExtension(t *testing.T) {
+	t.Parallel()
+
+	cm, err := characterkit.NewCharacters([]comic.Character{{
+		ID: "zundamon", Name: "ずんだもん",
+		ReferenceURL: "gs://b/zunda.png",
+		VisualCues:   []string{"green hair"},
+		IsDefault:    true,
+	}})
+	if err != nil {
+		t.Fatalf("NewCharacters failed: %v", err)
+	}
+
+	writer := &mockWriter{}
+	r := NewPageImageRunner(PageImageRunnerArgs{
+		Characters: cm,
+		Prompt:     &fakePagePrompt{},
+		Generator:  jpegImageGenerator{},
+		Writer:     writer,
+	})
+	state := &comic.MangaState{
+		Version: comic.StateSchemaVersion,
+		Panels:  []comic.Panel{{ID: "p01", Page: 1, Characters: panelChars("zundamon")}},
+	}
+
+	if _, err := r.ComposePage(t.Context(), state, 1, ports.GenerateOptions{
+		OutputDir: "gs://bucket/out", Model: "page-model",
+	}); err != nil {
+		t.Fatalf("ComposePage failed: %v", err)
+	}
+	if want := "gs://bucket/out/images/comic_page_1.jpg"; writer.lastPath != want {
+		t.Errorf("saved path = %q, want %q", writer.lastPath, want)
 	}
 }
