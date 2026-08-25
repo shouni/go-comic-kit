@@ -63,7 +63,7 @@ func TestPanelImagePathSanitizesID(t *testing.T) {
 }
 
 func TestPageImagePath(t *testing.T) {
-	got, err := PageImagePath("gs://bucket/job", 3)
+	got, err := PageImagePath("gs://bucket/job", 3, ".png")
 	if err != nil {
 		t.Fatalf("PageImagePath() unexpected error: %v", err)
 	}
@@ -137,5 +137,20 @@ func TestSanitizeFileName(t *testing.T) {
 	want := "a_b_c_d_e_f_g_h_i_j"
 	if got != want {
 		t.Errorf("SanitizeFileName() = %q, want %q", got, want)
+	}
+}
+
+// TestPageImagePathUsesExtension は、ページ画像の拡張子が呼び出し側の指定
+// （生成結果の MIME type 由来）に従うことを確認します。ここを ".png" 決め打ちに
+// していた頃は、モデルが JPEG を返したページだけ中身と拡張子が食い違っていました。
+func TestPageImagePathUsesExtension(t *testing.T) {
+	t.Parallel()
+
+	got, err := PageImagePath("gs://bucket/job", 12, ".jpg")
+	if err != nil {
+		t.Fatalf("PageImagePath() unexpected error: %v", err)
+	}
+	if want := "gs://bucket/job/images/comic_page_12.jpg"; got != want {
+		t.Errorf("PageImagePath() = %q, want %q", got, want)
 	}
 }

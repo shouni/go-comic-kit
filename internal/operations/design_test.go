@@ -126,7 +126,7 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
 			genMock.lastReq.SystemPrompt, genMock.lastReq.NegativePrompt)
 	}
-	// 未指定なら runner に設定された比率（＝ ports.Config.AspectRatio）へ落ちます。
+	// 未指定ならキット既定の比率へ落ちます。
 	// パネル・ページと揃っていないと、参照画像によるブレ抑制が黙って無効になるためです。
 	if genMock.lastReq.AspectRatio != "3:4" {
 		t.Errorf("AspectRatio = %q, want the configured default 3:4", genMock.lastReq.AspectRatio)
@@ -337,5 +337,51 @@ func TestGenerateDesignSheetRequiresJobID(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "job_id") {
 		t.Errorf("err = %v, want job_id-required error", err)
+	}
+}
+
+// TestGenerateDesignSheetPrefersAspectMatchedReference は、シートの元絵に
+// 生成比率と一致する参照画像を選ぶことを確認します（panel.go / page.go と同じ規則）。
+// 比率の違う元絵から起こすと、全生成物の同一性アンカーであるシート自体が歪みます。
+func TestGenerateDesignSheetPrefersAspectMatchedReference(t *testing.T) {
+	t.Parallel()
+
+	cm, err := characterkit.NewCharacters([]comic.Character{{
+		ID:           "tsumugi",
+		Name:         "Tsumugi",
+		ReferenceURL: "gs://bucket/tsumugi.png",
+		ReferenceURLs: map[string]string{
+			"3:4": "gs://bucket/tsumugi-3x4.png",
+		},
+		VisualCues: []string{"orange hair"},
+		IsDefault:  true,
+	}})
+	if err != nil {
+		t.Fatalf("NewCharacters failed: %v", err)
+	}
+
+	gen := &mockDesignGenerator{}
+	dr := NewDesignSheetRunner(DesignSheetRunnerArgs{
+		Prompt:     &fakeDesignPrompt{},
+		Characters: cm,
+		Generator:  gen,
+		Writer:     &mockWriter{},
+	})
+
+	if _, err := dr.GenerateDesignSheet(t.Context(), nil, ports.DesignSheetRequest{
+		CharacterIDs: []string{"tsumugi"},
+		JobID:        "job-1",
+		OutputDir:    "gs://bucket",
+		Model:        "design-model",
+		AspectRatio:  "3:4",
+	}); err != nil {
+		t.Fatalf("GenerateDesignSheet failed: %v", err)
+	}
+
+	if len(gen.lastReq.Images) != 1 {
+		t.Fatalf("Images = %+v, want 1 reference", gen.lastReq.Images)
+	}
+	if got := gen.lastReq.Images[0].ReferenceURL; got != "gs://bucket/tsumugi-3x4.png" {
+		t.Errorf("ReferenceURL = %q, want the 3:4 reference", got)
 	}
 }

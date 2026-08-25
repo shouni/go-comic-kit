@@ -24,6 +24,19 @@ const DefaultMaxPanelsPerPage = 6
 // ProminenceBackground（参照なしのモブ）として描かせます。
 const MaxReferencedCharactersPerPanel = 3
 
+// MaxReferencedCharactersPerPage は、1ページの合成で参照画像（デザインシート）を
+// 添付するキャラクターの上限です。
+//
+// コマ側の上限（MaxReferencedCharactersPerPanel）だけではページ合成を守れません。
+// 1ページには DefaultMaxPanelsPerPage までのコマが載り、合成時にはそれぞれの
+// 生成済みコマ画像も構図ガイドとして添付されるため、上限が無いと 1 回の合成に
+// 10 枚を超える参照が付きます。参照が増えるほど同一性維持が壊れるという、コマ側の
+// 上限とまったく同じ理由でページ側にも上限が要ります。
+//
+// あふれた分は参照なし（プロンプトの文章での指定のみ）になります。残すのは
+// そのページに多く登場するキャラクターで、同数なら初出順です。
+const MaxReferencedCharactersPerPage = 4
+
 // PanelCharacter.Prominence に指定できる値です。
 // ProminencePrimary / ProminenceSecondary のキャラクターには参照画像（デザインシート）が
 // 添付され、ProminenceBackground は参照なしのモブとして描画されます。
@@ -148,7 +161,6 @@ func (s *MangaState) PanelByID(id string) *Panel {
 }
 
 // UniqueCharacterIDs は、全パネルの登場キャラクター ID を重複なく登場順で返します。
-// デザインシートの生成対象や参照画像の事前アップロード対象の列挙に使います。
 func (s *MangaState) UniqueCharacterIDs() []string {
 	if s == nil {
 		return nil
@@ -190,7 +202,7 @@ func (p Panel) ReferencedCharacterIDs() []string {
 
 // UniqueReferencedCharacterIDs は、全パネルで参照画像を添付すべきキャラクター ID を
 // 重複なく登場順で返します（ProminenceBackground は除外）。
-// 参照画像の事前アップロード対象の列挙に使います。
+// デザインシートを用意すべきキャラクターの列挙に使います。
 func (s *MangaState) UniqueReferencedCharacterIDs() []string {
 	if s == nil {
 		return nil

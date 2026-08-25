@@ -29,16 +29,15 @@ type DesignSheetRunner struct {
 var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 
 // DesignSheetRunnerArgs は DesignSheetRunner の構築に必要な依存と設定の集合です。
-// PanelImageRunnerArgs / PageImageRunnerArgs と同じ形にしてあります。位置引数のままだと
-// model / styleSuffix / cacheControl という無関係な文字列が3つ並び、取り違えても
-// コンパイルが通ってしまいます。
+// PanelImageRunnerArgs / PageImageRunnerArgs と同じ形にしてあります。位置引数だと
+// 無関係な文字列が並んで取り違えてもコンパイルが通り、依存が増えるたびに
+// 呼び出し側の並び順も変わるためです。
 type DesignSheetRunnerArgs struct {
 	// Prompt はアプリ側が実装する ports.DesignSheetPrompt です（キットは内蔵しません）。
 	Prompt     ports.DesignSheetPrompt
 	Characters *comic.Characters
 	Generator  ImageGenerator
 	Writer     remoteio.Writer
-	ImageSize  string
 	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
 	CacheControl string
 }
@@ -74,7 +73,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 	}
 
 	// 1. 複数キャラの情報を集約
-	imageURIs, descriptions, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override)
+	imageURIs, descriptions, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override, aspectRatio)
 	if err != nil {
 		return nil, fmt.Errorf("キャラクター資産の収集に失敗しました: %w", err)
 	}
@@ -96,8 +95,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		return nil, fmt.Errorf("%w: デザインシートプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
-	// 3. 生成リクエスト
-	// 4. 生成と保存
+	// 3. 生成と保存
 	// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
 	// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
 	// 上書きせず履歴として残します。
@@ -119,7 +117,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		return nil, fmt.Errorf("デザインシート (%v): %w", req.CharacterIDs, err)
 	}
 
-	// 6. state への記録（冪等: 同一キャラクターの記録は上書き）
+	// 4. state への記録（冪等: 同一キャラクターの記録は上書き）
 	now := time.Now().UTC()
 	if state == nil {
 		state = &comic.MangaState{
@@ -149,7 +147,11 @@ func designSeed(v *int64) *int64 {
 
 // collectCharacterURIs はキャラクター情報を収集し、ImageURIスライスと説明文を返します。
 // override は ids が単一（合成デザインシートでない）場合のみ適用されます。
-func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride) ([]imagePorts.ImageURI, []string, error) {
+//
+// 参照画像は、これから描くシートと同じ比率のものがあればそれを使います
+// （panel.go / page.go と同じ ReferenceURLFor の規則）。比率の違う元絵から起こすと、
+// 全生成物の同一性アンカーであるシート自体に構図の歪みが乗るためです。
+func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride, aspectRatio string) ([]imagePorts.ImageURI, []string, error) {
 	var uris []imagePorts.ImageURI
 	var descriptions []string
 	var missingIDs []string
@@ -168,7 +170,7 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []str
 			continue
 		}
 
-		referenceURL := char.ReferenceURL
+		referenceURL := char.ReferenceURLFor(aspectRatio)
 		visualCues := char.VisualCues
 
 		if applyOverride && strings.TrimSpace(override.ReferenceURL) != "" {
