@@ -26,7 +26,7 @@ func TestImageCacheZeroTTLFollowsCacheDefault(t *testing.T) {
 			t.Fatal("保存直後に取得できません")
 		}
 
-		time.Sleep(60 * time.Millisecond)
+		synctest.Sleep(60 * time.Millisecond)
 		if _, ok := c.Get("k"); ok {
 			t.Error("TTL 0 が無期限として扱われています（キャッシュ既定の有効期間に従うべき）")
 		}
