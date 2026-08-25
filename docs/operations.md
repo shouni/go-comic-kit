@@ -34,9 +34,9 @@ HTML/Markdown 等への出力工程はキットに含めません。閲覧・配
 
 ## 一括生成と再開
 
-一括生成（`ops.PanelBatch` / `ops.PageBatch`）は、一部が失敗しても**成功分を記録した state とエラーの両方**を返します。画像生成は高価なので、state を保存してから `BatchOptions{SkipGenerated: true}` で呼び直せば、未生成分だけをやり直せます。
+一括生成（`ops.Panel.GenerateAllPanels` / `ops.Page.ComposeAllPages`）は、一部が失敗しても**成功分を記録した state とエラーの両方**を返します。画像生成は高価なので、state を保存してから `BatchOptions{SkipGenerated: true}` で呼び直せば、未生成分だけをやり直せます。
 
-並列実行するため、`PanelResourceProvider` / `PageResourceProvider` の実装は並行呼び出し安全である必要があります。
+一括生成は単発と同じ Runner の別メソッドです（別インターフェースには分けていません）。`MaxConcurrency` 並列で走るため、注入する `ports.PanelPrompt` / `ports.PagePrompt` と `AIClient` の実装は並行呼び出し安全である必要があります。
 
 ## 🚨 エラーの分類
 
@@ -45,8 +45,10 @@ HTML/Markdown 等への出力工程はキットに含めません。閲覧・配
 | 番兵エラー | 意味 | 想定する応答 |
 | --- | --- | --- |
 | `ports.ErrNotFound` | 指定の章・パネル・ページが state に無い | 404 |
-| `ports.ErrInvalidRequest` | 必須項目の欠落、編集対象の画像が未生成、モデル名が既定も上書きも無い 等 | 400 |
+| `ports.ErrInvalidRequest` | 必須項目の欠落、編集対象の画像が未生成、モデル名が空、未サポートの比率・解像度 等 | 400 |
 | `ports.ErrGeneration` | AI 呼び出しまたは応答の解釈に失敗、生成画像の保存に失敗 | 502（再試行の価値あり） |
 | `ports.ErrConfigInvalid` | 現在この番兵を返す設定はありません（`Config` に必須項目が無いため）。将来設定を増やしたときの置き場です | 構築時のみ。返るようになれば `workflow.New` から出るので、起動時に落とします |
 
 画像の保存先パス生成の失敗（不正な `OutputDir`、ページ番号など）は引数が原因で再試行しても直らないため `ErrInvalidRequest` に分類されます。保存そのものの失敗は一時的なことが多いので `ErrGeneration` です。
+
+`store.Load` / `store.Save` も同じ番兵で分類します。state ファイルが無ければ `ErrNotFound`、JSON が壊れている・スキーマバージョンが新しすぎるなら `ErrInvalidRequest`、ストレージへ到達できなければ `ErrGeneration` です。

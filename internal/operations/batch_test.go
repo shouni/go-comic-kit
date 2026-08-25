@@ -330,8 +330,8 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 }
 
 // 一括生成でも画風モードがプロンプト実装まで届くことを確かめます。
-// アプリ側が実際に使うのはこちらの経路（PanelBatch / PageBatch）なので、
-// GenerateOptions への詰め替えで落ちていないことを1件見ておきます。
+// 一括生成は BatchOptions を GenerateOptions へ詰め替えて1件ずつ回すので、
+// その詰め替えで落ちていないことを1件見ておきます。
 func TestGenerateAllPanelsPassesStyleMode(t *testing.T) {
 	t.Parallel()
 

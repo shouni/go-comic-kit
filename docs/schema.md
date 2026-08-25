@@ -83,7 +83,8 @@ type PageArtifact struct {
 | メソッド | 用途 |
 | --- | --- |
 | `PanelByID` / `ChapterByID` / `PageArtifactByNumber` | ID・番号での取得 |
-| `PanelsForPage` | 指定ページのパネル一覧（表示順） |
+| `PanelsForPage` / `PanelsForChapter` | 指定ページ・指定章のパネル一覧（表示順） |
+| `PagesForChapter` | 指定章のコマが載るページ番号（章単位の一括合成の対象） |
 | `UniqueCharacterIDs` / `UniqueReferencedCharacterIDs` | 登場キャラの集合（後者は参照画像添付対象のみ） |
 | `ReplaceChapterPanels` → `Repaginate` | 章のパネル差し替えとページ再割り当て（**この順で呼びます**） |
 | `SetPageArtifact` / `SetDesignSheet` | 同一ページ番号・同一キャラクターへの upsert |
@@ -98,7 +99,18 @@ type PageArtifact struct {
 
 キャラクター間の関係性（誰が誰に何をしているか）は `PanelCharacter.Action` の自由記述で表現します。構造化エッジより、生成 AI へのプロンプトとして自然文の方が忠実に反映されるためです。
 
-台本生成の正規化では、AI の出力をそのまま信用せず次の2つを機械的に補正します。
+台本生成の正規化では、AI の出した ID をそのまま信用せず次の2点を機械的に補正します。
 
-* **primary + secondary は3体まで**（`comic.MaxReferencedCharactersPerPanel`）。参照画像添付と複数キャラ同時生成の同一性維持の難度が理由です。超過分は `background`（参照画像なし・モブとして描画）へ降格され、primary が優先して残り、コマ内の登場順は保たれます。
-* `characters.json` に無い `speaker_id` はナレーションへ変換されます（生の ID が話者名として描かれるのを防ぐため）。同じく未知の `character_id` は `background` へ降格されます（参照解決が既定キャラクターへフォールバックして別人を描くのを防ぐため）。
+* `characters.json` に無い `character_id` は `background`（参照画像なし・モブとして描画）へ降格されます。参照解決が既定キャラクターへ暗黙にフォールバックして、別人が描かれるのを防ぐためです。
+* `characters.json` に無い `speaker_id` はナレーションへ変換されます。生の ID が話者名の位置に描かれるのを防ぐためです。
+
+## 参照画像を添付するキャラクターの上限
+
+参照画像が増えるほどキャラクター同士の同一性維持は崩れ、顔や衣装の取り違えが起きます。そのため2段階で頭打ちにします。
+
+| 上限 | 定数 | 効くタイミング | あふれた分の扱い |
+| --- | --- | --- | --- |
+| 1コマあたり primary + secondary で3体 | `comic.MaxReferencedCharactersPerPanel` | 台本生成の正規化 | `background` へ降格。primary が優先して残り、コマ内の登場順は保たれます |
+| 1ページあたり4体 | `comic.MaxReferencedCharactersPerPage` | ページ合成 | 参照画像なし（プロンプトの文章での指定のみ）。そのページに多く登場するキャラクターが残り、同数なら初出順です |
+
+ページ側にも上限が要るのは、1ページに複数のコマが載るうえ、合成時にはそれぞれの生成済みコマ画像も構図ガイドとして添付されるためです。コマ側の上限だけでは、1回の合成が10枚を超える参照を抱えます。

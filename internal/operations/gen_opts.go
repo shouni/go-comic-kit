@@ -20,7 +20,7 @@ func requireModel(model, operation string) error {
 	return nil
 }
 
-// resolveAspectRatio / resolveImageSize は、呼び出しごとの指定を検証して返します。
+// resolveAspectRatio は、呼び出しごとの比率指定を検証して返します。空なら fallback です。
 func resolveAspectRatio(requested, fallback string) (string, error) {
 	if requested == "" {
 		return fallback, nil
@@ -32,6 +32,7 @@ func resolveAspectRatio(requested, fallback string) (string, error) {
 	return requested, nil
 }
 
+// resolveImageSize は、呼び出しごとの解像度指定を検証して返します。空なら fallback です。
 func resolveImageSize(requested, fallback string) (string, error) {
 	if requested == "" {
 		return fallback, nil
@@ -43,7 +44,8 @@ func resolveImageSize(requested, fallback string) (string, error) {
 	return requested, nil
 }
 
-// buildJSONGenerateOptions は、schema による構造化出力（constrained decoding）と、
+// buildJSONGenerateOptions は、schema による構造化出力（constrained decoding）に
+// 安全フィルタの無効化を添えた、台本生成用の生成オプションを返します。
 func buildJSONGenerateOptions(schema map[string]any) gemini.GenerateOptions {
 	return gemini.GenerateOptions{
 		ResponseMIMEType:   "application/json",

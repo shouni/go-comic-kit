@@ -50,7 +50,7 @@
 
 ## 📂 プロジェクト構造 (Project Structure)
 
-**ports による抽象化**を境界とし、生成の各工程を独立した戦略として入れ替え可能にしています。公開パッケージは利用実態に合わせて4つに絞り、それ以外（工程の実行実体・プロンプト・レイアウト戦略）は `internal/` 配下に置いています。
+**ports による抽象化**を境界とし、生成の各工程を独立した戦略として入れ替え可能にしています。公開パッケージは利用実態に合わせて5つに絞り、それ以外（工程の実行実体・比率の語彙）は `internal/` 配下に置いています。
 
 ```text
 go-comic-kit/
@@ -86,7 +86,6 @@ ops, err := workflow.New(workflow.Args{
 if err != nil {
 	return err
 }
-defer func() { _ = ops.Close() }()
 
 // 章立て → 章ごとの台本 → デザインシート → パネル → ページ
 // モデル名は毎回渡す（必須）。画風・比率・解像度も同じくここで指定する
@@ -131,7 +130,6 @@ _, _ = store.Save(ctx, writer, state, outDir)
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API/Vertex AI クライアント（構造化出力対応）
 * [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - GCS/ローカル/HTTP 対応の読み書き抽象化
 * [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - HTTP クライアント抽象化
-* [shouni/go-utils](https://github.com/shouni/go-utils) - 共通ユーティリティ
 
 ## 📜 ライセンス (License)
 

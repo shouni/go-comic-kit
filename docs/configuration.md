@@ -32,14 +32,14 @@
 5操作すべてのプロンプトを `workflow.Args` で注入します。**5つとも必須**で、nil があると `workflow.New` が構築に失敗します。キットは内蔵プロンプトを持ちません。
 
 | Args フィールド | インターフェース | 実装が受け取るデータ |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | `OutlinePrompt` | `ports.OutlinePrompt` | `OutlinePromptData` |
 | `ChapterScriptPrompt` | `ports.ChapterScriptPrompt` | `ChapterPromptData` |
 | `DesignSheetPrompt` | `ports.DesignSheetPrompt` | `DesignSheetPromptData` |
 | `PanelPrompt` | `ports.PanelPrompt` | `PanelPromptData` |
 | `PagePrompt` | `ports.PagePrompt` | `PagePromptData` |
 
-**キットがプロンプトを一切持たないのは意図的です。** 参照画像との対応順・コマ数・読み順といった構造的な指示ですら、作品によって作り込みが変わります。キットに置くとプロンプトを1文字変えるたびにキットのリリースが必要になるため、モデル名・画風指定と同じく**アプリが持つ**方針に統一しました。利用側では `internal/adapters/prompts` のような層を設けて、そこにプロンプトの組み立てをまとめてください（`PanelPromptData.SubjectIDs` と `PagePromptData.CharacterFile` / `PanelFile` が参照画像の番号の唯一の情報源です。ここがずれると、モデルは別人の参照画像を見ながら描きます）。
+**キットがプロンプトを一切持たないのは意図的です。** 参照画像との対応順・コマ数・読み順といった構造的な指示ですら、作品によって作り込みが変わります。キットに置くとプロンプトを1文字変えるたびにキットのリリースが必要になるため、モデル名・画風指定と同じく**アプリが持つ**方針に統一しました。利用側では `internal/adapters/prompts` のような層を設けて、そこにプロンプトの組み立てをまとめてください。
 
 `GenerateOptions.PromptOverride` は呼び出し単位で**本文だけ**を差し替えます（システム指示とネガティブプロンプトは実装のものが残ります）。
 
@@ -53,7 +53,7 @@
 | --- | --- |
 | `HTTPClient` | go-http-kit の HTTP クライアント |
 | `Reader` / `Writer` | `ports.ContentReader` / `remoteio.Writer`（原稿の読み込み・成果物の保存） |
-| `AIClient` | 台本生成と標準品質の画像生成（パネル）に使う `gemini.Model` |
+| `AIClient` | 台本生成と画像生成の両方に使う `gemini.Model`（デザインシート・パネル・ページで共有します） |
 | `Characters` | `*comic.Characters`（go-character-kit の `characters.json`） |
 
-`workflow.New` が返す `*ports.Operations` は、使い終わったら **`Close() error`** を呼んでください（内部 TTL キャッシュのバックグラウンド goroutine を停止します。`sync.Once` で守っているので複数回呼んでも安全、nil レシーバでも panic しません）。解放関数は非公開で、登録は `SetCloseFunc` から行います（go-veo-orchestrator の `Workflows` と同じ形）。
+`workflow.New` が返す `*ports.Operations` に**後始末は要りません**。参照画像のキャッシュは失効を読み出し時に判定する方式で、掃除のためのバックグラウンド goroutine を持たないためです（かつては `Close() error` の呼び出しが必要でした）。

@@ -26,7 +26,6 @@ func (m *mockImageGenerator) Generate(_ context.Context, req imagePorts.ImageReq
 	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 555}, nil
 }
 
-// prepared は PrepareCharacterResources が1回以上呼ばれたかを返します。
 // --- Helpers ---
 
 func panelTestState() *comic.MangaState {
@@ -201,7 +200,6 @@ func TestGeneratePanelEditMode(t *testing.T) {
 	if !strings.Contains(gen.lastReq.Prompt, "FAKE-PANEL-EDIT") || !strings.Contains(gen.lastReq.Prompt, "笑顔") {
 		t.Errorf("Prompt = %q, want edit instruction", gen.lastReq.Prompt)
 	}
-	// 編集モードではキャラ参照の事前アップロードは不要
 }
 
 func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {

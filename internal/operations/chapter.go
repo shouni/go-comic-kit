@@ -24,8 +24,8 @@ type ChapterScriptRunner struct {
 
 var _ ports.ChapterScriptGenerator = (*ChapterScriptRunner)(nil)
 
-// NewChapterScriptRunner は依存関係を注入して初期化します。
-// maxPanels / maxPanelsPerPage が 0 以下の場合は ports の既定値を使います。
+// NewChapterScriptRunner は依存関係を注入して初期化します。0 以下の場合は
+// ports.DefaultMaxPanelsPerChapter / comic.DefaultMaxPanelsPerPage を使います。
 func NewChapterScriptRunner(
 	prompt ports.ChapterScriptPrompt,
 	aiClient StructuredGenerator,

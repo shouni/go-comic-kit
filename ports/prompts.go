@@ -2,6 +2,12 @@ package ports
 
 import "github.com/shouni/go-comic-kit/comic"
 
+// 本ファイルは、プロンプト構築の契約と、実装へ渡すデータを定義します。
+//
+// 5つとも workflow.Args での注入が必須で、キットは既定の実装を持ちません。
+// プロンプトは作品ごとに作り込む文言なので、1文字変えるたびにキットのリリースを
+// 挟まずに済む側（アプリ）が持ちます（モデル名・画風指定と同じ理由）。
+
 // OutlinePromptData は章立て生成プロンプトのテンプレートに渡すデータです。
 type OutlinePromptData struct {
 	// InputText は元文章です。
@@ -29,7 +35,6 @@ type ChapterPromptData struct {
 }
 
 // OutlinePrompt は章立て生成プロンプトを構築する契約です。
-// キット内蔵のテンプレート実装（prompts パッケージ）を既定とし、アプリ側で差し替え可能です。
 type OutlinePrompt interface {
 	BuildOutline(mode string, data *OutlinePromptData) (string, error)
 }
@@ -79,9 +84,8 @@ type PanelPromptData struct {
 
 // PanelPrompt はパネル画像生成のプロンプトを構築する契約です。
 //
-// キット内蔵の実装（prompts パッケージ）は、参照画像との同一性・文字を描かないこと・
-// 指の破綻対策といった構造的な指示だけを持つ簡潔な既定です。作品ごとの作り込みは
-// アプリ側でこのインターフェースを実装して差し替えてください。
+// 参照画像との同一性・文字を描かないこと・指の破綻対策といった構造的な指示も、
+// 作品によって作り込みが変わるため実装側が持ちます。
 type PanelPrompt interface {
 	BuildPanel(data *PanelPromptData) (systemPrompt, userPrompt, negativePrompt string, err error)
 	// BuildPanelEdit は、生成済みパネル画像に対する編集指示のプロンプトを構築します。
