@@ -150,9 +150,7 @@ func (f *geminiAPIClient) IsVertexAI() bool { return false }
 // goroutine と Close の配線だけが残ります。
 func TestBuildReferenceResolverSkipsCacheOnVertex(t *testing.T) {
 	args := validArgs(t)
-	guard := callGuard{timeout: time.Minute}
-
-	resolver, cache, err := buildReferenceResolver(&args, &fakeAIClient{}, guard)
+	resolver, cache, err := buildReferenceResolver(&args, &fakeAIClient{}, time.Minute)
 	if err != nil {
 		t.Fatalf("buildReferenceResolver() error = %v", err)
 	}
@@ -168,9 +166,7 @@ func TestBuildReferenceResolverSkipsCacheOnVertex(t *testing.T) {
 // File API のアップロード結果を使い回すキャッシュを用意することを確認します。
 func TestBuildReferenceResolverUsesCacheOnGeminiAPI(t *testing.T) {
 	args := validArgs(t)
-	guard := callGuard{timeout: time.Minute}
-
-	resolver, cache, err := buildReferenceResolver(&args, &geminiAPIClient{}, guard)
+	resolver, cache, err := buildReferenceResolver(&args, &geminiAPIClient{}, time.Minute)
 	if err != nil {
 		t.Fatalf("buildReferenceResolver() error = %v", err)
 	}
