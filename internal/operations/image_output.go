@@ -15,7 +15,7 @@ import (
 )
 
 // ImageGenerator は、参照画像（0〜複数）を添えて画像を生成する依存インターフェースです。
-// デザインシート（複数キャラの合成）とパネル（複数キャラの同席コマ）の両方で使います。
+// デザインシート・パネル・ページの3操作すべてがこれを通ります。
 //
 // gemini-image-kit v1.13 で単発生成と融合生成が Generate へ統合されたため、参照の枚数は
 // ImageRequest.Images の長さでしか区別しません。imagePorts.ImageGenerator をそのまま
@@ -37,15 +37,14 @@ func writeGeneratedImage(ctx context.Context, writer remoteio.Writer, path strin
 }
 
 // imageRenderRequest は画像生成1回分の入力です。
+//
+// 生成パラメータは imagePorts.ImageRequest を埋め込んで持ちます。写し取ると
+// gemini-image-kit 側でフィールドが増えるたびに 2 か所の同期が要るためで、
+// gemini-image-kit 自身が gemini.GenerateOptions を埋め込みにしているのと同じ理由です。
+// Go 1.27 で昇格フィールドを複合リテラルのキーに書けるようになったので、
+// 呼び出し側は今までどおり Model: / AspectRatio: と平らに書けます。
 type imageRenderRequest struct {
-	Model          string
-	Prompt         string
-	SystemPrompt   string
-	NegativePrompt string
-	AspectRatio    string
-	ImageSize      string
-	Seed           *int64
-	Images         []imagePorts.ImageURI
+	imagePorts.ImageRequest
 	// CacheControl は保存時に付ける Cache-Control です（空なら ports.DefaultCacheControl）。
 	CacheControl string
 	// PathFor は、生成結果の MIME type から保存先パスを決めます。
@@ -62,16 +61,7 @@ type imageRenderRequest struct {
 // （ports/errors.go 参照）。パス生成の失敗は引数（OutputDir など）が原因で再試行しても
 // 直らないので ErrInvalidRequest、保存の失敗は一時的なことが多いので ErrGeneration です。
 func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.Writer, req imageRenderRequest) (*comic.GenerationRecord, error) {
-	resp, err := generator.Generate(ctx, imagePorts.ImageRequest{
-		Model:          req.Model,
-		Prompt:         req.Prompt,
-		NegativePrompt: req.NegativePrompt,
-		SystemPrompt:   req.SystemPrompt,
-		AspectRatio:    req.AspectRatio,
-		ImageSize:      req.ImageSize,
-		Seed:           req.Seed,
-		Images:         req.Images,
-	})
+	resp, err := generator.Generate(ctx, req.ImageRequest)
 	if err != nil {
 		return nil, fmt.Errorf("%w: 画像の生成に失敗しました: %w", ports.ErrGeneration, err)
 	}

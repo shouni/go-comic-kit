@@ -4,7 +4,6 @@ go 1.27
 
 require (
 	github.com/google/go-cmp v0.7.0
-	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/shouni/gemini-image-kit v1.16.0
 	github.com/shouni/go-character-kit v1.3.0
 	github.com/shouni/go-gemini-client v1.20.0
@@ -17,7 +16,6 @@ require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.23.2 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
