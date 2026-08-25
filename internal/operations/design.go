@@ -74,12 +74,12 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 	}
 
 	// 1. 複数キャラの情報を集約
-	imageURIs, descriptions, err := dr.collectCharacterURIs(req.CharacterIDs, req.Override)
+	imageURIs, descriptions, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override)
 	if err != nil {
 		return nil, fmt.Errorf("キャラクター資産の収集に失敗しました: %w", err)
 	}
 
-	slog.Info("Executing design sheet generation",
+	slog.InfoContext(ctx, "Executing design sheet generation",
 		slog.Any("chars", req.CharacterIDs),
 		slog.Int("ref_count", len(imageURIs)),
 		slog.String("aspect_ratio", req.AspectRatio),
@@ -149,7 +149,7 @@ func designSeed(v *int64) *int64 {
 
 // collectCharacterURIs はキャラクター情報を収集し、ImageURIスライスと説明文を返します。
 // override は ids が単一（合成デザインシートでない）場合のみ適用されます。
-func (dr *DesignSheetRunner) collectCharacterURIs(ids []string, override ports.DesignOverride) ([]imagePorts.ImageURI, []string, error) {
+func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride) ([]imagePorts.ImageURI, []string, error) {
 	var uris []imagePorts.ImageURI
 	var descriptions []string
 	var missingIDs []string
@@ -179,7 +179,7 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ids []string, override ports.D
 		}
 
 		if referenceURL == "" {
-			slog.Warn("キャラクターに有効な参照画像がないためスキップします", "id", id)
+			slog.WarnContext(ctx, "キャラクターに有効な参照画像がないためスキップします", "id", id)
 			continue
 		}
 

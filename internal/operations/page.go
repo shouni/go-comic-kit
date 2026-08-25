@@ -116,7 +116,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 		return nil, err
 	}
 
-	slog.Info("Starting page composition",
+	slog.InfoContext(ctx, "Starting page composition",
 		"page", page,
 		"panels", len(panels),
 		"model", opts.Model,
@@ -143,7 +143,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 		return nil, fmt.Errorf("ページ %d: %w", page, err)
 	}
 
-	slog.Info("Page composition completed", "page", page, "path", record.ImageURL)
+	slog.InfoContext(ctx, "Page composition completed", "page", page, "path", record.ImageURL)
 
 	// 記録（呼び出し側が同一ページ番号に upsert する）
 	panelIDs := make([]string, len(panels))
@@ -187,7 +187,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		return state, nil
 	}
 
-	slog.Info("Starting batch page composition",
+	slog.InfoContext(ctx, "Starting batch page composition",
 		"pages", len(targets), "chapter", opts.ChapterID, "concurrency", pg.maxConcurrency)
 
 	single := ports.GenerateOptions{
@@ -219,7 +219,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		state.UpdatedAt = time.Now().UTC()
 	}
 
-	slog.Info("Batch page composition completed",
+	slog.InfoContext(ctx, "Batch page composition completed",
 		"succeeded", applied, "failed", len(targets)-applied)
 	return state, errors.Join(errs...)
 }

@@ -89,7 +89,7 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 	if err := requireModel(opts.Model, "章台本"); err != nil {
 		return nil, err
 	}
-	slog.Info("ChapterScriptRunner: Gemini APIを呼び出し中",
+	slog.InfoContext(ctx, "ChapterScriptRunner: Gemini APIを呼び出し中",
 		"model", opts.Model, "chapter", chapterID)
 	resp, err := r.aiClient.GenerateWithAttachments(ctx, opts.Model, finalPrompt, nil, buildJSONGenerateOptions(chapterScriptSchema()))
 	if err != nil {
@@ -105,7 +105,7 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		return nil, fmt.Errorf("%w: 章 %q のパネルが空です（AI応答に panels がありません）", ports.ErrGeneration, chapterID)
 	}
 	if len(parsed.Panels) > r.maxPanels {
-		slog.Warn("パネル数が上限を超えたため切り詰めます",
+		slog.WarnContext(ctx, "パネル数が上限を超えたため切り詰めます",
 			"chapter", chapterID, "got", len(parsed.Panels), "max", r.maxPanels)
 		parsed.Panels = parsed.Panels[:r.maxPanels]
 	}
@@ -118,8 +118,8 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 			Shot:         p.Shot,
 			Setting:      p.Setting,
 			VisualAnchor: p.VisualAnchor,
-			Characters:   r.normalizeCharacters(chapterID, p.Characters),
-			Dialogues:    r.normalizeDialogues(chapterID, p.Dialogues),
+			Characters:   r.normalizeCharacters(ctx, chapterID, p.Characters),
+			Dialogues:    r.normalizeDialogues(ctx, chapterID, p.Dialogues),
 		})
 	}
 
@@ -130,7 +130,7 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 	state.Repaginate(r.maxPanelsPerPage)
 	state.UpdatedAt = time.Now().UTC()
 
-	slog.Info("ChapterScriptRunner: 章台本を生成しました",
+	slog.InfoContext(ctx, "ChapterScriptRunner: 章台本を生成しました",
 		"chapter", chapterID, "panels", len(panels))
 	return state, nil
 }
@@ -140,27 +140,27 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 // フォールバックして別人が描かれる事故を防ぐため、background（参照なしのモブ）に降格します。
 // 参照画像を添付する primary/secondary が MaxReferencedCharactersPerPanel を超えた分も
 // 同じく background に降格します。
-func (r *ChapterScriptRunner) normalizeCharacters(chapterID string, chars []comic.PanelCharacter) []comic.PanelCharacter {
+func (r *ChapterScriptRunner) normalizeCharacters(ctx context.Context, chapterID string, chars []comic.PanelCharacter) []comic.PanelCharacter {
 	result := make([]comic.PanelCharacter, 0, len(chars))
 	for _, pc := range chars {
 		if strings.TrimSpace(pc.CharacterID) == "" {
 			continue
 		}
 		if pc.Prominence != comic.ProminenceBackground && !r.knownCharacter(pc.CharacterID) {
-			slog.Warn("未定義のキャラクターIDをbackgroundに降格します",
+			slog.WarnContext(ctx, "未定義のキャラクターIDをbackgroundに降格します",
 				"chapter", chapterID, "character_id", pc.CharacterID)
 			pc.Prominence = comic.ProminenceBackground
 		}
 		result = append(result, pc)
 	}
-	return capReferencedCharacters(chapterID, result)
+	return capReferencedCharacters(ctx, chapterID, result)
 }
 
 // capReferencedCharacters は、参照画像を添付するキャラクターを
 // MaxReferencedCharactersPerPanel まで絞り込み、あふれた分を background に降格します。
 // 残す優先度は primary > secondary で、同じ扱いの中では登場順を保ちます（決定的）。
 // スライス自体の並びは変えないため、AI が意図したコマ内の登場順は維持されます。
-func capReferencedCharacters(chapterID string, chars []comic.PanelCharacter) []comic.PanelCharacter {
+func capReferencedCharacters(ctx context.Context, chapterID string, chars []comic.PanelCharacter) []comic.PanelCharacter {
 	referenced := make([]int, 0, len(chars))
 	for i := range chars {
 		if chars[i].Prominence != comic.ProminenceBackground {
@@ -175,7 +175,7 @@ func capReferencedCharacters(chapterID string, chars []comic.PanelCharacter) []c
 		return prominenceRank(chars[a].Prominence) - prominenceRank(chars[b].Prominence)
 	})
 	for _, i := range referenced[comic.MaxReferencedCharactersPerPanel:] {
-		slog.Warn("参照キャラクターが上限を超えたためbackgroundに降格します",
+		slog.WarnContext(ctx, "参照キャラクターが上限を超えたためbackgroundに降格します",
 			"chapter", chapterID,
 			"character_id", chars[i].CharacterID,
 			"max", comic.MaxReferencedCharactersPerPanel)
@@ -198,7 +198,7 @@ func prominenceRank(prominence string) int {
 // 未知の ID をそのまま話者名としてページ合成プロンプトに載せると、キャラクター名の位置に
 // 生の ID が描かれてしまうためで、登場キャラクターIDと同じ「AI が出した ID は検証してから
 // 使う」という不変条件に揃えています。
-func (r *ChapterScriptRunner) normalizeDialogues(chapterID string, lines []comic.DialogueLine) []comic.DialogueLine {
+func (r *ChapterScriptRunner) normalizeDialogues(ctx context.Context, chapterID string, lines []comic.DialogueLine) []comic.DialogueLine {
 	result := make([]comic.DialogueLine, 0, len(lines))
 	for _, line := range lines {
 		line.Text = strings.TrimSpace(line.Text)
@@ -207,7 +207,7 @@ func (r *ChapterScriptRunner) normalizeDialogues(chapterID string, lines []comic
 		}
 		line.SpeakerID = strings.TrimSpace(line.SpeakerID)
 		if line.SpeakerID != "" && !r.knownCharacter(line.SpeakerID) {
-			slog.Warn("未定義の話者IDをナレーションに変更します",
+			slog.WarnContext(ctx, "未定義の話者IDをナレーションに変更します",
 				"chapter", chapterID, "speaker_id", line.SpeakerID)
 			line.SpeakerID = ""
 			line.Kind = comic.DialogueKindNarration
