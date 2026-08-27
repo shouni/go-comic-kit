@@ -30,8 +30,12 @@ const defaultCacheExpiration = 10 * time.Minute
 
 // Args は、全操作の組み立てに必要な依存の集合です。
 type Args struct {
-	Config     ports.Config
-	HTTPClient httpkit.HTTPClient
+	Config ports.Config
+	// HTTPClient は参照画像を http(s) から取得するためだけに使います。
+	// 集約の httpkit.HTTPClient ではなく Downloader に絞っているのは、
+	// このキットが Do も ValidateURL も呼ばないためです。*httpkit.Client は
+	// そのまま渡せます。
+	HTTPClient httpkit.Downloader
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
 	// AIClient はテキスト生成（台本）と画像生成（デザインシート・パネル・ページ）に使います。
