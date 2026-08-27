@@ -4,10 +4,10 @@ go 1.27
 
 require (
 	github.com/google/go-cmp v0.7.0
-	github.com/shouni/gemini-image-kit v1.16.0
+	github.com/shouni/gemini-image-kit v1.16.1
 	github.com/shouni/go-character-kit v1.3.0
-	github.com/shouni/go-gemini-client v1.20.0
-	github.com/shouni/go-http-kit v1.9.0
+	github.com/shouni/go-gemini-client v1.21.0
+	github.com/shouni/go-http-kit v1.10.0
 	github.com/shouni/go-remote-io v1.10.1
 	golang.org/x/sync v0.22.0
 )
@@ -25,7 +25,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.21 // indirect
 	github.com/googleapis/gax-go/v2 v2.24.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/shouni/netarmor v1.3.0 // indirect
+	github.com/shouni/netarmor v1.4.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
