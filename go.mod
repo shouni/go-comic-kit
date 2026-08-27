@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/google/go-cmp v0.7.0
-	github.com/shouni/gemini-image-kit v1.16.0
+	github.com/shouni/gemini-image-kit v1.16.1
 	github.com/shouni/go-character-kit v1.3.0
 	github.com/shouni/go-gemini-client v1.21.0
 	github.com/shouni/go-http-kit v1.9.0

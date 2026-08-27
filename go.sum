@@ -108,8 +108,8 @@ github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 h1:GFCKgm
 github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10/go.mod h1:t/avpk3KcrXxUnYOhZhMXJlSEyie6gQbtLq5NM3loB8=
 github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 h1:GHRpF1pTW19a8tTFrMLUcfWwyC0pnifVo2ClaLq+hP8=
 github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46/go.mod h1:uAQ5PCi+MFsC7HjREoAz1BU+Mq60+05gifQSsHSDG/8=
-github.com/shouni/gemini-image-kit v1.16.0 h1:urJMbV+fWFu6KbcHxVwccFTRopaH/vCCkKeL+NS50ZE=
-github.com/shouni/gemini-image-kit v1.16.0/go.mod h1:Fvr4oTPEg3equsvhrRmw6JnETIsNgQAufbdIk7qbhI0=
+github.com/shouni/gemini-image-kit v1.16.1 h1:GB0J4cXg/ji/pHiczLq11KziAtvNq0EfzLjoMkdJTuE=
+github.com/shouni/gemini-image-kit v1.16.1/go.mod h1:4u98U6xZblKFf3LfgifqRlBCOJzDw5bVy0WDrXM4RuI=
 github.com/shouni/go-character-kit v1.3.0 h1:hVX6aPRZELLulNGDRPGR6lgzlrWQsNDorrNF/8BfDLk=
 github.com/shouni/go-character-kit v1.3.0/go.mod h1:y0xe3U+Jk1zF4t1+KbxQ/ADgbMbzcDyhfj47NRSOpYE=
 github.com/shouni/go-gemini-client v1.21.0 h1:SJ96BaYx6n+8/Ob4YCESecvqCMkqcbf3ekHKzVl8QGI=
