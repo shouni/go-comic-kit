@@ -123,8 +123,8 @@ func TestRenderImageCacheControl(t *testing.T) {
 			if err != nil {
 				t.Fatalf("renderImage failed: %v", err)
 			}
-			if writer.lastSettings.CacheControl != tt.want {
-				t.Errorf("CacheControl = %q, want %q", writer.lastSettings.CacheControl, tt.want)
+			if writer.lastOptions.CacheControl != tt.want {
+				t.Errorf("CacheControl = %q, want %q", writer.lastOptions.CacheControl, tt.want)
 			}
 		})
 	}

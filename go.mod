@@ -8,7 +8,7 @@ require (
 	github.com/shouni/go-character-kit v1.3.0
 	github.com/shouni/go-gemini-client v1.21.0
 	github.com/shouni/go-http-kit v1.10.0
-	github.com/shouni/go-remote-io v1.10.1
+	github.com/shouni/go-remote-io v1.11.0
 	golang.org/x/sync v0.22.0
 )
 

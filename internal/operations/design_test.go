@@ -26,18 +26,23 @@ func (m *mockDesignGenerator) Generate(_ context.Context, req imagePorts.ImageRe
 	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 123}, nil
 }
 
+// mockWriter は書き込みの「記録」を取るスパイです。
+//
+// ストレージとしての振る舞い（一覧の畳み込みや不在の返し方）を模倣する必要は
+// 無いため、memio ではなくこの形で残しています。memio が受け持つのは
+// ストレージの模倣で、呼び出しの記録は利用側の関心です。
 type mockWriter struct {
 	lastPath string
-	// lastSettings は適用後の書き込みオプションです（Content-Type / Cache-Control の確認用）。
-	lastSettings remoteio.WriteSettings
-	err          error // 非 nil なら保存を失敗させる
+	// lastOptions は適用後の書き込みオプションです（Content-Type / Cache-Control の確認用）。
+	lastOptions remoteio.WriteOptions
+	err         error // 非 nil なら保存を失敗させる
 }
 
 func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, opts ...remoteio.WriteOption) error {
 	m.lastPath = path
-	m.lastSettings = remoteio.WriteSettings{}
+	m.lastOptions = remoteio.WriteOptions{}
 	for _, opt := range opts {
-		opt(&m.lastSettings)
+		opt(&m.lastOptions)
 	}
 	return m.err
 }
