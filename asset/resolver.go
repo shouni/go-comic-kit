@@ -36,7 +36,7 @@ const (
 // StatePath は state ドキュメント（comic_state.json）の保存先パスを返します。
 // baseDir はローカルパスでも gs:// URI でもかまいません。
 func StatePath(baseDir string) (string, error) {
-	return remoteio.ResolvePath(baseDir, DefaultStateJSON)
+	return remoteio.Join(baseDir, DefaultStateJSON), nil
 }
 
 // IsStateFileName は、ファイル名が state ドキュメントのものかを判定します。
@@ -49,7 +49,7 @@ func IsStateFileName(name string) bool {
 // パネルIDに紐づく安定したパスなので、再生成は同じ場所を上書きします。
 func PanelImagePath(baseDir, panelID, extension string) (string, error) {
 	fileName := panelFilePrefix + SanitizeFileName(panelID) + extension
-	return remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, fileName))
+	return remoteio.Join(baseDir, path.Join(DefaultImageDir, fileName)), nil
 }
 
 // PageImagePath はページ画像の保存先パスを返します（images/comic_page_{page}{extension}）。
@@ -59,11 +59,8 @@ func PanelImagePath(baseDir, panelID, extension string) (string, error) {
 // ここだけ ".png" を決め打ちにしていた頃は、モデルが JPEG を返したページ画像だけが
 // 中身と食い違う拡張子で保存されていました。
 func PageImagePath(baseDir string, page int, extension string) (string, error) {
-	base, err := remoteio.ResolvePath(baseDir, path.Join(DefaultImageDir, pageFileBaseName+extension))
-	if err != nil {
-		return "", err
-	}
-	return remoteio.GenerateIndexedPath(base, page)
+	base := remoteio.Join(baseDir, path.Join(DefaultImageDir, pageFileBaseName+extension))
+	return remoteio.IndexedPath(base, page)
 }
 
 // DesignSheetPath はデザインシートの保存先パスを返します
@@ -71,17 +68,13 @@ func PageImagePath(baseDir string, page int, extension string) (string, error) {
 // 同一キャラクターへの複数回の生成を上書きせず、jobID 別に履歴として残すための構成です。
 func DesignSheetPath(baseDir string, characterIDs []string, jobID, extension string) (string, error) {
 	relative := path.Join(CharacterDesignDir, DesignFileTag(characterIDs), SanitizeFileName(jobID)+extension)
-	return remoteio.ResolvePath(baseDir, relative)
+	return remoteio.Join(baseDir, relative), nil
 }
 
 // CharacterDesignPrefix は、あるキャラクターのデザインシートが並ぶディレクトリの URI を
 // 末尾スラッシュ付きで返します。消費側が生成履歴を一覧・削除するときの前方一致キーです。
 func CharacterDesignPrefix(baseDir, characterID string) (string, error) {
-	resolved, err := remoteio.ResolvePath(baseDir, path.Join(CharacterDesignDir, SanitizeFileName(characterID)))
-	if err != nil {
-		return "", err
-	}
-	return resolved + "/", nil
+	return remoteio.Join(baseDir, path.Join(CharacterDesignDir, SanitizeFileName(characterID))) + "/", nil
 }
 
 // maxDesignFileTagBytes はファイル名に埋め込むキャラクタータグの最大バイト長です。
