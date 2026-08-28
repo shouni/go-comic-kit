@@ -71,6 +71,29 @@ func DesignSheetPath(baseDir string, characterIDs []string, jobID, extension str
 	return remoteio.Join(baseDir, relative), nil
 }
 
+// DesignSheetJobID は、CharacterDesignPrefix 配下のオブジェクト URI から生成ジョブ ID を
+// 取り出します。そのプレフィックスの直下に無い、あるいは階層を挟むものは ("", false) です。
+//
+// DesignSheetPath の逆向きです。組み立てだけを公開していると、一覧する側が
+// 「ファイル名は {jobID}{拡張子}」という規約を自前で逆算することになり、
+// ここでファイル名の付け方を変えたときに、呼び出し側の一覧が
+// エラーも出さずに空になります（実際に消費側がその形で書いていました）。
+//
+// 返るのは SanitizeFileName を通したあとの ID です。DesignSheetPath が
+// その形で保存するため、元の文字列は復元できません。
+func DesignSheetJobID(prefix, uri string) (string, bool) {
+	prefix = strings.TrimSuffix(prefix, "/")
+	if prefix == "" || !strings.HasPrefix(uri, prefix+"/") {
+		return "", false
+	}
+
+	name := strings.TrimPrefix(uri, prefix+"/")
+	if name == "" || strings.Contains(name, "/") {
+		return "", false
+	}
+	return strings.TrimSuffix(name, path.Ext(name)), true
+}
+
 // CharacterDesignPrefix は、あるキャラクターのデザインシートが並ぶディレクトリの URI を
 // 末尾スラッシュ付きで返します。消費側が生成履歴を一覧・削除するときの前方一致キーです。
 func CharacterDesignPrefix(baseDir, characterID string) (string, error) {

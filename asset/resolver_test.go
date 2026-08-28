@@ -154,3 +154,71 @@ func TestPageImagePathUsesExtension(t *testing.T) {
 		t.Errorf("PageImagePath() = %q, want %q", got, want)
 	}
 }
+
+// DesignSheetPath と DesignSheetJobID が往復することを固定します。
+//
+// 片方向しか無かった頃は、一覧する側が「ファイル名は {jobID}{拡張子}」という規約を
+// 自前で逆算していました。ここでファイル名の付け方を変えると、呼び出し側の一覧が
+// エラーも出さずに空になります。往復で縛っておけば、変えたときにここが落ちます。
+func TestDesignSheetPathRoundTrip(t *testing.T) {
+	const baseDir = "gs://bucket"
+
+	tests := []struct {
+		name      string
+		character string
+		jobID     string
+		extension string
+	}{
+		{"通常", "zundamon", "c20260718-113045-1a2b3c4d", ".png"},
+		{"旧採番形式", "zundamon", "c20260718-113045-1a2b3c4d", ".jpg"},
+		{"記号を含むID", "zundamon", "c2026/07/18-113045", ".png"},
+		{"拡張子なし", "zundamon", "c20260718-113045-1a2b3c4d", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uri, err := DesignSheetPath(baseDir, []string{tt.character}, tt.jobID, tt.extension)
+			if err != nil {
+				t.Fatalf("DesignSheetPath() error = %v", err)
+			}
+
+			prefix, err := CharacterDesignPrefix(baseDir, tt.character)
+			if err != nil {
+				t.Fatalf("CharacterDesignPrefix() error = %v", err)
+			}
+
+			got, ok := DesignSheetJobID(prefix, uri)
+			if !ok {
+				t.Fatalf("DesignSheetJobID(%q, %q) = _, false（プレフィックス配下と認識されていない）", prefix, uri)
+			}
+			// 保存されるのは SanitizeFileName を通したあとの ID です。
+			if want := SanitizeFileName(tt.jobID); got != want {
+				t.Errorf("DesignSheetJobID() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// プレフィックス配下でないもの・階層を挟むものは拾わないこと。
+func TestDesignSheetJobIDRejectsUnrelatedPaths(t *testing.T) {
+	const prefix = "gs://bucket/character/zundamon/"
+
+	tests := []struct {
+		name string
+		uri  string
+	}{
+		{"別キャラクター", "gs://bucket/character/metan/job-1.png"},
+		{"階層を挟む", "gs://bucket/character/zundamon/sub/job-1.png"},
+		{"プレフィックスそのもの", "gs://bucket/character/zundamon/"},
+		{"前方一致するだけの別ディレクトリ", "gs://bucket/character/zundamon2/job-1.png"},
+		{"無関係", "gs://bucket/comics/job-1/comic_state.json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, ok := DesignSheetJobID(prefix, tt.uri); ok {
+				t.Errorf("DesignSheetJobID(%q) = %q, true; want false", tt.uri, got)
+			}
+		})
+	}
+}
