@@ -1,14 +1,14 @@
 # 🎨 Go Comic Kit
 
 [![CI](https://github.com/shouni/go-comic-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/go-comic-kit/actions/workflows/ci.yml)
-[![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-comic-kit)](https://golang.org/)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
+[![Language](https://img.shields.io/badge/Language-Go-blue)](https://go.dev/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-comic-kit)](https://go.dev/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-comic-kit)](https://github.com/shouni/go-comic-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-comic-kit.svg)](https://pkg.go.dev/github.com/shouni/go-comic-kit)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
-## 🚀 概要 (About)
+## 🚀 概要 (About) - 1 作品 1 state、コマ単位で撃ち直せる漫画生成
 
 **Go Comic Kit** は、AI による**キャラクターの一貫性を維持した漫画生成**のためのツールキットです。
 
