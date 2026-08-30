@@ -70,7 +70,7 @@ type PanelPromptData struct {
 	Panel comic.Panel
 	// Characters はキャラクター定義です。名前や visual_cues の解決に使います。
 	Characters *comic.Characters
-	// SubjectIDs は参照画像を添付したキャラクターIDで、**添付順**に並びます。
+	// SubjectIDs は参照画像を添付したキャラクターIDで、添付順に並びます。
 	// 実装はこの順序で参照番号を振ってください。順序がずれると、モデルは別人の
 	// 参照画像を見ながら描くことになります。
 	SubjectIDs []string
