@@ -118,6 +118,8 @@ github.com/shouni/go-gemini-client v1.21.0 h1:SJ96BaYx6n+8/Ob4YCESecvqCMkqcbf3ek
 github.com/shouni/go-gemini-client v1.21.0/go.mod h1:IH4s5hvGttCWkhn2GGXGJrr9Rbb0BC5B3j6CmjUxE9g=
 github.com/shouni/go-http-kit v1.10.0 h1:2L5zPnZpbEgxGeTsdDP5fKFcS6efpXOOvMBCcbzzlHQ=
 github.com/shouni/go-http-kit v1.10.0/go.mod h1:rk5iB0MB/Z3cnMGrQlTubCoDA+QUFHGMF7g7PA7ArQo=
+github.com/shouni/go-http-kit v1.11.0 h1:IrCkC+yxpX7AMPIHNPsVySeu5Lgzngnxuge9TB/qtCQ=
+github.com/shouni/go-http-kit v1.11.0/go.mod h1:rk5iB0MB/Z3cnMGrQlTubCoDA+QUFHGMF7g7PA7ArQo=
 github.com/shouni/go-remote-io v1.11.0 h1:DECXbwTYi32r3TiqMNe6IQ8/UOEe5Twv2CRFbrTziSs=
 github.com/shouni/go-remote-io v1.11.0/go.mod h1:jUxjW7lUcbClHHdjHutvpRjrHfw26Fs+yuf4UwSGzbA=
 github.com/shouni/netarmor v1.4.0 h1:ePG5m1Ao3jvDwdNarsGHqekGYeRJDdoSmHrivqN2TfE=

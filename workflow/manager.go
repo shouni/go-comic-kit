@@ -32,10 +32,10 @@ const defaultCacheExpiration = 10 * time.Minute
 type Args struct {
 	Config ports.Config
 	// HTTPClient は参照画像を http(s) から取得するためだけに使います。
-	// 集約の httpkit.HTTPClient ではなく Downloader に絞っているのは、
-	// このキットが Do も ValidateURL も呼ばないためです。*httpkit.Client は
+	// 集約の httpkit.HTTPClient ではなく Streamer に絞っているのは、
+	// このキットがストリーム取得しか使わないためです。*httpkit.Client は
 	// そのまま渡せます。
-	HTTPClient httpkit.Downloader
+	HTTPClient httpkit.Streamer
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
 	// AIClient はテキスト生成（台本）と画像生成（デザインシート・パネル・ページ）に使います。
