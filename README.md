@@ -77,7 +77,7 @@ ops, err := workflow.New(workflow.Args{
 	// Config は実行制御だけ（並列数・間隔・タイムアウト・各種上限）。すべて任意で、
 	// ゼロ値なら ApplyDefaults が補完する。モデル・画風・比率・解像度は呼び出しごとに渡す
 	Config:          ports.Config{},
-	HTTPClient:      httpClient,      // httpkit.Downloader（参照画像の取得だけに使います）
+	HTTPClient:      httpClient,      // httpkit.Streamer（参照画像の取得だけに使います）
 	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
 	Writer:          writer,
 	AIClient:        aiClient,        // go-gemini-client。台本生成・画像生成の両方に使用

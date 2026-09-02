@@ -67,7 +67,7 @@ func validArgs(t *testing.T) Args {
 	return Args{
 		// モデル名と画風指定はキットが既定値を持たないため、呼び出し側が必ず指定する。
 		Config:     ports.Config{},
-		HTTPClient: httpkit.New(5 * time.Second),
+		HTTPClient: httpkit.New(httpkit.WithTimeout(5 * time.Second)),
 		Reader:     &fakeWorkflowReader{},
 		Writer:     &fakeWorkflowWriter{},
 		AIClient:   &fakeAIClient{},
