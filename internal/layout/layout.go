@@ -25,8 +25,8 @@ const (
 
 // aspectRatios は受け付けるアスペクト比です。
 // キャラクターの参照画像（go-character-kit の ReferenceURLs）を、実際にその画像を使う先
-// （go-veo-orchestrator のキーフレーム、ap-comp のカバーアート等）と同じアスペクト比で
-// 用意できるようにするための選択肢で、ap-comp の coverArtAspectRatios を含みます。
+// （go-veo-orchestrator のキーフレーム、ap-music のカバーアート等）と同じアスペクト比で
+// 用意できるようにするための選択肢で、ap-music の coverArtAspectRatios を含みます。
 var aspectRatios = []string{"1:1", "3:4", "9:16", "16:9"}
 
 // AspectRatios は受け付けるアスペクト比の一覧を返します。

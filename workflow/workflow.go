@@ -50,7 +50,7 @@ type Args struct {
 }
 
 // New は、設定とキャラクター定義を基に全操作を組み立てて返します。
-// 返された Operations は使い終わったら Close を呼んでください（内部キャッシュの停止）。
+// 返された Operations に後始末は要りません（ports.Operations 参照）。
 func New(args Args) (*ports.Operations, error) {
 	if err := validateArgs(&args); err != nil {
 		return nil, err

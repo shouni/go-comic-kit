@@ -13,8 +13,8 @@ import (
 // runBatch は targets の各要素に対して render を最大 maxConcurrency 並列で実行し、
 // 結果とエラーを targets と同じ並びで返します（失敗した要素の結果はゼロ値です）。
 //
-// 最初の失敗で残りを打ち切らないのは、画像生成が高価で、成功した分は呼び出し側が
-// state に記録して保存できるためです。そうしておけば、次は未生成分だけを実行できます。
+// 最初の失敗で残りを打ち切らないのは、成功分を記録して未生成分だけ再実行できる
+// ようにするためです（ports.PanelImageGenerator.GenerateAllPanels 参照）。
 func runBatch[T any](
 	ctx context.Context,
 	maxConcurrency int,
@@ -49,8 +49,7 @@ func runBatch[T any](
 }
 
 // validateBatchChapter は BatchOptions.ChapterID が state に存在するかを確かめます。
-// 存在しない ID を 0 件成功として通すと、実行したつもりで何も起きていない状態に
-// 気付けません（打ち間違いは静かに全スキップになります）。
+// 存在しない ID を 0 件成功として通さない理由は ports.BatchOptions.ChapterID を参照。
 func validateBatchChapter(state *comic.MangaState, chapterID string) error {
 	if chapterID == "" {
 		return nil

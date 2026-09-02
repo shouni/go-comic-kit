@@ -71,7 +71,6 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		return nil, fmt.Errorf("%w: 章 %q", ports.ErrNotFound, chapterID)
 	}
 
-	// 1. プロンプト構築（章立て全体を文脈として渡す）
 	data := &ports.ChapterPromptData{
 		WorkTitle:       state.Title,
 		WorkDescription: state.Description,
@@ -85,7 +84,6 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		return nil, fmt.Errorf("%w: 章台本プロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
-	// 2. 生成（構造化出力: スキーマで文法レベルに制約する）
 	if err := requireModel(opts.Model, "章台本"); err != nil {
 		return nil, err
 	}
@@ -96,7 +94,6 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		return nil, fmt.Errorf("%w: 章 %q の台本生成に失敗しました: %w", ports.ErrGeneration, chapterID, err)
 	}
 
-	// 3. パースと正規化
 	var parsed chapterScriptResponse
 	if err := parseJSONResponse(resp.Text, &parsed); err != nil {
 		return nil, err
@@ -123,7 +120,6 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		})
 	}
 
-	// 4. state へ反映（同章の既存パネルを置き換え、ページ番号を振り直す）
 	if !state.ReplaceChapterPanels(chapterID, panels) {
 		return nil, fmt.Errorf("%w: 章 %q", ports.ErrNotFound, chapterID)
 	}

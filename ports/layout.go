@@ -13,8 +13,7 @@ const (
 	ImageSize2K = layout.ImageSize2K
 
 	// DefaultAspectRatio はパネル・ページ・デザインシートの既定の比率です。
-	// 縦長なのは、コマが縦長のページへ積まれるためです。横長で生成すると
-	// 合成時に上下が切られるか、余白で埋めることになります。
+	// 縦長なのは、コマが縦長のページへ積まれるためです。
 	DefaultAspectRatio = layout.DefaultAspectRatio
 )
 

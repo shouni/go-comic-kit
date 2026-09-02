@@ -82,6 +82,13 @@ ops, err := workflow.New(workflow.Args{
 	Writer:          writer,
 	AIClient:        aiClient,        // go-gemini-client。台本生成・画像生成の両方に使用
 	Characters:      characters,      // go-character-kit (characters.json)
+
+	// プロンプトは5つとも必須。キットは内蔵しない（上の「プロンプトはすべてアプリが持つ」）
+	OutlinePrompt:       outlinePrompt,
+	ChapterScriptPrompt: chapterPrompt,
+	DesignSheetPrompt:   designPrompt,
+	PanelPrompt:         panelPrompt,
+	PagePrompt:          pagePrompt,
 })
 if err != nil {
 	return err

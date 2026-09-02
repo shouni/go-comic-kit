@@ -68,8 +68,7 @@ type pageResources struct {
 
 // ComposePage は指定ページのパネル群を1枚のページ画像として合成し、
 // 結果を PageArtifact として state に記録します（冪等・upsert）。
-// opts.Seed が nil の場合は前回の UsedSeed（あれば）を再利用します。
-// opts.EditPrompt を指定すると、既存のページ画像を入力とした編集モードになります。
+// Seed / EditPrompt の扱いは ports.GenerateOptions のとおりです。
 func (pg *PageImageRunner) ComposePage(ctx context.Context, state *comic.MangaState, page int, opts ports.GenerateOptions) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
@@ -124,7 +123,6 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 		"ref_count", len(images),
 	)
 
-	// 生成・保存・生成条件の記録。保存先はページ番号に紐づく安定したパスで上書きする。
 	record, err := renderImage(ctx, pg.generator, pg.writer, imageRenderRequest{
 		Model:          opts.Model,
 		Prompt:         set.user,
@@ -145,7 +143,6 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 
 	slog.InfoContext(ctx, "Page composition completed", "page", page, "path", record.ImageURL)
 
-	// 記録（呼び出し側が同一ページ番号に upsert する）
 	panelIDs := make([]string, len(panels))
 	for i := range panels {
 		panelIDs[i] = panels[i].ID
