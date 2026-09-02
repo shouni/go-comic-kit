@@ -77,7 +77,7 @@ ops, err := workflow.New(workflow.Args{
 	// Config は実行制御だけ（並列数・間隔・タイムアウト・各種上限）。すべて任意で、
 	// ゼロ値なら ApplyDefaults が補完する。モデル・画風・比率・解像度は呼び出しごとに渡す
 	Config:          ports.Config{},
-	HTTPClient:      httpClient,      // httpkit.Streamer（参照画像の取得だけに使います）
+	Downloader:      httpClient,      // ports.Downloader（参照画像の取得だけに使います）
 	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
 	Writer:          writer,
 	AIClient:        aiClient,        // go-gemini-client。台本生成・画像生成の両方に使用
@@ -129,7 +129,6 @@ _, _ = store.Save(ctx, writer, state, outDir)
 * [shouni/go-character-kit](https://github.com/shouni/go-character-kit) - キャラクター資産（characters.json）管理
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API/Vertex AI クライアント（構造化出力対応）
 * [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - GCS/ローカル/HTTP 対応の読み書き抽象化
-* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - HTTP クライアント抽象化
 
 ## 📜 ライセンス (License)
 

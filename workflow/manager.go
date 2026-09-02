@@ -11,7 +11,6 @@ import (
 	"github.com/shouni/gemini-image-kit/generator"
 	"github.com/shouni/go-gemini-client/callguard"
 	"github.com/shouni/go-gemini-client/gemini"
-	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/internal/operations"
@@ -31,11 +30,10 @@ const defaultCacheExpiration = 10 * time.Minute
 // Args は、全操作の組み立てに必要な依存の集合です。
 type Args struct {
 	Config ports.Config
-	// HTTPClient は参照画像を http(s) から取得するためだけに使います。
-	// 集約の httpkit.HTTPClient ではなく Streamer に絞っているのは、
-	// このキットがストリーム取得しか使わないためです。*httpkit.Client は
-	// そのまま渡せます。
-	HTTPClient httpkit.Streamer
+	// Downloader は参照画像を http(s) から取得するためだけに使います。
+	// 口を GetStream 1 本に絞っているのは、このキットがストリーム取得しか
+	// 使わないためです。*httpkit.Client はそのまま渡せます。
+	Downloader ports.Downloader
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
 	// AIClient はテキスト生成（台本）と画像生成（デザインシート・パネル・ページ）に使います。
@@ -145,7 +143,7 @@ func buildImageGenerator(args *Args, client gemini.Model, guard *callguard.Guard
 func buildReferenceResolver(args *Args, client gemini.Model, uploadTimeout time.Duration) (*generator.ResolverChain, error) {
 	inline, err := generator.NewFetchResolver(generator.FetchResolverConfig{
 		Reader:     args.Reader,
-		Downloader: args.HTTPClient,
+		Downloader: args.Downloader,
 	})
 	if err != nil {
 		return nil, err
@@ -158,7 +156,7 @@ func buildReferenceResolver(args *Args, client gemini.Model, uploadTimeout time.
 	upload, err := generator.NewFileAPIResolver(generator.FileAPIResolverConfig{
 		Files:      client,
 		Reader:     args.Reader,
-		Downloader: args.HTTPClient,
+		Downloader: args.Downloader,
 		Cache:      newReferenceCache(defaultCacheExpiration),
 		// CacheTTL は渡さない。0 のままにすると cache 側の既定
 		// （defaultCacheExpiration）が使われる。
@@ -178,8 +176,8 @@ func buildReferenceResolver(args *Args, client gemini.Model, uploadTimeout time.
 // 文面は Args の実際のフィールド名で書きます。呼び出し側がメッセージを頼りに
 // 直す場所を探すため、名前がずれると grep しても当たりません。
 func validateArgs(args *Args) error {
-	if args.HTTPClient == nil {
-		return fmt.Errorf("Args.HTTPClient は必須です")
+	if args.Downloader == nil {
+		return fmt.Errorf("Args.Downloader は必須です")
 	}
 	if args.Reader == nil {
 		return fmt.Errorf("Args.Reader は必須です")
