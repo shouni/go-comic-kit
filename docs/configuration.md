@@ -51,7 +51,7 @@
 
 | フィールド | 役割 |
 | --- | --- |
-| `HTTPClient` | go-http-kit の HTTP クライアント |
+| `Downloader` | `ports.Downloader`（参照画像を http(s) から取得する `GetStream` 1 本。`*httpkit.Client` がそのまま満たします） |
 | `Reader` / `Writer` | `ports.ContentReader` / `remoteio.Writer`（原稿の読み込み・成果物の保存） |
 | `AIClient` | 台本生成と画像生成の両方に使う `gemini.Model`（デザインシート・パネル・ページで共有します） |
 | `Characters` | `*comic.Characters`（go-character-kit の `characters.json`） |

@@ -58,7 +58,6 @@ type outlineResponse struct {
 // GenerateOutline は元文章から章立てのみを持つ MangaState を生成します。
 // 章の ID はシステム側で "ch01" 形式に採番し直します（AI 出力の ID は信用しない）。
 func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRequest) (*comic.MangaState, error) {
-	// 1. ソーステキストの解決
 	inputText, err := resolveSourceText(ctx, r.reader, req.SourceText, req.SourceURL)
 	if err != nil {
 		return nil, err
@@ -69,7 +68,6 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		maxChapters = req.MaxChapters
 	}
 
-	// 2. プロンプト構築
 	data := &ports.OutlinePromptData{
 		InputText:       inputText,
 		CharacterRoster: characterRoster(r.characters),
@@ -80,7 +78,6 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, fmt.Errorf("%w: 章立てプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
-	// 3. 生成（構造化出力: スキーマで文法レベルに制約する）
 	if err := requireModel(req.Model, "章立て"); err != nil {
 		return nil, err
 	}
@@ -90,7 +87,6 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
-	// 4. パースと正規化
 	var parsed outlineResponse
 	if err := parseJSONResponse(resp.Text, &parsed); err != nil {
 		return nil, err

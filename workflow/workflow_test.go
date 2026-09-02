@@ -16,7 +16,6 @@ import (
 
 	characterkit "github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-gemini-client/gemini"
-	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/ports"
@@ -48,6 +47,12 @@ func (f *fakeWorkflowReader) Open(_ context.Context, _ string) (io.ReadCloser, e
 	return io.NopCloser(strings.NewReader("content")), nil
 }
 
+type fakeDownloader struct{}
+
+func (f *fakeDownloader) GetStream(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("image")), nil
+}
+
 type fakeWorkflowWriter struct{}
 
 func (f *fakeWorkflowWriter) Write(_ context.Context, _ string, _ io.Reader, _ ...remoteio.WriteOption) error {
@@ -67,7 +72,7 @@ func validArgs(t *testing.T) Args {
 	return Args{
 		// モデル名と画風指定はキットが既定値を持たないため、呼び出し側が必ず指定する。
 		Config:     ports.Config{},
-		HTTPClient: httpkit.New(httpkit.WithTimeout(5 * time.Second)),
+		Downloader: &fakeDownloader{},
 		Reader:     &fakeWorkflowReader{},
 		Writer:     &fakeWorkflowWriter{},
 		AIClient:   &fakeAIClient{},
@@ -99,7 +104,7 @@ func TestNewValidatesRequiredArgs(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]func(*Args){
-		"HTTPClient": func(a *Args) { a.HTTPClient = nil },
+		"Downloader": func(a *Args) { a.Downloader = nil },
 		"Reader":     func(a *Args) { a.Reader = nil },
 		"Writer":     func(a *Args) { a.Writer = nil },
 		"AIClient":   func(a *Args) { a.AIClient = nil },

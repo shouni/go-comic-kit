@@ -59,8 +59,7 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 }
 
 // GeneratePanel は指定パネルの画像を生成し、結果を GenerationRecord として state に記録します。
-// opts.Seed が nil の場合は前回の UsedSeed（あれば）を再利用し「同条件での再生成」になります。
-// opts.EditPrompt を指定すると、既存の生成済み画像を入力とした編集モードになります。
+// Seed / EditPrompt の扱いは ports.GenerateOptions のとおりです。
 func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *comic.MangaState, panelID string, opts ports.GenerateOptions) (*comic.MangaState, error) {
 	if state == nil {
 		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
@@ -111,7 +110,6 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 		"ref_count", len(images),
 	)
 
-	// 生成・保存・生成条件の記録（再生成の基礎）。保存先はパネルIDに紐づく安定したパスで上書きする。
 	record, err := renderImage(ctx, pr.generator, pr.writer, imageRenderRequest{
 		Model:          opts.Model,
 		Prompt:         set.user,

@@ -72,7 +72,6 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		return nil, err
 	}
 
-	// 1. 複数キャラの情報を集約
 	imageURIs, descriptions, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override, aspectRatio)
 	if err != nil {
 		return nil, fmt.Errorf("キャラクター資産の収集に失敗しました: %w", err)
@@ -85,7 +84,6 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		slog.String("layout", req.Layout),
 	)
 
-	// 2. プロンプト構築
 	systemPrompt, userPrompt, negativePrompt, err := dr.prompt.BuildDesignSheet(&ports.DesignSheetPromptData{
 		Descriptions: descriptions,
 		Layout:       req.Layout,
@@ -95,10 +93,6 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		return nil, fmt.Errorf("%w: デザインシートプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
-	// 3. 生成と保存
-	// 保存先はキャラクター（の組み合わせ）ごとのディレクトリの下に JobID をファイル名として
-	// 配置する構成（character/{tag}/{jobID}.ext）で、同一キャラクターへの複数回の生成を
-	// 上書きせず履歴として残します。
 	record, err := renderImage(ctx, dr.generator, dr.writer, imageRenderRequest{
 		Model:          req.Model,
 		Prompt:         userPrompt,
@@ -117,7 +111,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		return nil, fmt.Errorf("デザインシート (%v): %w", req.CharacterIDs, err)
 	}
 
-	// 4. state への記録（冪等: 同一キャラクターの記録は上書き）
+	// state への記録は冪等（同一キャラクターの記録は上書き）。
 	now := time.Now().UTC()
 	if state == nil {
 		state = &comic.MangaState{
