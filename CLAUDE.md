@@ -54,6 +54,14 @@ Operations wrap their errors with the sentinels in `ports/errors.go` (`ErrNotFou
 ### Data-model invariants
 
 - **Every image generation is seeded.** `resolveSeedChain` draws a seed when nothing else supplies one, because the API picks its own seed otherwise and never reports it back: `GenerationRecord.UsedSeed` would stay 0, the chain's "reuse the previous seed" step can't distinguish that from unset, and a work whose seeds are never specified could never be regenerated identically. Seeds are bounded to int32 because go-gemini-client rejects anything wider. gemini-image-kit auto-seeds too (default since v1.13), which looks like it makes `newSeed()` redundant — it does not. `operations.ImageGenerator` is this kit's own narrow interface, so a generator built with `WithoutAutoSeed()` (or any other implementation) would record `UsedSeed: 0` forever, silently. The guarantee belongs where the record is written.
+- **Character identity is pinned by three things at once, and each one covers a different failure.**
+  The seed (`resolveSeedChain`) fixes the generation's starting point, the design sheet attached as a
+  reference image fixes the appearance, and the character's `VisualCues` fix the details in words —
+  they reach the prompt implementation as `DesignSheetPromptData.Descriptions` and
+  `PanelPromptData.Characters`, and reach script generation through `characterRoster`. Dropping any one of them still drifts: a seed alone
+  re-rolls the face when the prompt changes, a reference alone loses the details the sheet does not
+  show, and cues alone are just text the model may re-interpret per panel. When adding an
+  operation that draws a character, carry all three.
 - **IDs are assigned server-side, never trusted from AI output**: chapters get `ch01`-style IDs, panels get `ch01-p03`-style IDs. These are regeneration targets and must stay stable.
 - A `Panel` holds `Characters []PanelCharacter` (who appears — independent of who speaks) and `Dialogues []DialogueLine` (multiple balloons; empty `SpeakerID` = narration). Character relationships are free text in `PanelCharacter.Action`.
 - `Prominence` controls reference-image attachment: `primary`/`secondary` characters get their design sheets attached at image-gen time; `background` (mobs) get none. `ReferencedCharacterIDs()` / `UniqueReferencedCharacterIDs()` encode this rule.
