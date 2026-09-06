@@ -9,7 +9,7 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
+	"github.com/shouni/genai-kit/imagegen"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
@@ -104,7 +104,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		Images:         imageURIs,
 		CacheControl:   dr.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
-			return asset.DesignSheetPath(req.OutputDir, req.CharacterIDs, req.JobID, imagePorts.ExtensionByMIMEType(mimeType))
+			return asset.DesignSheetPath(req.OutputDir, req.CharacterIDs, req.JobID, imagegen.ExtensionByMIMEType(mimeType))
 		},
 	})
 	if err != nil {
@@ -145,8 +145,8 @@ func designSeed(v *int64) *int64 {
 // 参照画像は、これから描くシートと同じ比率のものがあればそれを使います
 // （panel.go / page.go と同じ ReferenceURLFor の規則）。比率の違う元絵から起こすと、
 // 全生成物の同一性アンカーであるシート自体に構図の歪みが乗るためです。
-func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride, aspectRatio string) ([]imagePorts.ImageURI, []string, error) {
-	var uris []imagePorts.ImageURI
+func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride, aspectRatio string) ([]string, []string, error) {
+	var uris []string
 	var descriptions []string
 	var missingIDs []string
 	processedIDs := make(map[string]struct{})
@@ -179,7 +179,7 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []str
 			continue
 		}
 
-		uris = append(uris, imagePorts.ImageURI{ReferenceURL: referenceURL})
+		uris = append(uris, referenceURL)
 
 		desc := char.Name
 		if len(visualCues) > 0 {

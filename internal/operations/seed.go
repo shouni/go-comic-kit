@@ -37,7 +37,7 @@ func resolveSeedChain(explicit *int64, prev *comic.GenerationRecord, characters 
 }
 
 // newSeed は新しい生成シードを返します。
-// 下層（go-gemini-client）が int32 の範囲外を弾くため、範囲内に収めます。
+// 下層（genai-kit）が int32 の範囲外を弾くため、範囲内に収めます。
 func newSeed() *int64 {
 	seed := rand.Int64N(math.MaxInt32)
 	return &seed

@@ -8,8 +8,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
-	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/genai-kit/gemini"
+
+	"github.com/shouni/go-comic-kit/internal/operations"
 )
 
 // blockingImageGenerator は release されるまで応答を返さない fake です。
@@ -18,22 +19,22 @@ type blockingImageGenerator struct {
 	release chan struct{}
 }
 
-func (g *blockingImageGenerator) Generate(ctx context.Context, _ imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+func (g *blockingImageGenerator) Generate(ctx context.Context, _ operations.ImageRequest) (*operations.ImageResponse, error) {
 	g.calls.Add(1)
 	select {
 	case <-g.release:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return &imagePorts.ImageResponse{Data: []byte("img"), MimeType: "image/png", UsedSeed: 7}, nil
+	return &operations.ImageResponse{Data: []byte("img"), MIMEType: "image/png", UsedSeed: 7}, nil
 }
 
-func imageReq(seed *int64) imagePorts.ImageRequest {
-	return imagePorts.ImageRequest{
+func imageReq(seed *int64) operations.ImageRequest {
+	return operations.ImageRequest{
 		Model:  "m",
 		Prompt: "p",
 		Seed:   seed,
-		Images: []imagePorts.ImageURI{{ReferenceURL: "gs://b/ref.png"}},
+		Images: []string{"gs://b/ref.png"},
 	}
 }
 
@@ -48,7 +49,7 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 
 		const callers = 5
 		var wg sync.WaitGroup
-		results := make([]*imagePorts.ImageResponse, callers)
+		results := make([]*operations.ImageResponse, callers)
 		for i := range callers {
 			wg.Go(func() {
 				resp, err := g.Generate(context.Background(), imageReq(nil))
@@ -117,7 +118,7 @@ func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 		}()
 
 		// 呼び出し元B: 同一キーで相乗りし、完走を期待する
-		respB := make(chan *imagePorts.ImageResponse, 1)
+		respB := make(chan *operations.ImageResponse, 1)
 		go func() {
 			resp, err := g.Generate(context.Background(), imageReq(nil))
 			if err != nil {
@@ -153,7 +154,7 @@ type countingStructuredGenerator struct {
 	release chan struct{}
 }
 
-func (g *countingStructuredGenerator) GenerateWithAttachments(ctx context.Context, _ string, _ string, _ []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
+func (g *countingStructuredGenerator) Generate(ctx context.Context, _ string, _ string, _ []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
 	g.calls.Add(1)
 	select {
 	case <-g.release:
@@ -176,7 +177,7 @@ func TestSingleflightStructuredDeduplicatesConcurrentCalls(t *testing.T) {
 		var wg sync.WaitGroup
 		for range 4 {
 			wg.Go(func() {
-				if _, err := g.GenerateWithAttachments(context.Background(), "m", prompt, nil, opts); err != nil {
+				if _, err := g.Generate(context.Background(), "m", prompt, nil, opts); err != nil {
 					t.Errorf("GenerateWithAttachments failed: %v", err)
 				}
 			})

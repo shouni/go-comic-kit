@@ -9,7 +9,7 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
+	"github.com/shouni/genai-kit/imagegen"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
@@ -121,7 +121,7 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 		Images:         images,
 		CacheControl:   pr.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
-			return asset.PanelImagePath(opts.OutputDir, panelID, imagePorts.ExtensionByMIMEType(mimeType))
+			return asset.PanelImagePath(opts.OutputDir, panelID, imagegen.ExtensionByMIMEType(mimeType))
 		},
 	})
 	if err != nil {
@@ -198,7 +198,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 // buildRequest は、編集モードか通常生成かに応じてプロンプト一式と参照画像を構築します。
 // プロンプト本文の組み立ては ports.PanelPrompt の実装に委ね、
 // ここは「どのキャラクターの参照画像をどの順序で添付したか」を伝える役に徹します。
-func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
+func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []string, error) {
 	if opts.EditPrompt != "" {
 		if panel.Generation == nil || panel.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
@@ -207,10 +207,10 @@ func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel
 		if err != nil {
 			return promptSet{}, nil, err
 		}
-		return set.withOverride(opts.PromptOverride), []imagePorts.ImageURI{{ReferenceURL: panel.Generation.ImageURL}}, nil
+		return set.withOverride(opts.PromptOverride), []string{panel.Generation.ImageURL}, nil
 	}
 
-	var images []imagePorts.ImageURI
+	var images []string
 	var subjectIDs []string
 	for _, id := range panel.ReferencedCharacterIDs() {
 		char := pr.characters.GetCharacter(id)
@@ -226,7 +226,7 @@ func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel
 			slog.WarnContext(ctx, "キャラクターに参照画像がありません", "character_id", id)
 			continue
 		}
-		images = append(images, imagePorts.ImageURI{ReferenceURL: referenceURL})
+		images = append(images, referenceURL)
 		subjectIDs = append(subjectIDs, id)
 	}
 

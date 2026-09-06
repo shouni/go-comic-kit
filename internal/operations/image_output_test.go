@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
-
 	"github.com/shouni/go-comic-kit/ports"
 )
 
@@ -97,7 +95,7 @@ type failingImageGenerator struct {
 	err error
 }
 
-func (f *failingImageGenerator) Generate(context.Context, imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+func (f *failingImageGenerator) Generate(context.Context, ImageRequest) (*ImageResponse, error) {
 	return nil, f.err
 }
 

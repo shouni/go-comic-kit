@@ -7,7 +7,6 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 
 	"github.com/shouni/go-comic-kit/ports"
@@ -183,7 +182,7 @@ func TestComposePageEditMode(t *testing.T) {
 		t.Fatalf("ComposePage(edit) failed: %v", err)
 	}
 
-	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0].ReferenceURL != "gs://b/pages/page1.png" {
+	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0] != "gs://b/pages/page1.png" {
 		t.Errorf("Images = %+v, want existing page image only", gen.lastReq.Images)
 	}
 	if !strings.Contains(gen.lastReq.Prompt, "FAKE-PAGE-EDIT") || !strings.Contains(gen.lastReq.Prompt, "夕焼け") {
@@ -289,8 +288,8 @@ func panelChars(ids ...string) []comic.PanelCharacter {
 // jpegImageGenerator は JPEG を返す画像生成器です。
 type jpegImageGenerator struct{}
 
-func (jpegImageGenerator) Generate(_ context.Context, _ imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
-	return &imagePorts.ImageResponse{Data: []byte("fake-jpeg"), MimeType: "image/jpeg", UsedSeed: 7}, nil
+func (jpegImageGenerator) Generate(_ context.Context, _ ImageRequest) (*ImageResponse, error) {
+	return &ImageResponse{Data: []byte("fake-jpeg"), MIMEType: "image/jpeg", UsedSeed: 7}, nil
 }
 
 // TestComposePageSavesWithResponseExtension は、ページ画像の保存先拡張子が

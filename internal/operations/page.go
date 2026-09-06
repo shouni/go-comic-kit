@@ -10,7 +10,7 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
+	"github.com/shouni/genai-kit/imagegen"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
@@ -61,7 +61,7 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 
 // pageResources はページ合成に渡す参照画像と、プロンプトから参照するためのインデックスを保持します。
 type pageResources struct {
-	images        []imagePorts.ImageURI
+	images        []string
 	characterFile map[string]int // characterID -> input_file 番号（1始まり）
 	panelFile     map[string]int // panelID -> input_file 番号（1始まり）
 }
@@ -134,7 +134,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 		Images:         images,
 		CacheControl:   pg.cacheControl,
 		PathFor: func(mimeType string) (string, error) {
-			return asset.PageImagePath(opts.OutputDir, page, imagePorts.ExtensionByMIMEType(mimeType))
+			return asset.PageImagePath(opts.OutputDir, page, imagegen.ExtensionByMIMEType(mimeType))
 		},
 	})
 	if err != nil {
@@ -238,7 +238,7 @@ func uniquePageNumbers(panels []comic.Panel) []int {
 // buildRequest は、編集モードかページ合成かに応じてプロンプト一式と参照画像を構築します。
 // プロンプト本文の組み立ては ports.PagePrompt の実装に委ね、
 // ここは「何番目にどの画像を添付したか」を伝える役に徹します。
-func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []imagePorts.ImageURI, error) {
+func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []string, error) {
 	if opts.EditPrompt != "" {
 		if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: ページ %d には編集対象の合成済み画像がありません", ports.ErrInvalidRequest, page)
@@ -247,7 +247,7 @@ func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []
 		if err != nil {
 			return promptSet{}, nil, err
 		}
-		return set.withOverride(opts.PromptOverride), []imagePorts.ImageURI{{ReferenceURL: existing.Generation.ImageURL}}, nil
+		return set.withOverride(opts.PromptOverride), []string{existing.Generation.ImageURL}, nil
 	}
 
 	res := pg.collectPageResources(ctx, panels, aspectRatio)
@@ -282,7 +282,7 @@ func (pg *PageImageRunner) collectPageResources(ctx context.Context, panels []co
 
 	// 1. 登場キャラクターのマスター参照（重複なし・初出順、上限あり）
 	for _, ref := range capPageCharacterRefs(ctx, pg.pageCharacterRefs(panels, aspectRatio)) {
-		res.images = append(res.images, imagePorts.ImageURI{ReferenceURL: ref.url})
+		res.images = append(res.images, ref.url)
 		res.characterFile[ref.id] = len(res.images)
 	}
 
@@ -292,7 +292,7 @@ func (pg *PageImageRunner) collectPageResources(ctx context.Context, panels []co
 			continue
 		}
 		url := panel.Generation.ImageURL
-		res.images = append(res.images, imagePorts.ImageURI{ReferenceURL: url})
+		res.images = append(res.images, url)
 		res.panelFile[panel.ID] = len(res.images)
 	}
 

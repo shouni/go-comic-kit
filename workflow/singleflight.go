@@ -5,17 +5,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
-	"github.com/shouni/go-gemini-client/callguard"
-	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/genai-kit/callguard"
+	"github.com/shouni/genai-kit/gemini"
+	"github.com/shouni/genai-kit/imagegen"
 
 	"github.com/shouni/go-comic-kit/internal/operations"
+	"github.com/shouni/go-comic-kit/internal/reference"
 )
 
 // 本ファイルは、キットの口（operations.ImageGenerator / StructuredGenerator）に
 // 呼び出しガードを被せるデコレータと、リクエスト内容からキーを作る部分を持ちます。
 // 発射間隔・上限時間・同時実行の重複排除そのものは callguard が持っており、
-// go-veo-orchestrator や go-gemini-client/lyria と同じ実装を共有します。
+// go-veo-orchestrator や genai-kit/lyria と同じ実装を共有します。
+//
+// 参照画像を解決する resolvingImageGenerator も同じ形のデコレータです。
 
 // singleflightImageGenerator は、同一内容の画像生成リクエストの同時実行を1回にまとめる
 // ImageGenerator のデコレータです。
@@ -32,9 +35,9 @@ var _ operations.ImageGenerator = (*singleflightImageGenerator)(nil)
 
 // Generate はリクエスト内容のハッシュをキーに同時実行をまとめます。
 // 共有される応答は呼び出し元ごとに複製して返します。
-func (g *singleflightImageGenerator) Generate(ctx context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+func (g *singleflightImageGenerator) Generate(ctx context.Context, req operations.ImageRequest) (*operations.ImageResponse, error) {
 	key := imageRequestKey(&req)
-	resp, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*imagePorts.ImageResponse, error) {
+	resp, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*operations.ImageResponse, error) {
 		return g.inner.Generate(execCtx, req)
 	})
 	if err != nil {
@@ -54,10 +57,10 @@ type singleflightStructuredGenerator struct {
 var _ operations.StructuredGenerator = (*singleflightStructuredGenerator)(nil)
 
 // GenerateWithAttachments はリクエスト内容のハッシュをキーに同時実行をまとめます。
-func (g *singleflightStructuredGenerator) GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
+func (g *singleflightStructuredGenerator) Generate(ctx context.Context, modelName string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
 	key := structuredRequestKey(modelName, prompt, attachments, &opts)
 	resp, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*gemini.Response, error) {
-		return g.inner.GenerateWithAttachments(execCtx, modelName, prompt, attachments, opts)
+		return g.inner.Generate(execCtx, modelName, prompt, attachments, opts)
 	})
 	if err != nil {
 		return nil, err
@@ -69,7 +72,10 @@ func (g *singleflightStructuredGenerator) GenerateWithAttachments(ctx context.Co
 }
 
 // imageRequestKey は画像生成リクエストの内容から singleflight 用キーを作ります。
-func imageRequestKey(req *imagePorts.ImageRequest) string {
+//
+// 参照画像は解決前の URL でキーにします。解決後のバイト列で作ると、同じ URL の
+// 呼び出し同士が合流する前にそれぞれ取得を済ませてしまい、重複排除の意味が消えます。
+func imageRequestKey(req *operations.ImageRequest) string {
 	parts := []string{
 		req.Model,
 		req.Prompt,
@@ -79,9 +85,7 @@ func imageRequestKey(req *imagePorts.ImageRequest) string {
 		req.ImageSize,
 		callguard.SeedKey(req.Seed),
 	}
-	for _, img := range req.Images {
-		parts = append(parts, img.ReferenceURL, img.FileAPIURI)
-	}
+	parts = append(parts, req.Images...)
 	return callguard.Key("image", parts...)
 }
 
@@ -102,11 +106,39 @@ func structuredRequestKey(modelName string, prompt string, attachments []gemini.
 }
 
 // cloneImageResponse は singleflight で共有される応答を呼び出し元が安全に扱えるよう複製します。
-func cloneImageResponse(src *imagePorts.ImageResponse) *imagePorts.ImageResponse {
+func cloneImageResponse(src *operations.ImageResponse) *operations.ImageResponse {
 	if src == nil {
 		return nil
 	}
 	dst := *src
 	dst.Data = append([]byte(nil), src.Data...)
 	return &dst
+}
+
+// resolvingImageGenerator は、未解決の参照画像 URL を送信できる添付へ変換してから
+// 画像生成へ渡すデコレータです。
+//
+// この変換が操作層（operations）ではなくここにあるのは、http(s) の取得という I/O を
+// 伴うためです。操作層はプロンプトの組み立てと保存先の決定に閉じています。
+type resolvingImageGenerator struct {
+	inner    imagegen.Generator
+	resolver *reference.Resolver
+}
+
+var _ operations.ImageGenerator = (*resolvingImageGenerator)(nil)
+
+// Generate は参照画像を解決してから画像生成を実行します。
+func (g *resolvingImageGenerator) Generate(ctx context.Context, req operations.ImageRequest) (*operations.ImageResponse, error) {
+	references, err := g.resolver.Resolve(ctx, req.Images)
+	if err != nil {
+		return nil, err
+	}
+
+	return g.inner.Generate(ctx, imagegen.Request{
+		Model:           req.Model,
+		Prompt:          req.Prompt,
+		NegativePrompt:  req.NegativePrompt,
+		References:      references,
+		GenerateOptions: req.GenerateOptions,
+	})
 }

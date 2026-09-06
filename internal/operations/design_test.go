@@ -8,7 +8,6 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-remote-io/remoteio"
 
@@ -18,12 +17,12 @@ import (
 // --- Mocks ---
 
 type mockDesignGenerator struct {
-	lastReq imagePorts.ImageRequest
+	lastReq ImageRequest
 }
 
-func (m *mockDesignGenerator) Generate(_ context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+func (m *mockDesignGenerator) Generate(_ context.Context, req ImageRequest) (*ImageResponse, error) {
 	m.lastReq = req
-	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 123}, nil
+	return &ImageResponse{Data: []byte("fake-png"), MIMEType: "image/png", UsedSeed: 123}, nil
 }
 
 // mockWriter は書き込みの「記録」を取るスパイです。
@@ -139,8 +138,8 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 	if genMock.lastReq.Seed == nil || *genMock.lastReq.Seed != 42 {
 		t.Errorf("Seed = %v, want 42", genMock.lastReq.Seed)
 	}
-	// 参照の解決は gemini-image-kit が担うため、ここでは参照元 URL を渡すだけ。
-	if len(genMock.lastReq.Images) != 1 || genMock.lastReq.Images[0].ReferenceURL != "gs://bucket/tsumugi.png" {
+	// 参照の解決は workflow 層が担うため、ここでは参照元 URL を渡すだけ。
+	if len(genMock.lastReq.Images) != 1 || genMock.lastReq.Images[0] != "gs://bucket/tsumugi.png" {
 		t.Errorf("Images = %+v, want the character reference URL", genMock.lastReq.Images)
 	}
 }
@@ -217,11 +216,8 @@ func TestGenerateDesignSheetAppliesOverrideForSingleCharacter(t *testing.T) {
 		t.Fatalf("GenerateDesignSheet failed: %v", err)
 	}
 
-	if genMock.lastReq.Images[0].ReferenceURL != override.ReferenceURL {
-		t.Errorf("ReferenceURL = %q, want override", genMock.lastReq.Images[0].ReferenceURL)
-	}
-	if genMock.lastReq.Images[0].FileAPIURI != "" {
-		t.Errorf("FileAPIURI = %q, want empty (override URLs bypass pre-upload)", genMock.lastReq.Images[0].FileAPIURI)
+	if genMock.lastReq.Images[0] != override.ReferenceURL {
+		t.Errorf("ReferenceURL = %q, want override", genMock.lastReq.Images[0])
 	}
 	desc := strings.Join(designPrompt.data.Descriptions, " ")
 	if !strings.Contains(desc, "temporary test outfit") {
@@ -249,7 +245,7 @@ func TestGenerateDesignSheetIgnoresOverrideForMultipleCharacters(t *testing.T) {
 	}
 
 	for _, img := range genMock.lastReq.Images {
-		if img.ReferenceURL == override.ReferenceURL {
+		if img == override.ReferenceURL {
 			t.Errorf("override leaked into multi-character request: %+v", genMock.lastReq.Images)
 		}
 	}
@@ -386,7 +382,7 @@ func TestGenerateDesignSheetPrefersAspectMatchedReference(t *testing.T) {
 	if len(gen.lastReq.Images) != 1 {
 		t.Fatalf("Images = %+v, want 1 reference", gen.lastReq.Images)
 	}
-	if got := gen.lastReq.Images[0].ReferenceURL; got != "gs://bucket/tsumugi-3x4.png" {
+	if got := gen.lastReq.Images[0]; got != "gs://bucket/tsumugi-3x4.png" {
 		t.Errorf("ReferenceURL = %q, want the 3:4 reference", got)
 	}
 }

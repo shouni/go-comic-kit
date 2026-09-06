@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/genai-kit/gemini"
 
 	"github.com/shouni/go-comic-kit/ports"
 )

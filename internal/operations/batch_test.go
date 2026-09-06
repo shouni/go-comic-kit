@@ -14,7 +14,6 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/ports"
@@ -31,7 +30,7 @@ type concurrencyProbe struct {
 	failOn  string
 }
 
-func (p *concurrencyProbe) Generate(_ context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+func (p *concurrencyProbe) Generate(_ context.Context, req ImageRequest) (*ImageResponse, error) {
 	p.mu.Lock()
 	p.inFlite++
 	if p.inFlite > p.peak {
@@ -51,7 +50,7 @@ func (p *concurrencyProbe) Generate(_ context.Context, req imagePorts.ImageReque
 	if p.failOn != "" && strings.Contains(req.Prompt, p.failOn) {
 		return nil, fmt.Errorf("boom")
 	}
-	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 777}, nil
+	return &ImageResponse{Data: []byte("fake-png"), MIMEType: "image/png", UsedSeed: 777}, nil
 }
 
 // concurrentWriter は並列書き込みに耐える mockWriter 代替です。

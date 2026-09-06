@@ -14,7 +14,7 @@ import (
 // 構造化出力（ResponseSchema）を指定しても、モデルは複数行の台詞や情景描写を
 // 引用するとき、JSON 文字列の中へ生の改行を入れてきます。応答を返しきったあとの
 // 崩れなので API の再試行では直らず、補修が無ければ章まるごと ErrGeneration で落ちます。
-// 補修は go-gemini-client の gemini.CleanJSONResponse が持っています。
+// 補修は genai-kit の gemini.CleanJSONResponse が持っています。
 
 // chapterJSONWithRawNewline は、台詞と情景描写に生の改行を含む章台本の応答です。
 // バッククォートではなく通常の文字列リテラルで書いているのは、\n を

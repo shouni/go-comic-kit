@@ -89,7 +89,7 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 	}
 	slog.InfoContext(ctx, "ChapterScriptRunner: Gemini APIを呼び出し中",
 		"model", opts.Model, "chapter", chapterID)
-	resp, err := r.aiClient.GenerateWithAttachments(ctx, opts.Model, finalPrompt, nil, buildJSONGenerateOptions(chapterScriptSchema()))
+	resp, err := r.aiClient.Generate(ctx, opts.Model, finalPrompt, nil, buildJSONGenerateOptions(chapterScriptSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: 章 %q の台本生成に失敗しました: %w", ports.ErrGeneration, chapterID, err)
 	}
