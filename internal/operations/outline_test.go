@@ -10,7 +10,7 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/genai-kit/gemini"
 
 	"github.com/shouni/go-comic-kit/ports"
 )
@@ -25,7 +25,7 @@ type fakeContentGenerator struct {
 	lastOpts   gemini.GenerateOptions
 }
 
-func (f *fakeContentGenerator) GenerateWithAttachments(_ context.Context, model string, prompt string, _ []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
+func (f *fakeContentGenerator) Generate(_ context.Context, model string, prompt string, _ []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
 	f.lastModel = model
 	f.lastPrompt = prompt
 	f.lastOpts = opts

@@ -9,7 +9,7 @@ import (
 // 文法レベルで制約されます。章の ID はシステム側で採番するため含めていません。
 //
 // 素の JSON Schema を返します。genai.Schema で組み立てると、スキーマを書くだけの
-// コードが SDK の型に縛られ、go-gemini-client を挟んでいる意味が薄れます。
+// コードが SDK の型に縛られ、genai-kit を挟んでいる意味が薄れます。
 func outlineSchema() map[string]any {
 	return map[string]any{
 		"type": "object",

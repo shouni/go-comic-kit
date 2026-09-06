@@ -8,7 +8,6 @@ import (
 
 	"github.com/shouni/go-comic-kit/comic"
 
-	imagePorts "github.com/shouni/gemini-image-kit/ports"
 	characterkit "github.com/shouni/go-character-kit/character"
 
 	"github.com/shouni/go-comic-kit/internal/layout"
@@ -18,12 +17,12 @@ import (
 // --- Mocks ---
 
 type mockImageGenerator struct {
-	lastReq imagePorts.ImageRequest
+	lastReq ImageRequest
 }
 
-func (m *mockImageGenerator) Generate(_ context.Context, req imagePorts.ImageRequest) (*imagePorts.ImageResponse, error) {
+func (m *mockImageGenerator) Generate(_ context.Context, req ImageRequest) (*ImageResponse, error) {
 	m.lastReq = req
-	return &imagePorts.ImageResponse{Data: []byte("fake-png"), MimeType: "image/png", UsedSeed: 555}, nil
+	return &ImageResponse{Data: []byte("fake-png"), MIMEType: "image/png", UsedSeed: 555}, nil
 }
 
 // --- Helpers ---
@@ -101,14 +100,11 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 		t.Fatalf("Images = %+v, want 2 references", gen.lastReq.Images)
 	}
 	// アスペクト比一致の参照画像が優先される
-	if gen.lastReq.Images[0].ReferenceURL != "gs://b/zunda-3x4.png" {
-		t.Errorf("Images[0] = %q, want aspect-specific reference", gen.lastReq.Images[0].ReferenceURL)
+	if gen.lastReq.Images[0] != "gs://b/zunda-3x4.png" {
+		t.Errorf("Images[0] = %q, want aspect-specific reference", gen.lastReq.Images[0])
 	}
-	// 参照の解決方法（GCS 直接参照 / File API へのアップロード）は gemini-image-kit の
-	// 責務なので、ここでは参照元 URL をそのまま渡していることだけを確認する。
-	if gen.lastReq.Images[0].FileAPIURI != "" {
-		t.Errorf("Images[0].FileAPIURI = %q, want it left to the image kit", gen.lastReq.Images[0].FileAPIURI)
-	}
+	// 参照の解決（gs:// はそのまま、http(s) は取得）は workflow 層の責務なので、
+	// この層は参照元 URL を並べるところまでしか持たない。
 
 	// プロンプト本文はアプリ側の実装が持つので、ここで見るのは
 	// 「実装へ渡した構造データ」と「返った3本をそのまま載せたか」だけ。
@@ -194,7 +190,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 	}
 
 	// 編集モードは既存画像1枚だけを入力にする
-	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0].ReferenceURL != "gs://bucket/out/images/panel_ch01-p01.png" {
+	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0] != "gs://bucket/out/images/panel_ch01-p01.png" {
 		t.Errorf("Images = %+v, want the existing panel image only", gen.lastReq.Images)
 	}
 	if !strings.Contains(gen.lastReq.Prompt, "FAKE-PANEL-EDIT") || !strings.Contains(gen.lastReq.Prompt, "笑顔") {

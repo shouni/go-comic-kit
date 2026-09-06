@@ -41,7 +41,7 @@
   5操作すべてのプロンプトを `workflow.Args` で**必ず注入**します。キットは内蔵プロンプトを持ちません。プロンプトは作品ごとに作り込む文言で、キットに置くと1文字変えるたびにキットのリリースが必要になるためです（[詳細](docs/configuration.md#プロンプトの注入)）。
 
 * **🌍 Multi-Backend Asset Support**
-  参照画像の送り方は、注入された AI クライアントのバックエンドに応じて `workflow` が組み立てます。Vertex AI なら `gs://` を転送せず直接参照し（キャッシュ不要）、Gemini API なら File API へ1回だけアップロードして使い回します。どちらの経路も、`gs://` 以外の参照（一時的な上書き URL など）は取得してインライン送信する受け皿を最後段に持ちます。実際の解決とキャッシュ・二重アップロード防止（singleflight）は gemini-image-kit の resolver が担い、このキットは「どの画像を何番目に添付したか」だけを扱います。
+  参照画像の送り方は `workflow` が組み立てます。`gs://` は転送せず URI のまま渡し（Vertex AI がモデル側で解決するため、取得もアップロードも起きません）、`gs://` 以外の参照（一時的な上書き URL など）だけを取得してインラインで送ります。取得には時間とサイズの上限が掛かり、MIME type は内容から判定します。解決は重複排除（singleflight）の内側にあるので、同じ内容の同時呼び出しが同じ画像を人数分ダウンロードすることはありません。操作層は「どの画像を何番目に添付したか」だけを扱います。
 
 * **🔂 AI 呼び出しの重複排除**
   同一内容のテキスト/画像生成リクエストの同時実行は `singleflight` で1回の API 呼び出しにまとめられます（Cloud Tasks の at-least-once 配信やリトライ対策）。対象はプロセス内の in-flight のみで、恒久的な冪等性は `GenerationRecord` を用いたアプリ側の判断で行います。
@@ -80,7 +80,7 @@ ops, err := workflow.New(workflow.Args{
 	Downloader:      httpClient,      // ports.Downloader（参照画像の取得だけに使います）
 	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
 	Writer:          writer,
-	AIClient:        aiClient,        // go-gemini-client。台本生成・画像生成の両方に使用
+	AIClient:        aiClient,        // genai-kit の gemini.Generator。台本生成・画像生成の両方に使用
 	Characters:      characters,      // go-character-kit (characters.json)
 
 	// プロンプトは5つとも必須。キットは内蔵しない（上の「プロンプトはすべてアプリが持つ」）
@@ -132,9 +132,8 @@ _, _ = store.Save(ctx, writer, state, outDir)
 
 ## 🤝 依存関係 (Dependencies)
 
-* [shouni/gemini-image-kit](https://github.com/shouni/gemini-image-kit) - Gemini画像生成コア（参照画像の解決もここが担います）
+* [shouni/genai-kit](https://github.com/shouni/genai-kit) - Vertex AI クライアント（構造化出力対応）と画像生成（`imagegen`）
 * [shouni/go-character-kit](https://github.com/shouni/go-character-kit) - キャラクター資産（characters.json）管理
-* [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API/Vertex AI クライアント（構造化出力対応）
 * [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - GCS/ローカル/HTTP 対応の読み書き抽象化
 
 ## 📜 ライセンス (License)
