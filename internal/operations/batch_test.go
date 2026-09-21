@@ -202,6 +202,34 @@ func TestGenerateAllPanelsNilState(t *testing.T) {
 	}
 }
 
+// 打ち切られた後に順番が来た要素は生成を始めないこと。始めてしまうと、ジョブが
+// タイムアウトした後も残りの全件が課金されます。
+func TestRunBatchStopsStartingAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var calls atomic.Int32
+	results, errs := runBatch(ctx, 1, []int{0, 1, 2, 3}, func(_ context.Context, index int) (int, error) {
+		calls.Add(1)
+		if index == 1 {
+			cancel() // 2 件目の生成中にジョブが打ち切られる
+		}
+		return index + 10, nil
+	})
+
+	if got := calls.Load(); got != 2 {
+		t.Errorf("render の呼び出し回数 = %d, want 2（打ち切り後は始めない）", got)
+	}
+	if results[0] != 10 || results[1] != 11 {
+		t.Errorf("results = %v, want 済んだ 2 件の結果が残る", results)
+	}
+	for _, i := range []int{2, 3} {
+		if !errors.Is(errs[i], context.Canceled) {
+			t.Errorf("errs[%d] = %v, want context.Canceled", i, errs[i])
+		}
+	}
+}
+
 func TestUniquePageNumbersSortedAndDeduplicated(t *testing.T) {
 	t.Parallel()
 

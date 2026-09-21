@@ -15,6 +15,7 @@ import (
 //
 // 最初の失敗で残りを打ち切らないのは、成功分を記録して未生成分だけ再実行できる
 // ようにするためです（ports.PanelImageGenerator.GenerateAllPanels 参照）。
+// ctx が終わった後に順番が来た要素は render を呼ばず、ctx のエラーを記録します。
 func runBatch[T any](
 	ctx context.Context,
 	maxConcurrency int,
@@ -32,6 +33,13 @@ func runBatch[T any](
 	eg.SetLimit(maxConcurrency)
 	for i, target := range targets {
 		eg.Go(func() error {
+			// 呼び出し元のキャンセル後は新しい生成を始めません（済んだ分の結果は残します）。
+			// render の先の AI 呼び出しは ctx から切り離されて走るため、ここで止めないと、
+			// ジョブが打ち切られた後も残りの全件が 1 件ずつ発射されて課金されます。
+			if err := ctx.Err(); err != nil {
+				errs[i] = err
+				return nil
+			}
 			result, err := render(ctx, target)
 			if err != nil {
 				errs[i] = err
