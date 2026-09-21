@@ -325,11 +325,26 @@ func (s *MangaState) ChapterByID(id string) *Chapter {
 // ReplaceChapterPanels は指定章のパネル群を置き換えます（冪等な章単位再生成の基礎）。
 // 既存の同章パネルを取り除き、state.Chapters の章順を保った位置に newPanels を挿入します。
 // 章の PanelIDs も更新します。指定 ID の章が存在しない場合は false を返し、何も変更しません。
+//
+// 置き換える章のコマを載せていた PageArtifact は、ここで取り除きます。コマ ID は章内の
+// 位置で決まるため（ch01-p01 …）、同じコマ数で作り直すと ID の並びが元と一致し、
+// Repaginate の「コマ構成が変わったページだけ落とす」判定では古いページ画像が残ります。
+// 中身が入れ替わったことを知っているのはこの関数だけです。
 func (s *MangaState) ReplaceChapterPanels(chapterID string, newPanels []Panel) bool {
 	chapter := s.ChapterByID(chapterID)
 	if chapter == nil {
 		return false
 	}
+
+	replaced := make(map[string]bool)
+	for i := range s.Panels {
+		if s.Panels[i].ChapterID == chapterID {
+			replaced[s.Panels[i].ID] = true
+		}
+	}
+	s.Pages = slices.DeleteFunc(s.Pages, func(artifact PageArtifact) bool {
+		return slices.ContainsFunc(artifact.PanelIDs, func(id string) bool { return replaced[id] })
+	})
 
 	// 章順にパネルを並べ直す。対象章の位置に newPanels を差し込み、
 	// どの章にも属さないパネルは末尾に保持する。

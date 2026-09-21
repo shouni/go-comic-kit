@@ -113,3 +113,31 @@ func TestRepaginateDropsStalePageArtifacts(t *testing.T) {
 		t.Error("実体の無いページ9の記録が残っている")
 	}
 }
+
+// 同じコマ数で章を作り直すと、コマ ID の並びが元と一致します。ID の一致だけで判定すると
+// 古いページ画像が残り、SkipGenerated の再合成がそのページを飛ばしてしまいます。
+func TestReplaceChapterPanelsDropsPagesOfSameSizedRegeneration(t *testing.T) {
+	state := &MangaState{
+		Chapters: []Chapter{{ID: "ch01"}, {ID: "ch02"}},
+		Panels:   panelsForChapters(t, "ch01", 2, "ch02", 1),
+		Pages: []PageArtifact{
+			{PageNumber: 1, PanelIDs: []string{"ch01-p1", "ch01-p2"},
+				Generation: &GenerationRecord{ImageURL: "gs://b/page_1.png"}},
+			{PageNumber: 2, PanelIDs: []string{"ch02-p1"},
+				Generation: &GenerationRecord{ImageURL: "gs://b/page_2.png"}},
+		},
+	}
+
+	// 中身だけが入れ替わった、同じ ID・同じコマ数の章。
+	if !state.ReplaceChapterPanels("ch01", panelsForChapters(t, "ch01", 2)) {
+		t.Fatal("ReplaceChapterPanels returned false, want true")
+	}
+	state.Repaginate(6)
+
+	if state.PageArtifactByNumber(1) != nil {
+		t.Error("作り直した章のページ1の記録が残っている（古い画像が再合成を飛ばさせる）")
+	}
+	if state.PageArtifactByNumber(2) == nil {
+		t.Error("無関係な章のページ2の記録まで消えている")
+	}
+}
