@@ -6,7 +6,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/shouni/genai-kit v1.3.1
 	github.com/shouni/go-character-kit v1.3.0
-	github.com/shouni/go-remote-io v1.11.6
+	github.com/shouni/go-remote-io v1.11.7
 	golang.org/x/sync v0.23.0
 )
 
