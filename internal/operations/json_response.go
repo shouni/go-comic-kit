@@ -1,7 +1,6 @@
 package operations
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/shouni/genai-kit/gemini"
@@ -9,24 +8,15 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// maxErrorResponseLength はエラーログに含める応答抜粋の最大文字数です。
-const maxErrorResponseLength = 200
-
-// parseJSONResponse は AI の応答から JSON を抽出し、out にデコードします。
-func parseJSONResponse(raw string, out any) error {
-	jsonStr := gemini.CleanJSONResponse(raw)
-	if err := json.Unmarshal([]byte(jsonStr), out); err != nil {
-		return fmt.Errorf("%w: AI応答JSONの解析に失敗しました (抜粋: %q): %w",
-			ports.ErrGeneration, truncateString(raw, maxErrorResponseLength), err)
+// parseJSONResponse は AI の応答を T にデコードします。
+//
+// 空判定・補修・デコード・エラー文への抜粋は gemini.DecodeJSON が持ちます。ここでは
+// このキットの分類（ErrGeneration。再試行で直りうる）を鎖に足すだけです。
+func parseJSONResponse[T any](raw string) (T, error) {
+	parsed, err := gemini.DecodeJSON[T](raw)
+	if err != nil {
+		var zero T
+		return zero, fmt.Errorf("%w: AI応答JSONの解析に失敗しました: %w", ports.ErrGeneration, err)
 	}
-	return nil
-}
-
-// truncateString は指定された長さで文字列を安全に切り捨てます。
-func truncateString(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "..."
+	return parsed, nil
 }

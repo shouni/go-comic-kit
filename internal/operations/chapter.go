@@ -94,8 +94,8 @@ func (r *ChapterScriptRunner) GenerateChapterScript(ctx context.Context, state *
 		return nil, fmt.Errorf("%w: 章 %q の台本生成に失敗しました: %w", ports.ErrGeneration, chapterID, err)
 	}
 
-	var parsed chapterScriptResponse
-	if err := parseJSONResponse(resp.Text, &parsed); err != nil {
+	parsed, err := parseJSONResponse[chapterScriptResponse](resp.Text)
+	if err != nil {
 		return nil, err
 	}
 	if len(parsed.Panels) == 0 {
