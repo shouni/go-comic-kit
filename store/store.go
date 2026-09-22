@@ -61,6 +61,20 @@ func Load(ctx context.Context, reader ports.ContentReader, statePath string) (*c
 	return state, nil
 }
 
+// LoadIfExists は Load と同じですが、state が無いときはエラーではなく (nil, nil) を返します。
+//
+// 「あれば読み込み、無ければ新規に作る」経路のための口です。この判定を呼び出し側が
+// err != nil で行うと、一時的な読み取り失敗（ErrGeneration）や壊れた state
+// （ErrInvalidRequest）まで「まだ無い」に化け、新規に生成した状態で既存の記録を
+// 上書きします。無いと言えるのは ErrNotFound のときだけです。
+func LoadIfExists(ctx context.Context, reader ports.ContentReader, statePath string) (*comic.MangaState, error) {
+	state, err := Load(ctx, reader, statePath)
+	if errors.Is(err, ports.ErrNotFound) {
+		return nil, nil
+	}
+	return state, err
+}
+
 // Save は MangaState を outputDir 配下の comic_state.json として保存し、保存先パスを返します。
 // 同名ファイルは上書きされます（state は唯一の真実源であり、常に最新を保持します）。
 func Save(ctx context.Context, writer remoteio.Writer, state *comic.MangaState, outputDir string) (string, error) {

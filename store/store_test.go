@@ -144,6 +144,45 @@ func TestLoadClassifiesFailures(t *testing.T) {
 	}
 }
 
+// TestLoadIfExistsOnlyTreatsNotFoundAsAbsent は、「無い」と言えるのが ErrNotFound の
+// ときだけであることを確認します。読み取り失敗や壊れた state まで「無い」に化けると、
+// 呼び出し側が新規に生成した状態で既存の記録を上書きします。
+func TestLoadIfExistsOnlyTreatsNotFoundAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing is nil, nil", func(t *testing.T) {
+		t.Parallel()
+		state, err := LoadIfExists(t.Context(), &errReader{err: fmt.Errorf("open failed: %w", fs.ErrNotExist)}, "gs://b/x/comic_state.json")
+		if err != nil || state != nil {
+			t.Errorf("LoadIfExists() = (%v, %v), want (nil, nil)", state, err)
+		}
+	})
+
+	t.Run("present is loaded", func(t *testing.T) {
+		t.Parallel()
+		state, err := LoadIfExists(t.Context(), &memReader{data: []byte(`{"version": 1, "id": "w1"}`)}, "gs://b/x/comic_state.json")
+		if err != nil || state == nil || state.ID != "w1" {
+			t.Errorf("LoadIfExists() = (%+v, %v), want the stored state", state, err)
+		}
+	})
+
+	for name, tc := range map[string]struct {
+		reader ports.ContentReader
+		want   error
+	}{
+		"unreachable stays an error": {&errReader{err: errors.New("connection reset")}, ports.ErrGeneration},
+		"broken json stays an error": {&memReader{data: []byte(`{"version": 1, "id":`)}, ports.ErrInvalidRequest},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			state, err := LoadIfExists(t.Context(), tc.reader, "gs://b/x/comic_state.json")
+			if !errors.Is(err, tc.want) || state != nil {
+				t.Errorf("LoadIfExists() = (%v, %v), want (nil, errors.Is(..., %v))", state, err, tc.want)
+			}
+		})
+	}
+}
+
 // TestSaveClassifiesWriteFailure は、保存の失敗が再試行の価値がある分類
 // （ErrGeneration）で返ることを確認します。
 func TestSaveClassifiesWriteFailure(t *testing.T) {
