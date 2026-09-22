@@ -87,8 +87,8 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
 	}
 
-	var parsed outlineResponse
-	if err := parseJSONResponse(resp.Text, &parsed); err != nil {
+	parsed, err := parseJSONResponse[outlineResponse](resp.Text)
+	if err != nil {
 		return nil, err
 	}
 	if len(parsed.Chapters) == 0 {
