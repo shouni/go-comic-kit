@@ -85,7 +85,6 @@ type PageArtifact struct {
 | `PanelByID` / `ChapterByID` / `PageArtifactByNumber` | ID・番号での取得 |
 | `PanelsForPage` / `PanelsForChapter` | 指定ページ・指定章のパネル一覧（表示順） |
 | `PagesForChapter` | 指定章のコマが載るページ番号（章単位の一括合成の対象） |
-| `UniqueCharacterIDs` / `UniqueReferencedCharacterIDs` | 登場キャラの集合（後者は参照画像添付対象のみ） |
 | `ReplaceChapterPanels` → `Repaginate` | 章のパネル差し替えとページ再割り当て（**この順で呼びます**） |
 | `SetPageArtifact` / `SetDesignSheet` | 同一ページ番号・同一キャラクターへの upsert |
 

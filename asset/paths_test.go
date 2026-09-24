@@ -30,15 +30,6 @@ func TestStatePath(t *testing.T) {
 	}
 }
 
-func TestIsStateFileName(t *testing.T) {
-	if !IsStateFileName(DefaultStateJSON) {
-		t.Errorf("IsStateFileName(%q) = false, want true", DefaultStateJSON)
-	}
-	if IsStateFileName("panel_ch01-p01.png") {
-		t.Error("IsStateFileName(パネル画像) = true, want false")
-	}
-}
-
 func TestPanelImagePath(t *testing.T) {
 	got, err := PanelImagePath("gs://bucket/job", "ch01-p03", ".png")
 	if err != nil {

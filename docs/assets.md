@@ -22,6 +22,5 @@
 | --- | --- |
 | `asset.DesignFileTag(characterIDs)` | キャラクターID群からディレクトリ名を作ります。ファイル名長の上限を超えないようルーン境界で切り詰め、CRC32 を付けて衝突を避けます |
 | `asset.SanitizeFileName(name)` | ファイル名として使えない文字の除去 |
-| `asset.IsStateFileName(name)` | state ドキュメントのファイル名かの判定（履歴の列挙に使います） |
 
 `go-remote-io/remoteio` のパス解決はこのパッケージの実装詳細で、外へは出しません。新しい成果物の種類を追加するときは、その配置関数もここに足してください。
