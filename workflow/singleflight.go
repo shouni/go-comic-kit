@@ -93,6 +93,13 @@ func imageRequestKey(req *operations.ImageRequest) string {
 //
 // 添付は URI かバイト列のどちらかなので、URI はそのまま、バイト列は中身のハッシュを
 // キーに含めます。長さだけで代用すると、同じサイズの別画像が同じキーになります。
+//
+// GenerateOptions のうちキーに入れているのは ResponseMIMEType と Seed だけです。
+// ResponseJSONSchema を省けるのは、テキスト生成の呼び出し元（chapter.go / outline.go）が
+// 引数を取らない chapterScriptSchema / outlineSchema を渡していて、呼び出し地点ごとに
+// 固定だからです。スキーマを呼び出しごとに変えるようになったらキーに足してください。
+// 足さないと、同じプロンプトで別スキーマの同時呼び出しが片方の結果を共有します。
+// SystemPrompt は画像路だけが使い、そちらは imageRequestKey が含めています。
 func structuredRequestKey(modelName string, prompt string, attachments []gemini.Attachment, opts *gemini.GenerateOptions) string {
 	keyParts := []string{modelName, opts.ResponseMIMEType, callguard.SeedKey(opts.Seed), prompt}
 	for _, attachment := range attachments {
