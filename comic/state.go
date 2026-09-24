@@ -160,28 +160,6 @@ func (s *MangaState) PanelByID(id string) *Panel {
 	return nil
 }
 
-// UniqueCharacterIDs は、全パネルの登場キャラクター ID を重複なく登場順で返します。
-func (s *MangaState) UniqueCharacterIDs() []string {
-	if s == nil {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	var ids []string
-	for i := range s.Panels {
-		for _, pc := range s.Panels[i].Characters {
-			if pc.CharacterID == "" {
-				continue
-			}
-			if _, ok := seen[pc.CharacterID]; ok {
-				continue
-			}
-			seen[pc.CharacterID] = struct{}{}
-			ids = append(ids, pc.CharacterID)
-		}
-	}
-	return ids
-}
-
 // ReferencedCharacterIDs は、このパネルで参照画像を添付すべきキャラクター ID を
 // 重複なく登場順で返します。ProminenceBackground のキャラクター（モブ）は除外されます。
 func (p Panel) ReferencedCharacterIDs() []string {
@@ -196,27 +174,6 @@ func (p Panel) ReferencedCharacterIDs() []string {
 		}
 		seen[pc.CharacterID] = struct{}{}
 		ids = append(ids, pc.CharacterID)
-	}
-	return ids
-}
-
-// UniqueReferencedCharacterIDs は、全パネルで参照画像を添付すべきキャラクター ID を
-// 重複なく登場順で返します（ProminenceBackground は除外）。
-// デザインシートを用意すべきキャラクターの列挙に使います。
-func (s *MangaState) UniqueReferencedCharacterIDs() []string {
-	if s == nil {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	var ids []string
-	for i := range s.Panels {
-		for _, id := range s.Panels[i].ReferencedCharacterIDs() {
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			ids = append(ids, id)
-		}
 	}
 	return ids
 }

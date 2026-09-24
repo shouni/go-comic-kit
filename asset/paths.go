@@ -39,12 +39,6 @@ func StatePath(baseDir string) (string, error) {
 	return remoteio.Join(baseDir, DefaultStateJSON), nil
 }
 
-// IsStateFileName は、ファイル名が state ドキュメントのものかを判定します。
-// GCS のオブジェクト一覧から作品を拾うときに使います。
-func IsStateFileName(name string) bool {
-	return name == DefaultStateJSON
-}
-
 // PanelImagePath はパネル画像の保存先パスを返します。
 // パネルIDに紐づく安定したパスなので、再生成は同じ場所を上書きします。
 func PanelImagePath(baseDir, panelID, extension string) (string, error) {

@@ -101,16 +101,6 @@ func TestMangaStatePanelByID(t *testing.T) {
 	}
 }
 
-func TestMangaStateUniqueCharacterIDs(t *testing.T) {
-	t.Parallel()
-
-	s := sampleState()
-	want := []string{"zundamon", "metan", "mob-students"}
-	if diff := cmp.Diff(want, s.UniqueCharacterIDs()); diff != "" {
-		t.Errorf("UniqueCharacterIDs mismatch (-want +got):\n%s", diff)
-	}
-}
-
 func TestPanelReferencedCharacterIDsExcludesBackground(t *testing.T) {
 	t.Parallel()
 
@@ -118,16 +108,6 @@ func TestPanelReferencedCharacterIDsExcludesBackground(t *testing.T) {
 	want := []string{"zundamon", "metan"}
 	if diff := cmp.Diff(want, s.Panels[0].ReferencedCharacterIDs()); diff != "" {
 		t.Errorf("ReferencedCharacterIDs mismatch (-want +got, background must be excluded):\n%s", diff)
-	}
-}
-
-func TestMangaStateUniqueReferencedCharacterIDs(t *testing.T) {
-	t.Parallel()
-
-	s := sampleState()
-	want := []string{"zundamon", "metan"}
-	if diff := cmp.Diff(want, s.UniqueReferencedCharacterIDs()); diff != "" {
-		t.Errorf("UniqueReferencedCharacterIDs mismatch (-want +got):\n%s", diff)
 	}
 }
 
