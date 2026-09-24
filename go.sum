@@ -108,8 +108,8 @@ github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 h1:GFCKgm
 github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10/go.mod h1:t/avpk3KcrXxUnYOhZhMXJlSEyie6gQbtLq5NM3loB8=
 github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 h1:GHRpF1pTW19a8tTFrMLUcfWwyC0pnifVo2ClaLq+hP8=
 github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46/go.mod h1:uAQ5PCi+MFsC7HjREoAz1BU+Mq60+05gifQSsHSDG/8=
-github.com/shouni/genai-kit v1.4.0 h1:VuGmwdjlz6kJQGQGGRTAXJLWq/W0lxeCELxK7caBH7g=
-github.com/shouni/genai-kit v1.4.0/go.mod h1:SWKpmBJzmaTvbY4TQFWOW3fA6SVlIOWd69IYqUu4Rns=
+github.com/shouni/genai-kit v1.5.0 h1:Jg/qs11brYkhufstzG/xNZqGmueqGCAqABfvGWS5c2U=
+github.com/shouni/genai-kit v1.5.0/go.mod h1:SWKpmBJzmaTvbY4TQFWOW3fA6SVlIOWd69IYqUu4Rns=
 github.com/shouni/go-character-kit v1.3.1 h1:NlpsdKxdm6T/3vC49ZJpPGK7Xdib7exz+1QWMVAxnII=
 github.com/shouni/go-character-kit v1.3.1/go.mod h1:y0xe3U+Jk1zF4t1+KbxQ/ADgbMbzcDyhfj47NRSOpYE=
 github.com/shouni/go-remote-io v1.13.0 h1:xpR3kJsrCnwDFtWOvKErNSzB6PoHsG1z4H4+oSb7KIc=
