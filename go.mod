@@ -4,15 +4,15 @@ go 1.27
 
 require (
 	github.com/google/go-cmp v0.7.0
-	github.com/shouni/genai-kit v1.5.0
+	github.com/shouni/genai-kit v1.5.1
 	github.com/shouni/go-character-kit v1.3.1
-	github.com/shouni/go-remote-io v1.13.1
+	github.com/shouni/go-remote-io v1.13.2
 	golang.org/x/sync v0.23.0
 )
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/auth v0.23.3 // indirect
+	cloud.google.com/go/auth v0.24.0 // indirect
 	cloud.google.com/go/compute/metadata v0.9.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
