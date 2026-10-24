@@ -6,7 +6,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/shouni/genai-kit v1.6.0
 	github.com/shouni/go-character-kit v1.3.1
-	github.com/shouni/go-remote-io v1.13.7
+	github.com/shouni/go-remote-io v1.13.8
 	golang.org/x/sync v0.24.0
 )
 
@@ -33,7 +33,7 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
-	google.golang.org/api v0.302.0 // indirect
+	google.golang.org/api v0.304.0 // indirect
 	google.golang.org/genai v1.75.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
