@@ -110,8 +110,8 @@ github.com/shouni/genai-kit v1.6.1 h1:cDYBIoJMB2X5BW1XpJE4Z6c11g0oPY+iZBOaR4MUw5
 github.com/shouni/genai-kit v1.6.1/go.mod h1:qBzPvXoIp8HGOfjMtGKHb3TMp2ppF+g8VF2fqeAkwLQ=
 github.com/shouni/go-character-kit v1.3.1 h1:NlpsdKxdm6T/3vC49ZJpPGK7Xdib7exz+1QWMVAxnII=
 github.com/shouni/go-character-kit v1.3.1/go.mod h1:y0xe3U+Jk1zF4t1+KbxQ/ADgbMbzcDyhfj47NRSOpYE=
-github.com/shouni/go-remote-io v1.13.9 h1:IvaF9ImbSOIDYdfO+UaYnF2LjJdLs7JCMFfwxMup9Eg=
-github.com/shouni/go-remote-io v1.13.9/go.mod h1:nqMN2J5B1RUNrAgAjWb5dfSRriyqAlM2QPEadia2eAg=
+github.com/shouni/go-remote-io v1.13.10 h1:kdh30TU98/wKp5cdnuQLbnPMgYYQTq1yfPRO8nruYXc=
+github.com/shouni/go-remote-io v1.13.10/go.mod h1:nqMN2J5B1RUNrAgAjWb5dfSRriyqAlM2QPEadia2eAg=
 github.com/spiffe/go-spiffe/v2 v2.9.0 h1:g5qTg3qIP1HXV+GzuyEfSJFVxUCpEP5Ui1OINVJHPB4=
 github.com/spiffe/go-spiffe/v2 v2.9.0/go.mod h1:w2CLWKLMTX/PPYUEUPv3ltH0RXsw5S8suwNF46w9/Aw=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
