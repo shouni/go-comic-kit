@@ -86,7 +86,7 @@ func TestMangaStatePanelByID(t *testing.T) {
 		t.Fatalf("PanelByID(p02) = %+v, want panel p02", p)
 	}
 
-	// 返されたポインタ経由の更新が state に反映されること（再生成フローの前提）
+	// An update through the returned pointer must reach the state (the regeneration flow relies on it)
 	p.Generation.UsedSeed = 777
 	if s.Panels[1].Generation.UsedSeed != 777 {
 		t.Errorf("mutation via PanelByID pointer did not reflect into state")
@@ -125,7 +125,7 @@ func TestMangaStateReplaceChapterPanels(t *testing.T) {
 			{ID: "ch02-p01", ChapterID: "ch02"},
 			{ID: "ch02-p02", ChapterID: "ch02"},
 			{ID: "ch03-p01", ChapterID: "ch03"},
-			{ID: "orphan"}, // 章に属さないパネルは末尾に保持される
+			{ID: "orphan"}, // a panel belonging to no chapter is kept at the end
 		},
 	}
 

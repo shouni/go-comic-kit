@@ -1,5 +1,5 @@
-// Package workflow は、設定とクライアント群から go-comic-kit の全操作
-// （章立て・章台本・デザインシート・パネル・ページ）を組み立てる DI 層を提供します。
+// Package workflow provides the DI layer that assembles every go-comic-kit operation
+// (outline, chapter script, design sheet, panel, page) from the configuration and clients.
 package workflow
 
 import (
@@ -18,21 +18,22 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// Args は、全操作の組み立てに必要な依存の集合です。
+// Args is the set of dependencies needed to assemble every operation.
 type Args struct {
 	Config ports.Config
-	// Downloader は参照画像を http(s) から取得するためだけに使います。
-	// 口を GetStream 1 本に絞っているのは、このキットがストリーム取得しか
-	// 使わないためです。*httpkit.Client はそのまま渡せます。
+	// Downloader is used only to fetch reference images over http(s).
+	// Its surface is the single method GetStream because this kit only ever fetches
+	// streams. A *httpkit.Client can be passed as is.
 	Downloader ports.Downloader
 	Reader     ports.ContentReader
 	Writer     remoteio.Writer
-	// AIClient はテキスト生成（台本）と画像生成（デザインシート・パネル・ページ）に使います。
+	// AIClient is used for text generation (scripts) and image generation (design sheets, panels, pages).
 	AIClient   gemini.Generator
 	Characters *comic.Characters
 
-	// プロンプトは5つとも必須です。キットは内蔵テンプレートを持ちません。
-	// 作品ごとに調整する文言なので、キットのリリースを挟まずに変えられる側が持ちます。
+	// All five prompts are required. The kit has no built-in templates.
+	// They are wording tuned per work, so they live on the side that can change them
+	// without a kit release in between.
 	OutlinePrompt       ports.OutlinePrompt
 	ChapterScriptPrompt ports.ChapterScriptPrompt
 	DesignSheetPrompt   ports.DesignSheetPrompt
@@ -40,8 +41,8 @@ type Args struct {
 	PagePrompt          ports.PagePrompt
 }
 
-// New は、設定とキャラクター定義を基に全操作を組み立てて返します。
-// 返された Operations に後始末は要りません（ports.Operations 参照）。
+// New assembles and returns every operation from the configuration and character
+// definitions. The returned Operations need no cleanup (see ports.Operations).
 func New(args Args) (*ports.Operations, error) {
 	if err := validateArgs(&args); err != nil {
 		return nil, err
@@ -53,8 +54,8 @@ func New(args Args) (*ports.Operations, error) {
 		return nil, err
 	}
 
-	// AI 呼び出しの発射間隔はワークフロー全体で1つのガードに集約する
-	// （クォータはプロジェクト単位で、操作の種類ごとではないため）。
+	// Spacing between AI calls is gathered into one guard for the whole workflow
+	// (quota is per project, not per kind of operation).
 	guard := callguard.New(
 		callguard.WithRateInterval(cfg.RateInterval),
 		callguard.WithExecTimeout(cfg.RequestTimeout),
@@ -65,7 +66,7 @@ func New(args Args) (*ports.Operations, error) {
 		return nil, err
 	}
 
-	// 同一内容のテキスト生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
+	// Collapse concurrent identical text generations into one call (against duplicate tasks and retries)
 	textGenerator := &singleflightStructuredGenerator{inner: args.AIClient, guard: guard}
 
 	panelRunner := operations.NewPanelImageRunner(operations.PanelImageRunnerArgs{
@@ -107,50 +108,51 @@ func New(args Args) (*ports.Operations, error) {
 	return ops, nil
 }
 
-// buildImageGenerator は画像生成器を組み立てます。
+// buildImageGenerator assembles the image generator.
 //
-// 重ねる順序に意味があります。参照画像の解決（http(s) の取得）は重複排除の内側です。
-// 外側に置くと、同じ内容の同時呼び出しが取得だけは各自で行い、生成 1 回のために
-// 同じ画像を人数分ダウンロードすることになります。
+// The stacking order matters. Reference image resolution (the http(s) fetch) sits inside
+// the deduplication. Put it outside, and concurrent identical calls would each still do
+// their own fetch, downloading the same image once per caller for a single generation.
 func buildImageGenerator(args *Args, guard *callguard.Guard, fetchTimeout time.Duration) (operations.ImageGenerator, error) {
 	resolver, err := reference.New(args.Downloader, fetchTimeout, 0)
 	if err != nil {
-		return nil, fmt.Errorf("参照画像の解決経路の構築に失敗しました: %w", err)
+		return nil, fmt.Errorf("build reference resolver: %w", err)
 	}
 
 	images, err := imagegen.New(args.AIClient)
 	if err != nil {
-		return nil, fmt.Errorf("画像生成エンジンの初期化に失敗しました: %w", err)
+		return nil, fmt.Errorf("initialize image generator: %w", err)
 	}
 
 	resolving := &resolvingImageGenerator{inner: images, resolver: resolver}
 
-	// 同一内容の画像生成の同時実行を1回にまとめる（重複タスク・リトライ対策）
+	// Collapse concurrent identical image generations into one call (against duplicate tasks and retries)
 	return &singleflightImageGenerator{inner: resolving, guard: guard}, nil
 }
 
-// validateArgs は引数のバリデーションを行います。
+// validateArgs validates the arguments.
 //
-// 文面は Args の実際のフィールド名で書きます。呼び出し側がメッセージを頼りに
-// 直す場所を探すため、名前がずれると grep しても当たりません。
+// The messages use Args's actual field names. Callers find what to fix from the message,
+// so a name that drifts no longer turns up in a grep.
 func validateArgs(args *Args) error {
 	if args.Downloader == nil {
-		return fmt.Errorf("Args.Downloader は必須です")
+		return fmt.Errorf("Args.Downloader is required")
 	}
 	if args.Reader == nil {
-		return fmt.Errorf("Args.Reader は必須です")
+		return fmt.Errorf("Args.Reader is required")
 	}
 	if args.Writer == nil {
-		return fmt.Errorf("Args.Writer は必須です")
+		return fmt.Errorf("Args.Writer is required")
 	}
 	if args.AIClient == nil {
-		return fmt.Errorf("Args.AIClient は必須です")
+		return fmt.Errorf("Args.AIClient is required")
 	}
 	if args.Characters == nil {
-		return fmt.Errorf("Args.Characters は必須です")
+		return fmt.Errorf("Args.Characters is required")
 	}
-	// プロンプトはキットが持ちません。作品ごとに調整する文言なので、キットのリリースを
-	// 挟まずに変えられる側（アプリ）が実装します（画風指定・モデル名と同じ理由）。
+	// The kit holds no prompts. They are wording tuned per work, so the side that can
+	// change them without a kit release (the app) implements them (the same reason as
+	// art direction and model names).
 	for _, p := range []struct {
 		name  string
 		value any
@@ -162,7 +164,7 @@ func validateArgs(args *Args) error {
 		{"Args.PagePrompt", args.PagePrompt},
 	} {
 		if p.value == nil {
-			return fmt.Errorf("%s は必須です", p.name)
+			return fmt.Errorf("%s is required", p.name)
 		}
 	}
 	return nil

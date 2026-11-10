@@ -2,8 +2,8 @@ package workflow
 
 import "github.com/shouni/go-comic-kit/ports"
 
-// キットはプロンプトを持たないため、テストでも5つとも注入します。
-// 本文の中身は workflow の関心事ではないので、最小の実装で足ります。
+// The kit holds no prompts, so the tests inject all five too.
+// The body text is not workflow's concern, so minimal implementations suffice.
 
 type stubPrompts struct{}
 

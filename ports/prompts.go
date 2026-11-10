@@ -2,118 +2,126 @@ package ports
 
 import "github.com/shouni/go-comic-kit/comic"
 
-// 本ファイルは、プロンプト構築の契約と、実装へ渡すデータを定義します。
+// This file defines the prompt-building contracts and the data passed to their
+// implementations.
 //
-// 5つとも workflow.Args での注入が必須で、キットは既定の実装を持ちません。
-// プロンプトは作品ごとに作り込む文言なので、1文字変えるたびにキットのリリースを
-// 挟まずに済む側（アプリ）が持ちます（モデル名・画風指定と同じ理由）。
+// All five must be injected through workflow.Args; the kit has no default
+// implementation. Prompts are wording refined per work, so they live on the side that
+// can change a character without a kit release in between (the app), for the same
+// reason as model names and art direction.
 
-// OutlinePromptData は章立て生成プロンプトのテンプレートに渡すデータです。
+// OutlinePromptData is the data passed to the outline generation prompt template.
 type OutlinePromptData struct {
-	// InputText は元文章です。
+	// InputText is the source text.
 	InputText string
-	// CharacterRoster は使用可能なキャラクターの一覧（箇条書きテキスト）です。
+	// CharacterRoster is the list of available characters (bulleted text).
 	CharacterRoster string
-	// MaxChapters は章数の上限です。
+	// MaxChapters is the chapter limit.
 	MaxChapters int
 }
 
-// ChapterPromptData は章単位の台本生成プロンプトのテンプレートに渡すデータです。
+// ChapterPromptData is the data passed to the per-chapter script generation prompt template.
 type ChapterPromptData struct {
-	// WorkTitle / WorkDescription は作品全体の情報です。
+	// WorkTitle / WorkDescription describe the whole work.
 	WorkTitle       string
 	WorkDescription string
-	// OutlineDigest は全章の一覧（ID・タイトル・要約の箇条書き）で、
-	// 章をまたぐ流れの一貫性を保つための文脈として渡します。
+	// OutlineDigest is the list of all chapters (a bulleted list of ID, title and
+	// summary), passed as context to keep the flow consistent across chapters.
 	OutlineDigest string
-	// Chapter は今回パネルを生成する対象の章です。
+	// Chapter is the chapter whose panels are being generated.
 	Chapter comic.Chapter
-	// CharacterRoster は使用可能なキャラクターの一覧（箇条書きテキスト）です。
+	// CharacterRoster is the list of available characters (bulleted text).
 	CharacterRoster string
-	// MaxPanels は1章あたりのパネル数の上限です。
+	// MaxPanels is the panel limit per chapter.
 	MaxPanels int
 }
 
-// OutlinePrompt は章立て生成プロンプトを構築する契約です。
+// OutlinePrompt is the contract that builds the outline generation prompt.
 type OutlinePrompt interface {
 	BuildOutline(mode string, data *OutlinePromptData) (string, error)
 }
 
-// ChapterScriptPrompt は章単位の台本生成プロンプトを構築する契約です。
+// ChapterScriptPrompt is the contract that builds the per-chapter script generation prompt.
 type ChapterScriptPrompt interface {
 	BuildChapterScript(mode string, data *ChapterPromptData) (string, error)
 }
 
-// DesignSheetPromptData はデザインシート生成プロンプトの組み立てに渡すデータです。
+// DesignSheetPromptData is the data passed to design sheet prompt assembly.
 type DesignSheetPromptData struct {
-	// Descriptions は対象キャラクターの記述（名前 + VisualCues）です。
-	// 複数キャラクター（合成デザインシート）の場合は要素数が2以上になります。
+	// Descriptions describe the target characters (name + VisualCues).
+	// For several characters (a combined design sheet) it has two or more elements.
 	Descriptions []string
-	// Layout に DesignLayoutSingleView を渡すと単一ポーズレイアウト、
-	// 空文字なら3面図ターンアラウンドを意図します。
+	// Layout set to DesignLayoutSingleView means a single-pose layout; an empty string
+	// means a three-view turnaround.
 	Layout string
-	// StyleMode は呼び出し側が指定した画風モード（DesignSheetRequest.StyleMode）です。
-	// 空文字なら指定なしで、実装の既定に従います。キットは中身を解釈しません。
+	// StyleMode is the art style mode the caller specified (DesignSheetRequest.StyleMode).
+	// An empty string means unspecified, and the implementation's default applies. The
+	// kit does not interpret it.
 	StyleMode string
 }
 
-// DesignSheetPrompt はデザインシート生成のシステム/ユーザー/ネガティブプロンプトを
-// 構築する契約です。生成物は他ワークフロー（パネル・ページ等）のキャラクター同一性
-// アンカーとして参照されるため、実装は演出よりも正確さ・一貫性を優先すべきです。
+// DesignSheetPrompt is the contract that builds the system/user/negative prompts of
+// design sheet generation. The result is referenced as the character identity anchor by
+// the other workflows (panels, pages and so on), so an implementation should favour
+// accuracy and consistency over staging.
 type DesignSheetPrompt interface {
 	BuildDesignSheet(data *DesignSheetPromptData) (systemPrompt, userPrompt, negativePrompt string, err error)
 }
 
-// PanelPromptData はパネル画像生成プロンプトの組み立てに渡すデータです。
+// PanelPromptData is the data passed to panel image prompt assembly.
 type PanelPromptData struct {
-	// Panel は対象のコマです（Shot / Setting / VisualAnchor / Characters）。
+	// Panel is the target panel (Shot / Setting / VisualAnchor / Characters).
 	Panel comic.Panel
-	// Characters はキャラクター定義です。名前や visual_cues の解決に使います。
+	// Characters are the character definitions, used to resolve names and visual_cues.
 	Characters *comic.Characters
-	// SubjectIDs は参照画像を添付したキャラクターIDで、添付順に並びます。
-	// 実装はこの順序で参照番号を振ってください。順序がずれると、モデルは別人の
-	// 参照画像を見ながら描くことになります。
+	// SubjectIDs are the IDs of the characters whose reference images were attached, in
+	// attachment order. Implementations must number references in this order. If the
+	// order drifts, the model draws while looking at someone else's reference image.
 	SubjectIDs []string
-	// StyleMode は呼び出し側が指定した画風モード（GenerateOptions.StyleMode）です。
-	// 空文字なら指定なしで、実装の既定に従います。キットは中身を解釈しません。
+	// StyleMode is the art style mode the caller specified (GenerateOptions.StyleMode).
+	// An empty string means unspecified, and the implementation's default applies. The
+	// kit does not interpret it.
 	//
-	// 画風指定そのものではなくモード名を渡すのは、画風と「その画風で避けたいもの」
-	// （ネガティブプロンプト）が対で決まり、両方を持っているのが実装側だからです。
+	// The mode name is passed instead of the style direction itself because the style
+	// and "what to avoid in that style" (the negative prompt) are decided as a pair, and
+	// the implementation holds both.
 	StyleMode string
 }
 
-// PanelPrompt はパネル画像生成のプロンプトを構築する契約です。
+// PanelPrompt is the contract that builds the panel image generation prompt.
 //
-// 参照画像との同一性・文字を描かないこと・指の破綻対策といった構造的な指示も、
-// 作品によって作り込みが変わるため実装側が持ちます。
+// Even structural instructions — identity with the reference images, drawing no text,
+// guarding against broken fingers — are refined differently per work, so the
+// implementation holds them.
 type PanelPrompt interface {
 	BuildPanel(data *PanelPromptData) (systemPrompt, userPrompt, negativePrompt string, err error)
-	// BuildPanelEdit は、生成済みパネル画像に対する編集指示のプロンプトを構築します。
-	// 構図・ポーズ・背景を保ったまま指示箇所だけを変更させるのが目的です。
+	// BuildPanelEdit builds the prompt for an edit instruction on a generated panel image.
+	// The aim is to change only the instructed parts while keeping the composition, pose
+	// and background.
 	BuildPanelEdit(editPrompt string) (systemPrompt, userPrompt, negativePrompt string, err error)
 }
 
-// PagePromptData はページ合成プロンプトの組み立てに渡すデータです。
+// PagePromptData is the data passed to page composition prompt assembly.
 type PagePromptData struct {
-	// Panels はこのページに載るコマです（表示順）。
+	// Panels are the panels on this page (in display order).
 	Panels []comic.Panel
-	// Characters はキャラクター定義です。
+	// Characters are the character definitions.
 	Characters *comic.Characters
-	// CharacterFile は キャラクターID → 添付した参照画像の番号（1始まり）です。
-	// 添付していないキャラクターは含まれません。
+	// CharacterFile maps a character ID to the number (1-based) of its attached reference
+	// image. Characters without an attachment are not included.
 	CharacterFile map[string]int
-	// PanelFile は パネルID → 添付した生成済みパネル画像の番号（1始まり）です。
+	// PanelFile maps a panel ID to the number (1-based) of its attached generated panel image.
 	PanelFile map[string]int
-	// StyleMode は呼び出し側が指定した画風モードです（PanelPromptData.StyleMode と同じ扱い）。
+	// StyleMode is the art style mode the caller specified (treated like PanelPromptData.StyleMode).
 	StyleMode string
 }
 
-// PagePrompt はページ合成のプロンプトを構築する契約です。
+// PagePrompt is the contract that builds the page composition prompt.
 //
-// CharacterFile / PanelFile の番号は、実際に添付される画像の順序と一致します。
-// プロンプト内で参照するときは必ずこの番号を使ってください。
+// The CharacterFile / PanelFile numbers match the order of the images actually attached.
+// Always use these numbers when referring to images in the prompt.
 type PagePrompt interface {
 	BuildPage(data *PagePromptData) (systemPrompt, userPrompt, negativePrompt string, err error)
-	// BuildPageEdit は、生成済みページ画像に対する編集指示のプロンプトを構築します。
+	// BuildPageEdit builds the prompt for an edit instruction on a generated page image.
 	BuildPageEdit(editPrompt string) (systemPrompt, userPrompt, negativePrompt string, err error)
 }

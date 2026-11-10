@@ -1,16 +1,17 @@
 package operations
 
-// promptSet は1回の画像生成に渡すプロンプト3点です。
+// promptSet is the three prompts passed to one image generation.
 //
-// システム・ユーザー・ネガティブは常に同じ実装（ports.PanelPrompt / ports.PagePrompt）が
-// 組で返すものなので、3つの戻り値をバラバラに持ち回らずまとめて扱います。
+// System, user and negative are always returned together by the same implementation
+// (ports.PanelPrompt / ports.PagePrompt), so they travel as one value rather than as
+// three separate return values.
 type promptSet struct {
 	system   string
 	user     string
 	negative string
 }
 
-// newPromptSet は ports の Build 系メソッドの戻り値をそのまま受け取ります。
+// newPromptSet takes the return values of the ports Build methods as is.
 func newPromptSet(system, user, negative string, err error) (promptSet, error) {
 	if err != nil {
 		return promptSet{}, err
@@ -18,9 +19,9 @@ func newPromptSet(system, user, negative string, err error) (promptSet, error) {
 	return promptSet{system: system, user: user, negative: negative}, nil
 }
 
-// withOverride は、呼び出し側がユーザープロンプトを差し替えた場合のみ置き換えます
-// （GenerateOptions.PromptOverride）。システム指示とネガティブプロンプトは
-// モデルの出力形式を保つためのものなので置き換えません。
+// withOverride replaces the user prompt only when the caller overrode it
+// (GenerateOptions.PromptOverride). The system instruction and the negative prompt keep
+// the model's output in shape, so they are not replaced.
 func (p promptSet) withOverride(override string) promptSet {
 	if override != "" {
 		p.user = override

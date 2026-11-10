@@ -9,7 +9,7 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// recordingPanelPrompt は、ランナーが渡す構造データを記録する ports.PanelPrompt です。
+// recordingPanelPrompt is a ports.PanelPrompt that records the structured data the runner passes.
 type recordingPanelPrompt struct {
 	data *ports.PanelPromptData
 	edit string
@@ -25,7 +25,7 @@ func (r *recordingPanelPrompt) BuildPanelEdit(editPrompt string) (string, string
 	return "sys", "edit-user", "neg", nil
 }
 
-// recordingPagePrompt は、ランナーが渡す構造データを記録する ports.PagePrompt です。
+// recordingPagePrompt is a ports.PagePrompt that records the structured data the runner passes.
 type recordingPagePrompt struct {
 	data *ports.PagePromptData
 }
@@ -39,9 +39,9 @@ func (r *recordingPagePrompt) BuildPageEdit(editPrompt string) (string, string, 
 	return "sys", editPrompt, "neg", nil
 }
 
-// TestPanelPromptIsInjectable は、注入したプロンプト実装が使われ、参照画像の添付順が
-// SubjectIDs としてそのまま渡ることを確認します。順序がずれると、モデルは別人の
-// 参照画像を見ながら描くことになります。
+// TestPanelPromptIsInjectable checks that the injected prompt implementation is used and
+// that the attachment order of reference images is passed as is as SubjectIDs. If the
+// order drifts, the model draws while looking at someone else's reference image.
 func TestPanelPromptIsInjectable(t *testing.T) {
 	t.Parallel()
 	prompt := &recordingPanelPrompt{}
@@ -67,8 +67,8 @@ func TestPanelPromptIsInjectable(t *testing.T) {
 	}
 }
 
-// TestPagePromptReceivesAttachmentIndexes は、添付した画像の番号が実際の添付順と
-// 一致してプロンプト実装へ渡ることを確認します。
+// TestPagePromptReceivesAttachmentIndexes checks that the numbers of the attached images
+// reach the prompt implementation matching the actual attachment order.
 func TestPagePromptReceivesAttachmentIndexes(t *testing.T) {
 	t.Parallel()
 	prompt := &recordingPagePrompt{}
@@ -87,7 +87,7 @@ func TestPagePromptReceivesAttachmentIndexes(t *testing.T) {
 	if prompt.data.PanelFile["ch01-p01"] != 3 {
 		t.Errorf("PanelFile = %v, want the generated panel attached third", prompt.data.PanelFile)
 	}
-	// 番号は添付枚数の範囲に収まっていなければならない
+	// The numbers must fall within the number of attachments
 	for id, idx := range prompt.data.CharacterFile {
 		if idx < 1 || idx > len(gen.lastReq.Images) {
 			t.Errorf("CharacterFile[%s] = %d, out of range for %d attachments", id, idx, len(gen.lastReq.Images))
@@ -95,8 +95,8 @@ func TestPagePromptReceivesAttachmentIndexes(t *testing.T) {
 	}
 }
 
-// TestPanelPromptOverrideReplacesUserPromptOnly は、PromptOverride が本文だけを
-// 置き換え、システム指示とネガティブプロンプトは実装のものが残ることを確認します。
+// TestPanelPromptOverrideReplacesUserPromptOnly checks that PromptOverride replaces only
+// the body, leaving the implementation's system instruction and negative prompt.
 func TestPanelPromptOverrideReplacesUserPromptOnly(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPanelRunner(t, &recordingPanelPrompt{})

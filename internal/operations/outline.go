@@ -11,7 +11,7 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// OutlineRunner は章立て生成（GenerateOutline 操作）を実行します。
+// OutlineRunner runs outline generation (the GenerateOutline operation).
 type OutlineRunner struct {
 	prompt      ports.OutlinePrompt
 	aiClient    StructuredGenerator
@@ -22,8 +22,8 @@ type OutlineRunner struct {
 
 var _ ports.OutlineGenerator = (*OutlineRunner)(nil)
 
-// NewOutlineRunner は依存関係を注入して初期化します。
-// maxChapters が 0 以下の場合は ports.DefaultMaxChapters を使います。
+// NewOutlineRunner initializes the runner with its dependencies injected.
+// A maxChapters of 0 or less uses ports.DefaultMaxChapters.
 func NewOutlineRunner(
 	prompt ports.OutlinePrompt,
 	aiClient StructuredGenerator,
@@ -43,7 +43,7 @@ func NewOutlineRunner(
 	}
 }
 
-// outlineResponse は章立て生成の AI 応答のスキーマです。
+// outlineResponse is the schema of the AI response for outline generation.
 type outlineResponse struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -55,8 +55,8 @@ type outlineResponse struct {
 	} `json:"chapters"`
 }
 
-// GenerateOutline は元文章から章立てのみを持つ MangaState を生成します。
-// 章の ID はシステム側で "ch01" 形式に採番し直します（AI 出力の ID は信用しない）。
+// GenerateOutline generates, from the source text, a MangaState holding only the outline.
+// Chapter IDs are reassigned by the system in "ch01" form (IDs in the AI output are not trusted).
 func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRequest) (*comic.MangaState, error) {
 	inputText, err := resolveSourceText(ctx, r.reader, req.SourceText, req.SourceURL)
 	if err != nil {
@@ -75,16 +75,16 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	}
 	finalPrompt, err := r.prompt.BuildOutline(req.Mode, data)
 	if err != nil {
-		return nil, fmt.Errorf("%w: 章立てプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
+		return nil, fmt.Errorf("%w: build outline prompt: %w", ports.ErrGeneration, err)
 	}
 
-	if err := requireModel(req.Model, "章立て"); err != nil {
+	if err := requireModel(req.Model, "outline"); err != nil {
 		return nil, err
 	}
-	slog.InfoContext(ctx, "OutlineRunner: Gemini APIを呼び出し中", "model", req.Model, "max_chapters", maxChapters)
+	slog.InfoContext(ctx, "OutlineRunner: calling the Gemini API", "model", req.Model, "max_chapters", maxChapters)
 	resp, err := r.aiClient.Generate(ctx, req.Model, finalPrompt, nil, buildJSONGenerateOptions(outlineSchema()))
 	if err != nil {
-		return nil, fmt.Errorf("%w: 章立ての生成に失敗しました: %w", ports.ErrGeneration, err)
+		return nil, fmt.Errorf("%w: generate outline: %w", ports.ErrGeneration, err)
 	}
 
 	parsed, err := parseJSONResponse[outlineResponse](resp.Text)
@@ -92,10 +92,10 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		return nil, err
 	}
 	if len(parsed.Chapters) == 0 {
-		return nil, fmt.Errorf("%w: 章立てが空です（AI応答に chapters がありません）", ports.ErrGeneration)
+		return nil, fmt.Errorf("%w: outline is empty (the AI response has no chapters)", ports.ErrGeneration)
 	}
 	if len(parsed.Chapters) > maxChapters {
-		slog.WarnContext(ctx, "章数が上限を超えたため切り詰めます",
+		slog.WarnContext(ctx, "truncating chapters over the limit",
 			"got", len(parsed.Chapters), "max", maxChapters)
 		parsed.Chapters = parsed.Chapters[:maxChapters]
 	}
@@ -119,7 +119,7 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		})
 	}
 
-	slog.InfoContext(ctx, "OutlineRunner: 章立てを生成しました",
+	slog.InfoContext(ctx, "OutlineRunner: generated outline",
 		"title", state.Title, "chapters", len(state.Chapters))
 	return state, nil
 }

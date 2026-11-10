@@ -15,45 +15,47 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// ImageRequest は画像生成 1 回分の入力です。
+// ImageRequest is the input of one image generation.
 //
-// imagegen.Request をそのまま使わないのは、Images の中身が違うためです。imagegen は
-// 解決済みの参照（gs:// URI か取得済みのバイト列）を受け取りますが、この層が持っている
-// のは未解決の URL で、http(s) なら取得が要ります。解決は workflow 層の
-// resolvingImageGenerator が引き受けます。
+// It does not use imagegen.Request as is because Images holds something different.
+// imagegen takes resolved references (a gs:// URI or fetched bytes), while this layer
+// holds unresolved URLs, which need a fetch for http(s). Resolution is taken on by the
+// workflow layer's resolvingImageGenerator.
 //
-// 生成パラメータは gemini.GenerateOptions を埋め込んで持ちます。写し取ると gemini 側で
-// フィールドが増えるたびに 2 か所の同期が要るためで、imagegen.Request 自身が同じ
-// 埋め込みをしているのと同じ理由です。Go 1.27 で昇格フィールドを複合リテラルのキーに
-// 書けるようになったので、呼び出し側は Model: / AspectRatio: と平らに書けます。
+// Generation parameters are held by embedding gemini.GenerateOptions. Copying them would
+// need two places kept in sync every time gemini gains a field — the same reason
+// imagegen.Request itself embeds it. Go 1.27 allows a promoted field as a composite
+// literal key, so callers can write Model: / AspectRatio: flat.
 type ImageRequest struct {
-	// Model は生成に使うモデル名です。
+	// Model is the model name used for generation.
 	Model string
-	// Prompt は生成指示、NegativePrompt は含めたくない要素です。
+	// Prompt is the generation instruction; NegativePrompt is what should not appear.
 	Prompt         string
 	NegativePrompt string
-	// Images は参照画像の URL です。gs:// と http(s):// を混在させられます。
-	// 並び順はモデルの解釈に影響するため保持されます。
+	// Images are the reference image URLs. gs:// and http(s):// can be mixed.
+	// The order is kept, because it affects how the model reads them.
 	Images []string
 
 	gemini.GenerateOptions
 }
 
-// ImageResponse は画像生成 1 回分の結果です（imagegen.Response の別名）。
+// ImageResponse is the result of one image generation (an alias of imagegen.Response).
 type ImageResponse = imagegen.Response
 
-// ImageGenerator は、参照画像（0〜複数）を添えて画像を生成する依存インターフェースです。
-// デザインシート・パネル・ページの3操作すべてがこれを通ります。
+// ImageGenerator is the dependency interface that generates an image with zero or more
+// reference images attached. All three operations — design sheet, panel and page — go
+// through it.
 //
-// 単発生成と融合生成は同じ口です。参照の枚数は ImageRequest.Images の長さでしか
-// 区別しません。imagegen.Generator をそのまま使わないのは、参照画像が未解決の URL で
-// あることと、テスト用フェイクをこのパッケージ内で完結させるためです。
+// Single and fused generation are the same call; the number of references is told apart
+// only by the length of ImageRequest.Images. It does not use imagegen.Generator as is
+// because the reference images are unresolved URLs, and so that test fakes stay within
+// this package.
 type ImageGenerator interface {
 	Generate(ctx context.Context, req ImageRequest) (*ImageResponse, error)
 }
 
-// writeGeneratedImage は生成された画像データを Content-Type と Cache-Control 付きで
-// 指定パスへ書き込みます。cacheControl が空の場合は既定値を使います。
+// writeGeneratedImage writes the generated image data to the given path with
+// Content-Type and Cache-Control. An empty cacheControl uses the default.
 func writeGeneratedImage(ctx context.Context, writer remoteio.Writer, path string, resp *ImageResponse, cacheControl string) error {
 	if cacheControl == "" {
 		cacheControl = ports.DefaultCacheControl
@@ -64,36 +66,37 @@ func writeGeneratedImage(ctx context.Context, writer remoteio.Writer, path strin
 	)
 }
 
-// imageRenderRequest は、画像生成の入力に保存の指定を足したものです。
+// imageRenderRequest is an image generation input plus how to save the result.
 type imageRenderRequest struct {
 	ImageRequest
-	// CacheControl は保存時に付ける Cache-Control です（空なら ports.DefaultCacheControl）。
+	// CacheControl is the Cache-Control set when saving (empty means ports.DefaultCacheControl).
 	CacheControl string
-	// PathFor は、生成結果の MIME type から保存先パスを決めます。
-	// 拡張子が MIME type に依存するため、生成後にしか決められません。
+	// PathFor decides the save path from the generated MIME type.
+	// The extension depends on the MIME type, so it can only be decided after generation.
 	PathFor func(mimeType string) (string, error)
 }
 
-// renderImage は「生成 → 保存 → 生成記録の作成」という、パネル生成・ページ合成・
-// デザインシート生成で共通の流れを実行します。呼び出し側には入力の組み立てと
-// 保存先の決め方だけが残ります。
+// renderImage runs the flow shared by panel generation, page composition and design
+// sheet generation: generate → save → build the generation record. Callers are left with
+// only assembling the input and deciding where to save.
 //
-// 失敗にはいずれも ports の番兵エラーを付けます。保存やパス生成は AI 呼び出しでは
-// ありませんが、裸の fmt.Errorf で返すと呼び出し側の errors.Is 分類から見えなくなるためです
-// （ports/errors.go 参照）。パス生成の失敗は引数（OutputDir など）が原因で再試行しても
-// 直らないので ErrInvalidRequest、保存の失敗は一時的なことが多いので ErrGeneration です。
+// Every failure carries a ports sentinel error. Saving and path building are not AI
+// calls, but a bare fmt.Errorf would be invisible to the caller's errors.Is
+// classification (see ports/errors.go). A path-building failure is caused by the
+// arguments (OutputDir and so on) and a retry does not fix it, so it is
+// ErrInvalidRequest; a save failure is usually transient, so it is ErrGeneration.
 func renderImage(ctx context.Context, generator ImageGenerator, writer remoteio.Writer, req imageRenderRequest) (*comic.GenerationRecord, error) {
 	resp, err := generator.Generate(ctx, req.ImageRequest)
 	if err != nil {
-		return nil, fmt.Errorf("%w: 画像の生成に失敗しました: %w", ports.ErrGeneration, err)
+		return nil, fmt.Errorf("%w: generate image: %w", ports.ErrGeneration, err)
 	}
 
 	finalPath, err := req.PathFor(resp.MIMEType)
 	if err != nil {
-		return nil, fmt.Errorf("%w: 画像の保存パス生成に失敗しました: %w", ports.ErrInvalidRequest, err)
+		return nil, fmt.Errorf("%w: build image path: %w", ports.ErrInvalidRequest, err)
 	}
 	if err := writeGeneratedImage(ctx, writer, finalPath, resp, req.CacheControl); err != nil {
-		return nil, fmt.Errorf("%w: 画像の保存に失敗しました (path: %s): %w", ports.ErrGeneration, finalPath, err)
+		return nil, fmt.Errorf("%w: save image (path: %s): %w", ports.ErrGeneration, finalPath, err)
 	}
 
 	return &comic.GenerationRecord{

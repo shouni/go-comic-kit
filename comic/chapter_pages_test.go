@@ -17,7 +17,7 @@ func chapterPagesState() *MangaState {
 			{ID: "ch01-p02", ChapterID: "ch01", Page: 1},
 			{ID: "ch01-p03", ChapterID: "ch01", Page: 2},
 			{ID: "ch02-p01", ChapterID: "ch02", Page: 3},
-			// ページ未割り当て（Repaginate 前）のコマは対象外。
+			// Panels with no page assigned yet (before Repaginate) are excluded.
 			{ID: "ch02-p02", ChapterID: "ch02", Page: 0},
 		},
 	}
@@ -28,17 +28,17 @@ func TestPagesForChapter(t *testing.T) {
 	s := chapterPagesState()
 
 	if got := s.PagesForChapter("ch01"); !slices.Equal(got, []int{1, 2}) {
-		t.Errorf("PagesForChapter(ch01) = %v, want [1 2]（重複なし・昇順）", got)
+		t.Errorf("PagesForChapter(ch01) = %v, want [1 2] (no duplicates, ascending)", got)
 	}
 	if got := s.PagesForChapter("ch02"); !slices.Equal(got, []int{3}) {
-		t.Errorf("PagesForChapter(ch02) = %v, want [3]（ページ未割り当ては除く）", got)
+		t.Errorf("PagesForChapter(ch02) = %v, want [3] (unassigned pages excluded)", got)
 	}
 	if got := s.PagesForChapter("ch99"); len(got) != 0 {
 		t.Errorf("PagesForChapter(ch99) = %v, want empty", got)
 	}
 	var nilState *MangaState
 	if got := nilState.PagesForChapter("ch01"); got != nil {
-		t.Errorf("nil レシーバ = %v, want nil", got)
+		t.Errorf("nil receiver = %v, want nil", got)
 	}
 }
 
@@ -48,7 +48,7 @@ func TestPanelsForChapter(t *testing.T) {
 
 	got := s.PanelsForChapter("ch01")
 	if len(got) != 3 || got[0].ID != "ch01-p01" || got[2].ID != "ch01-p03" {
-		t.Errorf("PanelsForChapter(ch01) = %+v, want ch01 のコマを state の並びで", got)
+		t.Errorf("PanelsForChapter(ch01) = %+v, want ch01's panels in state order", got)
 	}
 	if got := s.PanelsForChapter("ch99"); len(got) != 0 {
 		t.Errorf("PanelsForChapter(ch99) = %+v, want empty", got)

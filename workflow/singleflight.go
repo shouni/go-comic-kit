@@ -13,18 +13,20 @@ import (
 	"github.com/shouni/go-comic-kit/internal/reference"
 )
 
-// 本ファイルは、キットの口（operations.ImageGenerator / StructuredGenerator）に
-// 呼び出しガードを被せるデコレータと、リクエスト内容からキーを作る部分を持ちます。
-// 発射間隔・上限時間・同時実行の重複排除そのものは callguard が持っており、
-// go-veo-orchestrator や genai-kit/lyria と同じ実装を共有します。
+// This file holds the decorators that put a call guard over the kit's interfaces
+// (operations.ImageGenerator / StructuredGenerator), and the code that builds keys from
+// request contents. Call spacing, time limits and deduplication of concurrent calls
+// themselves live in callguard, which shares one implementation with
+// go-veo-orchestrator and genai-kit/lyria.
 //
-// 参照画像を解決する resolvingImageGenerator も同じ形のデコレータです。
+// resolvingImageGenerator, which resolves reference images, is a decorator of the same shape.
 
-// singleflightImageGenerator は、同一内容の画像生成リクエストの同時実行を1回にまとめる
-// ImageGenerator のデコレータです。
-// Cloud Tasks の at-least-once 配信や MCP クライアントのリトライによる重複呼び出しから、
-// 高価な画像生成 API 呼び出しを守ります。プロセス内の in-flight のみが対象で、
-// 恒久的な重複排除は state の GenerationRecord によるジョブ側の冪等性で行います。
+// singleflightImageGenerator is an ImageGenerator decorator that collapses concurrent
+// identical image generation requests into one call.
+// It protects the expensive image generation API from duplicate calls caused by Cloud
+// Tasks' at-least-once delivery and MCP client retries. Only in-flight calls within the
+// process are covered; durable deduplication is the job side's idempotency through the
+// state's GenerationRecord.
 type singleflightImageGenerator struct {
 	inner operations.ImageGenerator
 	guard *callguard.Guard
@@ -33,8 +35,8 @@ type singleflightImageGenerator struct {
 
 var _ operations.ImageGenerator = (*singleflightImageGenerator)(nil)
 
-// Generate はリクエスト内容のハッシュをキーに同時実行をまとめます。
-// 共有される応答は呼び出し元ごとに複製して返します。
+// Generate collapses concurrent calls keyed by a hash of the request contents.
+// The shared response is cloned for each caller.
 func (g *singleflightImageGenerator) Generate(ctx context.Context, req operations.ImageRequest) (*operations.ImageResponse, error) {
 	key := imageRequestKey(&req)
 	resp, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*operations.ImageResponse, error) {
@@ -46,8 +48,8 @@ func (g *singleflightImageGenerator) Generate(ctx context.Context, req operation
 	return cloneImageResponse(resp), nil
 }
 
-// singleflightStructuredGenerator は、同一内容のテキスト生成リクエストの同時実行を
-// 1回にまとめる StructuredGenerator のデコレータです。
+// singleflightStructuredGenerator is a StructuredGenerator decorator that collapses
+// concurrent identical text generation requests into one call.
 type singleflightStructuredGenerator struct {
 	inner operations.StructuredGenerator
 	guard *callguard.Guard
@@ -56,7 +58,7 @@ type singleflightStructuredGenerator struct {
 
 var _ operations.StructuredGenerator = (*singleflightStructuredGenerator)(nil)
 
-// GenerateWithAttachments はリクエスト内容のハッシュをキーに同時実行をまとめます。
+// Generate collapses concurrent calls keyed by a hash of the request contents.
 func (g *singleflightStructuredGenerator) Generate(ctx context.Context, modelName string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
 	key := structuredRequestKey(modelName, prompt, attachments, &opts)
 	resp, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*gemini.Response, error) {
@@ -65,16 +67,17 @@ func (g *singleflightStructuredGenerator) Generate(ctx context.Context, modelNam
 	if err != nil {
 		return nil, err
 	}
-	// NOTE: 浅いコピーで返します。呼び出し側（operations）は Text しか参照しない前提です。
-	// gemini.Response の参照型フィールドを書き換える利用が増えた場合は深いコピーに変更すること。
+	// NOTE: this returns a shallow copy, assuming the caller (operations) reads only Text.
+	// If uses that modify gemini.Response's reference-type fields appear, switch to a deep copy.
 	cloned := *resp
 	return &cloned, nil
 }
 
-// imageRequestKey は画像生成リクエストの内容から singleflight 用キーを作ります。
+// imageRequestKey builds the singleflight key from an image generation request.
 //
-// 参照画像は解決前の URL でキーにします。解決後のバイト列で作ると、同じ URL の
-// 呼び出し同士が合流する前にそれぞれ取得を済ませてしまい、重複排除の意味が消えます。
+// Reference images are keyed by their unresolved URLs. Keyed by resolved bytes, calls for
+// the same URL would each finish fetching before they could merge, defeating the
+// deduplication.
 func imageRequestKey(req *operations.ImageRequest) string {
 	parts := []string{
 		req.Model,
@@ -89,17 +92,18 @@ func imageRequestKey(req *operations.ImageRequest) string {
 	return callguard.Key("image", parts...)
 }
 
-// structuredRequestKey はテキスト生成リクエストの内容から singleflight 用キーを作ります。
+// structuredRequestKey builds the singleflight key from a text generation request.
 //
-// 添付は URI かバイト列のどちらかなので、URI はそのまま、バイト列は中身のハッシュを
-// キーに含めます。長さだけで代用すると、同じサイズの別画像が同じキーになります。
+// An attachment is either a URI or bytes, so the key includes the URI as is, and a hash
+// of the contents for bytes. Using only the length would give two different images of
+// the same size the same key.
 //
-// GenerateOptions のうちキーに入れているのは ResponseMIMEType と Seed だけです。
-// ResponseJSONSchema を省けるのは、テキスト生成の呼び出し元（chapter.go / outline.go）が
-// 引数を取らない chapterScriptSchema / outlineSchema を渡していて、呼び出し地点ごとに
-// 固定だからです。スキーマを呼び出しごとに変えるようになったらキーに足してください。
-// 足さないと、同じプロンプトで別スキーマの同時呼び出しが片方の結果を共有します。
-// SystemPrompt は画像路だけが使い、そちらは imageRequestKey が含めています。
+// Of GenerateOptions, only ResponseMIMEType and Seed go into the key. ResponseJSONSchema
+// can be left out because the text generation callers (chapter.go / outline.go) pass the
+// argument-free chapterScriptSchema / outlineSchema, fixed per call site. If the schema
+// starts varying per call, add it to the key; otherwise concurrent calls with the same
+// prompt and different schemas share one result. SystemPrompt is used only on the image
+// path, where imageRequestKey includes it.
 func structuredRequestKey(modelName string, prompt string, attachments []gemini.Attachment, opts *gemini.GenerateOptions) string {
 	keyParts := []string{modelName, opts.ResponseMIMEType, callguard.SeedKey(opts.Seed), prompt}
 	for _, attachment := range attachments {
@@ -112,7 +116,7 @@ func structuredRequestKey(modelName string, prompt string, attachments []gemini.
 	return callguard.Key("structured", keyParts...)
 }
 
-// cloneImageResponse は singleflight で共有される応答を呼び出し元が安全に扱えるよう複製します。
+// cloneImageResponse copies a response shared through singleflight so each caller can use it safely.
 func cloneImageResponse(src *operations.ImageResponse) *operations.ImageResponse {
 	if src == nil {
 		return nil
@@ -122,11 +126,12 @@ func cloneImageResponse(src *operations.ImageResponse) *operations.ImageResponse
 	return &dst
 }
 
-// resolvingImageGenerator は、未解決の参照画像 URL を送信できる添付へ変換してから
-// 画像生成へ渡すデコレータです。
+// resolvingImageGenerator is a decorator that converts unresolved reference image URLs
+// into sendable attachments before handing the request to image generation.
 //
-// この変換が操作層（operations）ではなくここにあるのは、http(s) の取得という I/O を
-// 伴うためです。操作層はプロンプトの組み立てと保存先の決定に閉じています。
+// The conversion lives here rather than in the operations layer because it involves I/O
+// (the http(s) fetch). The operations layer is confined to prompt assembly and deciding
+// where things are saved.
 type resolvingImageGenerator struct {
 	inner    imagegen.Generator
 	resolver *reference.Resolver
@@ -134,7 +139,7 @@ type resolvingImageGenerator struct {
 
 var _ operations.ImageGenerator = (*resolvingImageGenerator)(nil)
 
-// Generate は参照画像を解決してから画像生成を実行します。
+// Generate resolves the reference images, then runs image generation.
 func (g *resolvingImageGenerator) Generate(ctx context.Context, req operations.ImageRequest) (*operations.ImageResponse, error) {
 	references, err := g.resolver.Resolve(ctx, req.Images)
 	if err != nil {

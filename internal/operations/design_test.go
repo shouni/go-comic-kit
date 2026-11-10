@@ -25,16 +25,16 @@ func (m *mockDesignGenerator) Generate(_ context.Context, req ImageRequest) (*Im
 	return &ImageResponse{Data: []byte("fake-png"), MIMEType: "image/png", UsedSeed: 123}, nil
 }
 
-// mockWriter は書き込みの「記録」を取るスパイです。
+// mockWriter is a spy that records writes.
 //
-// ストレージとしての振る舞い（一覧の畳み込みや不在の返し方）を模倣する必要は
-// 無いため、memio ではなくこの形で残しています。memio が受け持つのは
-// ストレージの模倣で、呼び出しの記録は利用側の関心です。
+// It does not need to imitate storage behaviour (folding listings, how absence is
+// returned), so it is kept in this form rather than using memio. memio's job is
+// imitating storage; recording calls is the user's concern.
 type mockWriter struct {
 	lastPath string
-	// lastOptions は適用後の書き込みオプションです（Content-Type / Cache-Control の確認用）。
+	// lastOptions are the write options after applying them (for checking Content-Type / Cache-Control).
 	lastOptions remoteio.WriteOptions
-	err         error // 非 nil なら保存を失敗させる
+	err         error // fails the save when non-nil
 }
 
 func (m *mockWriter) Write(_ context.Context, path string, _ io.Reader, opts ...remoteio.WriteOption) error {
@@ -117,8 +117,8 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		t.Error("CreatedAt/UpdatedAt must be set")
 	}
 
-	// プロンプト本文はアプリ側の実装が持つので、ここで確かめるのは
-	// 「実装へ何を渡したか」と「返ってきた3本をそのまま載せたか」だけ。
+	// The prompt text belongs to the app's implementation, so this checks only "what was
+	// passed to the implementation" and "whether the three returned prompts were used as is".
 	if designPrompt.data == nil || len(designPrompt.data.Descriptions) != 1 ||
 		!strings.Contains(designPrompt.data.Descriptions[0], "orange hair") {
 		t.Errorf("Descriptions = %+v, want the character's visual cues", designPrompt.data)
@@ -130,15 +130,15 @@ func TestGenerateDesignSheetCreatesStateAndRecordsRef(t *testing.T) {
 		t.Errorf("system/negative prompt = %q / %q, want them passed through unchanged",
 			genMock.lastReq.SystemPrompt, genMock.lastReq.NegativePrompt)
 	}
-	// 未指定ならキット既定の比率へ落ちます。
-	// パネル・ページと揃っていないと、参照画像によるブレ抑制が黙って無効になるためです。
+	// Unspecified falls back to the kit's default ratio.
+	// Unless it matches panels and pages, the drift suppression from reference images is silently disabled.
 	if genMock.lastReq.AspectRatio != "3:4" {
 		t.Errorf("AspectRatio = %q, want the configured default 3:4", genMock.lastReq.AspectRatio)
 	}
 	if genMock.lastReq.Seed == nil || *genMock.lastReq.Seed != 42 {
 		t.Errorf("Seed = %v, want 42", genMock.lastReq.Seed)
 	}
-	// 参照の解決は workflow 層が担うため、ここでは参照元 URL を渡すだけ。
+	// Resolving references is the workflow layer's job, so only the source URLs are passed here.
 	if len(genMock.lastReq.Images) != 1 || genMock.lastReq.Images[0] != "gs://bucket/tsumugi.png" {
 		t.Errorf("Images = %+v, want the character reference URL", genMock.lastReq.Images)
 	}
@@ -191,7 +191,7 @@ func TestGenerateDesignSheetMultiCharacterFusion(t *testing.T) {
 	if len(genMock.lastReq.Images) != 2 {
 		t.Errorf("Images = %+v, want 2 reference images", genMock.lastReq.Images)
 	}
-	// 両キャラクターに同じシート画像が記録される
+	// The same sheet image is recorded for both characters
 	if len(state.DesignSheets) != 2 || state.DesignSheets[0].ImageURL != state.DesignSheets[1].ImageURL {
 		t.Errorf("DesignSheets = %+v, want both characters recorded with the same sheet", state.DesignSheets)
 	}
@@ -341,9 +341,10 @@ func TestGenerateDesignSheetRequiresJobID(t *testing.T) {
 	}
 }
 
-// TestGenerateDesignSheetPrefersAspectMatchedReference は、シートの元絵に
-// 生成比率と一致する参照画像を選ぶことを確認します（panel.go / page.go と同じ規則）。
-// 比率の違う元絵から起こすと、全生成物の同一性アンカーであるシート自体が歪みます。
+// TestGenerateDesignSheetPrefersAspectMatchedReference checks that the sheet's source
+// image is the reference matching the generation ratio (the same rule as panel.go /
+// page.go). Drawing from a master at a different ratio distorts the sheet itself, which
+// is the identity anchor of everything generated.
 func TestGenerateDesignSheetPrefersAspectMatchedReference(t *testing.T) {
 	t.Parallel()
 

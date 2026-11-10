@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// fakeDownloader は、URL に関わらず固定の内容を返す ports.Downloader です。
-// 呼ばれた URL を記録するので、gs:// が取得へ回っていないことも確認できます。
+// fakeDownloader is a ports.Downloader that returns fixed content regardless of the URL.
+// It records the URLs it was called with, so it also shows that gs:// was never fetched.
 type fakeDownloader struct {
 	body []byte
 	err  error
@@ -28,7 +28,7 @@ func (d *fakeDownloader) GetStream(_ context.Context, url string) (io.ReadCloser
 	return io.NopCloser(bytes.NewReader(d.body)), nil
 }
 
-// pngBytes は、MIME type 判定が通る最小の PNG を返します。
+// pngBytes returns the smallest PNG that passes MIME type detection.
 func pngBytes(t *testing.T) []byte {
 	t.Helper()
 
@@ -47,8 +47,8 @@ func TestNewRequiresDownloader(t *testing.T) {
 	}
 }
 
-// TestResolveKeepsGCSURIWithoutFetching は、gs:// が取得を経ずに URI のまま渡ることを
-// 検証します。Vertex AI がモデル側で解決するため、バイト列を往復させる理由がありません。
+// TestResolveKeepsGCSURIWithoutFetching verifies that gs:// is passed as a URI without
+// being fetched. Vertex AI resolves it model-side, so there is no reason to round-trip bytes.
 func TestResolveKeepsGCSURIWithoutFetching(t *testing.T) {
 	t.Parallel()
 
@@ -68,17 +68,17 @@ func TestResolveKeepsGCSURIWithoutFetching(t *testing.T) {
 	}
 	for i, want := range []string{"gs://bucket/a.png", "GS://bucket/b.png"} {
 		if got[i].URI != want || len(got[i].Data) != 0 {
-			t.Errorf("got[%d] = %+v, want URI %q とバイト列なし", i, got[i], want)
+			t.Errorf("got[%d] = %+v, want URI %q and no bytes", i, got[i], want)
 		}
 	}
 	if len(downloader.got) != 0 {
-		t.Errorf("取得が走っています: %v", downloader.got)
+		t.Errorf("a fetch ran: %v", downloader.got)
 	}
 }
 
-// TestResolveFetchesHTTPAndDetectsMIMEType は、http(s) を取得してバイト列で渡し、
-// MIME type を内容から判定することを検証します。拡張子は当てにならず、誤った申告は
-// 受け取り側の解釈を壊します。
+// TestResolveFetchesHTTPAndDetectsMIMEType verifies that http(s) is fetched and passed as
+// bytes, with the MIME type detected from the content. The extension is unreliable, and a
+// wrong declaration breaks how the receiver interprets the data.
 func TestResolveFetchesHTTPAndDetectsMIMEType(t *testing.T) {
 	t.Parallel()
 
@@ -89,7 +89,7 @@ func TestResolveFetchesHTTPAndDetectsMIMEType(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	// 拡張子は .jpg だが中身は PNG。内容側が勝つこと。
+	// The extension is .jpg but the content is PNG. The content must win.
 	got, err := resolver.Resolve(t.Context(), []string{"https://example.com/a.jpg"})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
@@ -99,15 +99,16 @@ func TestResolveFetchesHTTPAndDetectsMIMEType(t *testing.T) {
 		t.Fatalf("len = %d, want 1", len(got))
 	}
 	if got[0].MIMEType != "image/png" {
-		t.Errorf("MIMEType = %q, want image/png（拡張子ではなく内容で判定すること）", got[0].MIMEType)
+		t.Errorf("MIMEType = %q, want image/png (detected from content, not extension)", got[0].MIMEType)
 	}
 	if !bytes.Equal(got[0].Data, data) || got[0].URI != "" {
-		t.Errorf("got = %+v, want バイト列のみ", got[0])
+		t.Errorf("got = %+v, want bytes only", got[0])
 	}
 }
 
-// TestResolveKeepsOrderAndDropsEmpty は、並び順が保たれ、空文字列が黙って外れることを
-// 検証します。並び順はモデルの解釈に影響し、空要素は「参照画像が無い」の表現です。
+// TestResolveKeepsOrderAndDropsEmpty verifies that the order is kept and empty strings are
+// silently dropped. The order affects how the model reads the images, and an empty
+// element expresses "no reference image".
 func TestResolveKeepsOrderAndDropsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -128,15 +129,15 @@ func TestResolveKeepsOrderAndDropsEmpty(t *testing.T) {
 	}
 
 	if len(got) != 3 {
-		t.Fatalf("len = %d, want 3（空要素が落ちること）", len(got))
+		t.Fatalf("len = %d, want 3 (the empty element must be dropped)", len(got))
 	}
 	if got[0].URI != "gs://bucket/a.png" || len(got[1].Data) == 0 || got[2].URI != "gs://bucket/c.png" {
-		t.Errorf("並び順が保たれていません: %+v", got)
+		t.Errorf("order not preserved: %+v", got)
 	}
 }
 
-// TestResolveRejectsOversizedReference は、サイズ上限を超える参照を弾くことを検証します。
-// 上限なしの読み込みは、遅い・巨大なリモートにメモリと時間を際限なく費やします。
+// TestResolveRejectsOversizedReference verifies that a reference over the size limit is
+// rejected. An unbounded read spends memory and time without limit on a slow or huge remote.
 func TestResolveRejectsOversizedReference(t *testing.T) {
 	t.Parallel()
 
@@ -153,8 +154,8 @@ func TestResolveRejectsOversizedReference(t *testing.T) {
 	}
 }
 
-// TestResolveRejectsNonImage は、画像でない内容を取得段階で弾くことを検証します。
-// そのまま送っても生成が失敗するだけで、どの URL が原因かは分からなくなります。
+// TestResolveRejectsNonImage verifies that non-image content is rejected at fetch time.
+// Sending it on would just fail the generation, with no trace of which URL caused it.
 func TestResolveRejectsNonImage(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +172,7 @@ func TestResolveRejectsNonImage(t *testing.T) {
 	}
 }
 
-// TestResolvePropagatesFetchError は、取得の失敗が URL 付きで伝わることを検証します。
+// TestResolvePropagatesFetchError verifies that a fetch failure is reported with its URL.
 func TestResolvePropagatesFetchError(t *testing.T) {
 	t.Parallel()
 
@@ -185,15 +186,15 @@ func TestResolvePropagatesFetchError(t *testing.T) {
 	_, err = resolver.Resolve(t.Context(), []string{"https://example.com/a.png"})
 
 	if !errors.Is(err, sentinel) {
-		t.Fatalf("Resolve() error = %v, want %v をラップしたもの", err, sentinel)
+		t.Fatalf("Resolve() error = %v, want one wrapping %v", err, sentinel)
 	}
 	if !strings.Contains(err.Error(), "https://example.com/a.png") {
-		t.Errorf("error = %v, want どの URL で失敗したかを含むこと", err)
+		t.Errorf("error = %v, want it to include the URL that failed", err)
 	}
 }
 
-// TestNewFallsBackToDefaults は、0 以下の指定が既定値へ倒れることを検証します。
-// 上限が 0 のまま使われると、1 バイトも読めないか無制限になります。
+// TestNewFallsBackToDefaults verifies that values of 0 or less fall back to the defaults.
+// A limit left at 0 would either read nothing at all or be unlimited.
 func TestNewFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -214,6 +215,6 @@ func TestNewFallsBackToDefaults(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	if explicit.timeout != 5*time.Second || explicit.maxBytes != 1024 {
-		t.Errorf("指定値が反映されていません: %+v", explicit)
+		t.Errorf("explicit values not applied: %+v", explicit)
 	}
 }

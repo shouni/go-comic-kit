@@ -67,7 +67,7 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	ai := &fakeContentGenerator{text: "```json\n" + chapterJSON + "\n```"}
 	r, p := newChapterRunner(t, ai)
 	state := outlineState()
-	// 既存パネルが置き換わることの検証用
+	// For checking that existing panels are replaced
 	state.Panels = []comic.Panel{{ID: "ch01-p01", ChapterID: "ch01", Shot: "old"}}
 
 	state, err := r.GenerateChapterScript(context.Background(), state, "ch01", ports.ChapterScriptOptions{Model: "test-model"})
@@ -94,12 +94,12 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 		t.Errorf("chapter PanelIDs = %v, want new panel IDs", ch.PanelIDs)
 	}
 
-	// ナレーション・複数吹き出しが保持される
+	// Narration and multiple balloons are kept
 	if len(p1.Dialogues) != 2 || p1.Dialogues[1].Kind != comic.DialogueKindNarration {
 		t.Errorf("Dialogues = %+v, want narration preserved", p1.Dialogues)
 	}
 
-	// プロンプト実装へ、章立て文脈とキャラクター一覧が渡る
+	// The outline context and character roster reach the prompt implementation
 	if p.chapterData == nil {
 		t.Fatal("ChapterScriptPrompt was not called")
 	}
@@ -109,7 +109,7 @@ func TestGenerateChapterScriptAssignsIDsAndReplacesPanels(t *testing.T) {
 	if !strings.Contains(p.chapterData.CharacterRoster, "ずんだもん") {
 		t.Errorf("CharacterRoster = %q, want the character roster", p.chapterData.CharacterRoster)
 	}
-	// 構造化出力オプションの検証
+	// Check the structured output options
 	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseJSONSchema == nil {
 		t.Errorf("opts = %+v, want application/json with ResponseJSONSchema", ai.lastOpts)
 	}
@@ -130,15 +130,15 @@ func TestGenerateChapterScriptDemotesUnknownCharacters(t *testing.T) {
 	if len(chars) != 3 {
 		t.Fatalf("Characters = %+v, want 3", chars)
 	}
-	// 未定義IDは background に降格（デフォルトキャラへの暗黙フォールバック事故を防ぐ）
+	// An unknown ID is demoted to background (prevents the silent fallback to the default character)
 	if chars[1].CharacterID != "unknown-hero" || chars[1].Prominence != comic.ProminenceBackground {
 		t.Errorf("unknown character = %+v, want demoted to background", chars[1])
 	}
-	// 既知IDはそのまま
+	// A known ID stays as is
 	if chars[0].Prominence != comic.ProminencePrimary {
 		t.Errorf("known character = %+v, want prominence preserved", chars[0])
 	}
-	// 参照対象は既知キャラだけになる
+	// Only known characters are referenced
 	ref := state.Panels[0].ReferencedCharacterIDs()
 	if len(ref) != 1 || ref[0] != "zundamon" {
 		t.Errorf("ReferencedCharacterIDs = %v, want [zundamon]", ref)

@@ -13,21 +13,23 @@ import (
 	characterkit "github.com/shouni/go-character-kit/character"
 )
 
-// 本ファイルは「ライブラリのログが context を運ぶ」という不変条件を固定します。
+// This file pins the invariant that "the library's logs carry the context".
 //
-// アプリ側は go-utils/slogctx のハンドラーを既定ロガーに入れ、job_id をリクエストの
-// context に積んでいます。ここで slog.Info（context を取らない版）を使うと、slog は
-// context.Background() をハンドラーへ渡すため、その行だけ job_id が付きません。
-// 落ちるのは生成本体のログ、つまり job_id で絞ったときに一番見たい行です。
-// 呼び出しが Context 版であるかぎり通り、片方でも戻ると落ちます。
+// The app installs go-utils/slogctx's handler in the default logger and puts job_id on
+// the request context. Using slog.Info here (the variant without a context) makes slog
+// pass context.Background() to the handler, so that line alone loses its job_id. The
+// lines lost are the generation logs themselves — the ones you most want when filtering
+// by job_id. This passes as long as the calls are the Context variants, and fails if
+// even one reverts.
 
-// correlationKey は、テスト用ハンドラーが拾う目印です。slogctx を import すると
-// go-utils への依存辺が増えるため、同じ仕組み（context から属性を取り出して
-// レコードへ足す）を最小限で再現します。
+// correlationKey is the marker the test handler picks up. Importing slogctx would add a
+// dependency edge on go-utils, so the same mechanism (take an attribute from the context
+// and add it to the record) is reproduced minimally.
 type correlationKey struct{}
 
-// capturingHandler は、目印を持つ context から出たレコードのメッセージだけを集めます。
-// 目印を持たないレコードは捨てるので、並列に走る他のテストのログとは混ざりません。
+// capturingHandler collects only the messages of records emitted from a context carrying
+// the marker. Records without it are dropped, so logs from other tests running in
+// parallel do not mix in.
 type capturingHandler struct {
 	mu       *sync.Mutex
 	messages *[]string
@@ -48,7 +50,7 @@ func (h capturingHandler) Handle(ctx context.Context, record slog.Record) error 
 func (h capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h capturingHandler) WithGroup(string) slog.Handler      { return h }
 
-// captureCorrelatedLogs は既定ロガーを差し替え、集まったメッセージを返す関数を渡します。
+// captureCorrelatedLogs swaps the default logger and hands back a function returning the collected messages.
 func captureCorrelatedLogs(t *testing.T) func() []string {
 	t.Helper()
 
@@ -66,9 +68,10 @@ func captureCorrelatedLogs(t *testing.T) func() []string {
 	}
 }
 
-// correlationChapterJSON は、章台本生成の全ログ経路を一度に通す応答です。
-// パネルは 2 つ（上限 1 に対して切り詰め）、1 つ目に未定義キャラクター 1 名・
-// 参照付きキャラクター 4 名（上限 3 に対して降格）・未定義の話者 1 名を含みます。
+// correlationChapterJSON is a response that exercises every log path of chapter script
+// generation at once. It has 2 panels (truncated against a limit of 1), and the first
+// contains 1 unknown character, 4 referenced characters (demoted against a limit of 3)
+// and 1 unknown speaker.
 const correlationChapterJSON = `{
   "panels": [
     {
@@ -95,7 +98,7 @@ const correlationChapterJSON = `{
 }`
 
 func TestChapterScriptLogsCarryCallerContext(t *testing.T) {
-	// 既定ロガーを差し替えるため、このテストは並列化しません。
+	// This test swaps the default logger, so it does not run in parallel.
 	logged := captureCorrelatedLogs(t)
 
 	cm, err := characterkit.NewCharacters([]comic.Character{
@@ -117,21 +120,21 @@ func TestChapterScriptLogsCarryCallerContext(t *testing.T) {
 		t.Fatalf("GenerateChapterScript failed: %v", err)
 	}
 
-	// 呼び出し元の context 経由でしか届かないメッセージ群。
-	// 後半 3 つは ctx を引数に持たないヘルパーから出るため、退行しやすい箇所です。
+	// Messages that arrive only through the caller's context.
+	// The last 3 come from helpers that need ctx passed in as an argument, which makes them prone to regressing.
 	want := []string{
-		"ChapterScriptRunner: Gemini APIを呼び出し中",
-		"ChapterScriptRunner: 章台本を生成しました",
-		"パネル数が上限を超えたため切り詰めます",
-		"未定義のキャラクターIDをbackgroundに降格します",
-		"参照キャラクターが上限を超えたためbackgroundに降格します",
-		"未定義の話者IDをナレーションに変更します",
+		"ChapterScriptRunner: calling the Gemini API",
+		"ChapterScriptRunner: generated chapter script",
+		"truncating panels over the limit",
+		"demoting unknown character ID to background",
+		"demoting referenced character over the limit to background",
+		"converting unknown speaker ID to narration",
 	}
 
 	got := logged()
 	for _, message := range want {
 		if !slices.Contains(got, message) {
-			t.Errorf("%q が呼び出し元の context を運んでいません。slog.Info/Warn ではなく Context 版を使ってください。届いたのは %q", message, got)
+			t.Errorf("%q does not carry the caller's context; use the Context variants instead of slog.Info/Warn. Received: %q", message, got)
 		}
 	}
 }

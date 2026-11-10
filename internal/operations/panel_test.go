@@ -95,26 +95,26 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 		t.Fatalf("GeneratePanel failed: %v", err)
 	}
 
-	// 参照画像: primary + secondary の2枚（background は除外）
+	// Reference images: 2 for primary + secondary (background excluded)
 	if len(gen.lastReq.Images) != 2 {
 		t.Fatalf("Images = %+v, want 2 references", gen.lastReq.Images)
 	}
-	// アスペクト比一致の参照画像が優先される
+	// The aspect-matched reference image is preferred
 	if gen.lastReq.Images[0] != "gs://b/zunda-3x4.png" {
 		t.Errorf("Images[0] = %q, want aspect-specific reference", gen.lastReq.Images[0])
 	}
-	// 参照の解決（gs:// はそのまま、http(s) は取得）は workflow 層の責務なので、
-	// この層は参照元 URL を並べるところまでしか持たない。
+	// Resolving references (gs:// as is, http(s) fetched) is the workflow layer's job, so
+	// this layer only goes as far as listing the source URLs.
 
-	// プロンプト本文はアプリ側の実装が持つので、ここで見るのは
-	// 「実装へ渡した構造データ」と「返った3本をそのまま載せたか」だけ。
+	// The prompt text belongs to the app's implementation, so this checks only "the
+	// structured data passed to the implementation" and "whether the three returned prompts were used as is".
 	d := prompt.data
 	if d == nil {
 		t.Fatal("PanelPrompt was not called")
 	}
-	// 参照番号は添付順と一致していなければ、モデルは別人の参照画像を見て描く。
+	// Unless the reference numbers match the attachment order, the model draws from someone else's reference image.
 	if len(d.SubjectIDs) != 2 || d.SubjectIDs[0] != "zundamon" || d.SubjectIDs[1] != "metan" {
-		t.Errorf("SubjectIDs = %v, want [zundamon metan]（添付順）", d.SubjectIDs)
+		t.Errorf("SubjectIDs = %v, want [zundamon metan] (attachment order)", d.SubjectIDs)
 	}
 	if d.Panel.ID != "ch01-p01" || d.Panel.Setting != "放課後の音楽室" ||
 		!strings.Contains(d.Panel.VisualAnchor, "sunset light through windows") {
@@ -129,12 +129,12 @@ func TestGeneratePanelBuildsMultiSubjectRequest(t *testing.T) {
 		t.Errorf("AspectRatio/ImageSize = %q/%q, want defaults 3:4/1K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
 	}
 
-	// 主役キャラクターの Seed が既定として使われる
+	// The lead character's Seed is used as the default
 	if gen.lastReq.Seed == nil || *gen.lastReq.Seed != 10001 {
 		t.Errorf("Seed = %v, want primary character seed 10001", gen.lastReq.Seed)
 	}
 
-	// GenerationRecord の記録
+	// The GenerationRecord record
 	rec := state.PanelByID("ch01-p01").Generation
 	if rec == nil {
 		t.Fatal("GenerationRecord not recorded")
@@ -189,7 +189,7 @@ func TestGeneratePanelEditMode(t *testing.T) {
 		t.Fatalf("GeneratePanel(edit) failed: %v", err)
 	}
 
-	// 編集モードは既存画像1枚だけを入力にする
+	// Edit mode takes only the one existing image as input
 	if len(gen.lastReq.Images) != 1 || gen.lastReq.Images[0] != "gs://bucket/out/images/panel_ch01-p01.png" {
 		t.Errorf("Images = %+v, want the existing panel image only", gen.lastReq.Images)
 	}
@@ -204,7 +204,7 @@ func TestGeneratePanelEditModeRequiresExistingImage(t *testing.T) {
 
 	_, err := r.GeneratePanel(context.Background(), panelTestState(), "ch01-p01", ports.GenerateOptions{
 		EditPrompt: "表情を変える", Model: "panel-model"})
-	if err == nil || !strings.Contains(err.Error(), "編集対象") {
+	if err == nil || !strings.Contains(err.Error(), "to edit") {
 		t.Errorf("err = %v, want missing-image error", err)
 	}
 }
@@ -221,7 +221,7 @@ func TestGeneratePanelPromptOverride(t *testing.T) {
 	if gen.lastReq.Prompt != "custom prompt" {
 		t.Errorf("Prompt = %q, want override", gen.lastReq.Prompt)
 	}
-	// 参照画像は override でも維持される
+	// The reference images are kept even with an override
 	if len(gen.lastReq.Images) != 2 {
 		t.Errorf("Images = %+v, want references kept with prompt override", gen.lastReq.Images)
 	}
@@ -243,7 +243,7 @@ func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	t.Parallel()
 	r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 	state := panelTestState()
-	state.Panels[0].Characters = nil // 風景のみのコマ
+	state.Panels[0].Characters = nil // a scenery-only panel
 
 	_, err := r.GeneratePanel(context.Background(), state, "ch01-p01", ports.GenerateOptions{Model: "panel-model"})
 	if err != nil {
@@ -252,14 +252,15 @@ func TestGeneratePanelSceneryPanelWithoutCharacters(t *testing.T) {
 	if len(gen.lastReq.Images) != 0 {
 		t.Errorf("Images = %+v, want no references for scenery panel", gen.lastReq.Images)
 	}
-	// キャラクター由来のシードは無いが、記録から再現できるようシードは必ず送る
-	// （resolveSeedChain の最後の採番。UsedSeed が 0 のまま記録されると再生成が別物になる）。
+	// There is no character-derived seed, but a seed is always sent so the record can
+	// reproduce it (resolveSeedChain's final draw; a UsedSeed recorded as 0 makes
+	// regeneration produce something else).
 	if gen.lastReq.Seed == nil {
 		t.Error("Seed = nil, want a freshly drawn seed so the panel can be reproduced")
 	}
 }
 
-// 画風モードはプロンプト実装へ素通しします（画風指定そのものはキットが持ちません）。
+// The art style mode passes straight through to the prompt implementation (the kit holds no style direction itself).
 func TestGeneratePanelPassesStyleMode(t *testing.T) {
 	t.Parallel()
 
@@ -275,8 +276,8 @@ func TestGeneratePanelPassesStyleMode(t *testing.T) {
 	}
 }
 
-// 画像側も同じく、モデル名が無ければ生成器を呼ばずに ErrInvalidRequest で落とします。
-// パネル・ページ・デザインシートは renderImage を共有するので、代表して1件見ます。
+// Likewise for images: without a model name, it fails with ErrInvalidRequest without
+// calling the generator. Panels, pages and design sheets share renderImage, so one is checked as representative.
 func TestGeneratePanelWithoutAnyModelFails(t *testing.T) {
 	t.Parallel()
 
@@ -287,20 +288,20 @@ func TestGeneratePanelWithoutAnyModelFails(t *testing.T) {
 		t.Errorf("err = %v, want ErrInvalidRequest", err)
 	}
 	if gen.lastReq.Model != "" {
-		t.Error("モデル名が無いのに画像生成を呼んでいます")
+		t.Error("image generation was called without a model name")
 	}
 	if writer.lastPath != "" {
-		t.Error("生成していないのに書き込んでいます")
+		t.Error("wrote without generating")
 	}
 }
 
-// 比率・解像度は呼び出しごとの指定です。空ならキット既定（3:4 / 1K）に落ち、
-// 未サポート値は黙って既定へ落とさず ErrInvalidRequest にします。
-// 落とすと「指定したつもりの比率で生成されない」状態が気付かれずに続きます。
+// Ratio and resolution are specified per call. Empty falls back to the kit default
+// (3:4 / 1K), and an unsupported value is ErrInvalidRequest rather than silently falling
+// back; falling back would leave "not generated at the ratio I asked for" going unnoticed.
 func TestGeneratePanelResolvesLayoutPerCall(t *testing.T) {
 	t.Parallel()
 
-	t.Run("未指定はキット既定", func(t *testing.T) {
+	t.Run("unspecified uses the kit default", func(t *testing.T) {
 		t.Parallel()
 		r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 
@@ -314,7 +315,7 @@ func TestGeneratePanelResolvesLayoutPerCall(t *testing.T) {
 		}
 	})
 
-	t.Run("指定が届く", func(t *testing.T) {
+	t.Run("specified values arrive", func(t *testing.T) {
 		t.Parallel()
 		r, gen, _ := newPanelRunner(t, &fakePanelPrompt{})
 
@@ -328,8 +329,8 @@ func TestGeneratePanelResolvesLayoutPerCall(t *testing.T) {
 	})
 
 	for name, opts := range map[string]ports.GenerateOptions{
-		"未サポートの比率":  {Model: "m", AspectRatio: "4:3"},
-		"未サポートの解像度": {Model: "m", ImageSize: "4K"},
+		"unsupported ratio":      {Model: "m", AspectRatio: "4:3"},
+		"unsupported resolution": {Model: "m", ImageSize: "4K"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -340,7 +341,7 @@ func TestGeneratePanelResolvesLayoutPerCall(t *testing.T) {
 				t.Errorf("err = %v, want ErrInvalidRequest", err)
 			}
 			if gen.lastReq.Model != "" {
-				t.Error("不正な指定なのに画像生成を呼んでいます")
+				t.Error("image generation was called despite an invalid value")
 			}
 		})
 	}

@@ -1,5 +1,5 @@
-// Package layout は、パネル・ページ・デザインシートの画像に使うアスペクト比と
-// 解像度の語彙を定義します。
+// Package layout defines the vocabulary of aspect ratios and resolutions used for
+// panel, page and design-sheet images.
 package layout
 
 import (
@@ -7,32 +7,34 @@ import (
 )
 
 const (
-	// DefaultAspectRatio はパネル・ページ・デザインシートの既定のアスペクト比です。
-	// 縦長なのは、コマが縦長のページへ積まれるためです。横長で生成すると合成時に
-	// 上下が切られるか、余白で埋めることになります。
+	// DefaultAspectRatio is the default aspect ratio of panels, pages and design sheets.
+	// It is portrait because panels are stacked onto portrait pages. Generating landscape
+	// means the top and bottom get cut during composition, or the gap gets filled with
+	// padding.
 	//
-	// パネル・ページ・シートで別々の定数を持っていたのをやめました。3つが揃って
-	// いないと参照画像によるブレ抑制が黙って無効になるので、揃っていないほうが
-	// 異常だからです。1回だけ別比率のシートが要る場合は
-	// DesignSheetRequest.AspectRatio で個別に指定します。
+	// Panels, pages and sheets used to have separate constants; that was dropped. Unless
+	// all three match, the drift suppression from reference images is silently disabled,
+	// so a mismatch is the abnormal case. When a sheet at a different ratio is needed for
+	// a single run, specify it individually with DesignSheetRequest.AspectRatio.
 	DefaultAspectRatio = "3:4"
 
-	// ImageSize1K は標準的な解像度の設定（1024x1024相当）です。
+	// ImageSize1K is the standard resolution setting (about 1024x1024).
 	ImageSize1K = "1K"
-	// ImageSize2K は高解像度の設定（2048x2048相当）です。
+	// ImageSize2K is the high resolution setting (about 2048x2048).
 	ImageSize2K = "2K"
 )
 
-// aspectRatios は受け付けるアスペクト比です。
-// キャラクターの参照画像（go-character-kit の ReferenceURLs）を、実際にその画像を使う先
-// （go-veo-orchestrator のキーフレーム、楽曲生成サービスのカバーアート等）と同じアスペクト比で
-// 用意できるようにするための選択肢で、楽曲生成サービスのカバーアートの縦横比を含みます。
+// aspectRatios are the accepted aspect ratios.
+// They are the options that let a character's reference images (go-character-kit's
+// ReferenceURLs) be prepared at the same aspect ratio as wherever the image is actually
+// used (go-veo-orchestrator's keyframes, a music generation service's cover art, and so
+// on), and they include the music generation service's cover-art ratio.
 var aspectRatios = []string{"1:1", "3:4", "9:16", "16:9"}
 
-// AspectRatios は受け付けるアスペクト比の一覧を返します。
+// AspectRatios returns the list of accepted aspect ratios.
 func AspectRatios() []string { return slices.Clone(aspectRatios) }
 
-// IsAspectRatio は、value がサポート対象のアスペクト比かどうかを判定します。
+// IsAspectRatio reports whether value is a supported aspect ratio.
 func IsAspectRatio(value string) bool {
 	return slices.Contains(aspectRatios, value)
 }

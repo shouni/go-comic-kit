@@ -4,12 +4,13 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 )
 
-// outlineSchema は章立て生成（GenerateOutline）の構造化出力スキーマです。
-// ResponseMIMEType "application/json" と併用することで、モデル出力がこのスキーマに
-// 文法レベルで制約されます。章の ID はシステム側で採番するため含めていません。
+// outlineSchema is the structured output schema of outline generation (GenerateOutline).
+// Used together with ResponseMIMEType "application/json", it constrains the model output
+// to this schema at the grammar level. Chapter IDs are assigned by the system, so they
+// are not included.
 //
-// 素の JSON Schema を返します。genai.Schema で組み立てると、スキーマを書くだけの
-// コードが SDK の型に縛られ、genai-kit を挟んでいる意味が薄れます。
+// It returns plain JSON Schema. Built with genai.Schema, code that merely writes a schema
+// would be tied to the SDK's types, undercutting the point of going through genai-kit.
 func outlineSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
@@ -33,8 +34,9 @@ func outlineSchema() map[string]any {
 	}
 }
 
-// chapterScriptSchema は章単位の台本生成（GenerateChapterScript）の構造化出力スキーマです。
-// パネルの ID / ChapterID / Page はシステム側で採番するため含めていません。
+// chapterScriptSchema is the structured output schema of per-chapter script generation
+// (GenerateChapterScript). A panel's ID / ChapterID / Page are assigned by the system, so
+// they are not included.
 func chapterScriptSchema() map[string]any {
 	return map[string]any{
 		"type": "object",

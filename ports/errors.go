@@ -2,36 +2,37 @@ package ports
 
 import "errors"
 
-// 本ファイルは、操作が返すエラーを呼び出し側が分類するための番兵エラーを定義します。
-// 各操作は状況に応じた説明的なメッセージにこれらを %w で包んで返すため、消費側は
-// errors.Is で分類だけを見て応答（HTTP ステータス等）を決められます。
+// This file defines the sentinel errors a caller uses to classify the errors operations
+// return. Each operation wraps one of them with %w in a descriptive message, so a
+// consumer can decide its response (HTTP status and so on) by looking only at the class
+// with errors.Is.
 //
 //	switch {
 //	case errors.Is(err, ports.ErrNotFound):       // 404
 //	case errors.Is(err, ports.ErrInvalidRequest): // 400
-//	case errors.Is(err, ports.ErrGeneration):     // 502（再試行の余地あり）
+//	case errors.Is(err, ports.ErrGeneration):     // 502 (worth retrying)
 //	}
 var (
-	// ErrNotFound は、指定された章・パネル・ページが state に存在しないことを表します。
-	// 呼び出し側の指定ミスであり、同じ引数で再試行しても成功しません。
+	// ErrNotFound means the specified chapter, panel or page does not exist in the state.
+	// It is the caller's mistake, and retrying with the same arguments does not succeed.
 	ErrNotFound = errors.New("comic: target not found")
 
-	// ErrInvalidRequest は、リクエストの内容が不正であることを表します
-	// （必須項目の欠落、編集対象の画像が未生成、参照画像を持つキャラクターが皆無など）。
-	// こちらも同じ引数での再試行では解決しません。
+	// ErrInvalidRequest means the request is invalid (a missing required field, an edit
+	// target image not generated yet, no character with a reference image, and so on).
+	// Retrying with the same arguments does not fix it either.
 	ErrInvalidRequest = errors.New("comic: request is invalid")
 
-	// ErrGeneration は、AI 呼び出しそのものか、その応答の解釈に失敗したことを表します。
-	// 一時的な失敗であることが多く、再試行の価値があります。
+	// ErrGeneration means the AI call itself, or interpreting its response, failed.
+	// It is often transient and worth retrying.
 	ErrGeneration = errors.New("comic: generation failed")
 
-	// ErrConfigInvalid は、組み立て側の設定ミス（リクエストではなく Config の不備）を
-	// 表すために予約された分類です。
+	// ErrConfigInvalid is a class reserved for a misconfiguration by the assembler (a
+	// defect in Config, not in a request).
 	//
-	// 現在これを返す経路はありません。Config に残るのはキットを壊さず動かすための
-	// 実行制御だけで、いずれも ApplyDefaults が埋めるためです（Config.Validate 参照）。
-	// モデル名・画風・比率・解像度は呼び出しごとの値で、各操作が実行前に
-	// ErrInvalidRequest で弾きます。Config に必須項目が戻ったら、Validate が
-	// これを %w で包んで返してください。
+	// Nothing returns it today. What remains in Config is only the run control that keeps
+	// the kit from breaking, and ApplyDefaults fills all of it (see Config.Validate).
+	// Model names, art direction, aspect ratio and resolution are per-call values, which
+	// each operation rejects with ErrInvalidRequest before running. If required fields
+	// return to Config, have Validate wrap this with %w.
 	ErrConfigInvalid = errors.New("comic: config is invalid")
 )

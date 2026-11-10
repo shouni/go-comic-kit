@@ -8,82 +8,84 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-comic-kit.svg)](https://pkg.go.dev/github.com/shouni/go-comic-kit)
 
-## 🚀 概要 (About) - 1 作品 1 state、コマ単位で撃ち直せる漫画生成
+English | [日本語](README.ja.md)
 
-**Go Comic Kit** は、AI による**キャラクターの一貫性を維持した漫画生成**のためのツールキットです。
+## 🚀 About - one state per work, comics you can re-shoot one panel at a time
 
-1作品の全状態を1つの state ドキュメント（`MangaState`）に持ち、章立て・章台本・デザインシート・パネル・ページの各工程を**冪等な操作**として提供します。「12パネル中3番だけシードを振り直して再生成」が API としてそのまま表現できます。
+**Go Comic Kit** is a toolkit for **AI comic generation that keeps characters consistent**.
+
+It keeps every piece of state of one work in a single state document (`MangaState`) and provides each step — outline, chapter script, design sheet, panel and page — as an **idempotent operation**. "Regenerate only panel 3 of 12 with a re-rolled seed" is expressed directly as an API call.
 
 ---
 
-## ✨ 提供機能 (Features)
+## ✨ Features
 
-* **📄 MangaState = 唯一の真実源**
-  1作品の全状態（台本・登場キャラ・パネル/ページの生成条件・成果物URL）を1つの状態ドキュメントとして永続化。履歴一覧・詳細参照はアプリ側が state を読むだけで実現できます。
+* **📄 MangaState = the single source of truth**
+  Every piece of state of one work (the script, the characters who appear, the generation conditions of panels and pages, the artifact URLs) is persisted as one state document. History listings and detail views are just the app reading the state.
 
-* **🔁 冪等・工程単位の操作**
-  `GenerateOutline` が原稿から state を新規作成し、以降の操作は state を受け取って更新済み state を返します。MCP ツール（`regenerate_panel` 等）と1対1で対応します。
+* **🔁 Idempotent, step-level operations**
+  `GenerateOutline` creates a new state from a manuscript; every later operation takes the state and returns the updated state. They map one-to-one onto MCP tools (`regenerate_panel` and so on).
 
-* **👥 マルチキャラクター・パネル**
-  パネルは「発話者1人」ではなく **登場キャラクターの集合**（`Characters []PanelCharacter`）として表現。感情・アクション（関係性）・配置・扱い（primary/secondary/background）を個別に指定でき、発話しない primary/secondary キャラクターにも参照画像が添付されるため同一性が崩れません（background は参照画像の対象外）。
+* **👥 Multi-character panels**
+  A panel is not "one speaker" but **the set of characters who appear** (`Characters []PanelCharacter`). Emotion, action (relationships), position and treatment (primary/secondary/background) can be set individually, and primary/secondary characters get their reference images attached even when they do not speak, so their identity holds (background characters get no reference image).
 
 * **🧬 3-Factor Consistency Control**
-  **Seed値**（基盤）、**参照アセット**（外見）、**VisualCues/言語指示**（詳細）の3要素でキャラクターの一貫性を制御し、生成条件は `GenerationRecord` として state に永続化されます。
-  **シードは必ず記録されます。** 明示指定が無い場合も「前回値 → 主役キャラクターの Seed → 新規採番」の順に必ず決まった値を送るため、`UsedSeed` を読み直せばいつでも同じ絵を再現できます（シードを送らないと API 側が選んだ値は返ってこず、再現できなくなります）。
+  Character consistency is controlled by three factors: the **seed** (the foundation), **reference assets** (appearance) and **VisualCues / verbal instructions** (details). The generation conditions are persisted in the state as a `GenerationRecord`.
+  **The seed is always recorded.** Even when none is specified, a definite value is always sent, resolved in the order "previous value → the lead character's seed → newly drawn", so re-reading `UsedSeed` reproduces the same picture at any time (if no seed is sent, the value the API picks is never returned and the result cannot be reproduced).
 
-* **📐 構造化出力（Constrained Decoding）**
-  台本生成は `ResponseJSONSchema`（素の JSON Schema）によりモデル出力が**文法レベルでスキーマに制約**されます。JSON の破綻を事後修復ではなく発生源で防ぎ、`prominence` や `kind` は Enum 制約で不正値を排除します。
+* **📐 Structured output (constrained decoding)**
+  Script generation uses `ResponseJSONSchema` (plain JSON Schema) so the model output is **constrained to the schema at the grammar level**. Broken JSON is prevented at the source instead of repaired afterwards, and enum constraints keep invalid values out of `prominence` and `kind`.
 
-* **✏️ 編集モードによる再生成**
-  シードの振り直しに加え、既存の生成済み画像に対する**指示ベースの部分編集**（`EditPrompt`）に対応。「構図はそのままで表情だけ笑顔に」のような修正がパネル・ページ単位で可能です。
+* **✏️ Regeneration with edit mode**
+  Besides re-rolling the seed, **instruction-based partial edits** of an existing generated image (`EditPrompt`) are supported. Fixes like "keep the composition, just make the expression a smile" work per panel and per page.
 
-* **📝 プロンプトはすべてアプリが持つ（DI 必須）**
-  5操作すべてのプロンプトを `workflow.Args` で**必ず注入**します。キットは内蔵プロンプトを持ちません。プロンプトは作品ごとに作り込む文言で、キットに置くと1文字変えるたびにキットのリリースが必要になるためです（[詳細](docs/configuration.md#プロンプトの注入)）。
+* **📝 The app owns every prompt (DI required)**
+  The prompts of all five operations are **always injected** through `workflow.Args`. The kit has no built-in prompts. Prompts are wording refined per work, and keeping them in the kit would require a kit release for every one-character change ([details](docs/configuration.md#prompt-injection)).
 
 * **🌍 Multi-Backend Asset Support**
-  参照画像の送り方は `workflow` が組み立てます。`gs://` は転送せず URI のまま渡し（Vertex AI がモデル側で解決するため、取得もアップロードも起きません）、`gs://` 以外の参照（一時的な上書き URL など）だけを取得してインラインで送ります。取得には時間とサイズの上限が掛かり、MIME type は内容から判定します。解決は重複排除（singleflight）の内側にあるので、同じ内容の同時呼び出しが同じ画像を人数分ダウンロードすることはありません。操作層は「どの画像を何番目に添付したか」だけを扱います。
+  `workflow` assembles how reference images are sent. `gs://` is not transferred but passed as a URI (Vertex AI resolves it model-side, so nothing is fetched or uploaded); only non-`gs://` references (temporary override URLs and the like) are fetched and sent inline. Fetching has time and size limits, and the MIME type is detected from the content. Resolution sits inside the deduplication (singleflight), so concurrent identical calls do not download the same image once per caller. The operations layer deals only with "which image was attached at which position".
 
-* **🔂 AI 呼び出しの重複排除**
-  同一内容のテキスト/画像生成リクエストの同時実行は `singleflight` で1回の API 呼び出しにまとめられます（Cloud Tasks の at-least-once 配信やリトライ対策）。対象はプロセス内の in-flight のみで、恒久的な冪等性は `GenerationRecord` を用いたアプリ側の判断で行います。
+* **🔂 Deduplicated AI calls**
+  Concurrent identical text/image generation requests are collapsed into one API call by `singleflight` (against Cloud Tasks' at-least-once delivery and retries). Only in-flight calls within the process are covered; durable idempotency is the app's decision, made with `GenerationRecord`.
 
 ---
 
-## 📦 パッケージ構成 (Package Structure)
+## 📦 Package Structure
 
-**ports による抽象化**を境界とし、生成の各工程を独立した戦略として入れ替え可能にしています。公開パッケージは利用実態に合わせて5つに絞り、それ以外（工程の実行実体・比率の語彙）は `internal/` 配下に置いています。
+The boundary is the **abstraction through ports**, which makes each generation step a swappable strategy. The public packages are narrowed to five to match actual use; everything else (the step implementations, the ratio vocabulary) lives under `internal/`.
 
 ```text
 go-comic-kit/
-├── comic/                 # 【データモデル】MangaState とその操作メソッド。※全ての起点。
-├── ports/                 # 【契約】操作の Interface、入出力の型、Config。
-├── workflow/              # 【統合管理】5つの操作を組み立て、Operations を実装。singleflight による重複排除もここ。
-├── store/                 # 【永続化】MangaState (comic_state.json) の Load/Save。
-├── asset/                 # 【配置規約】成果物の配置パスを決める唯一の場所。
+├── comic/                 # [Data model] MangaState and its methods. The starting point of everything.
+├── ports/                 # [Contracts] Operation interfaces, input/output types, Config.
+├── workflow/              # [Assembly] Builds the five operations and implements Operations. Also singleflight deduplication.
+├── store/                 # [Persistence] Load/Save of MangaState (comic_state.json).
+├── asset/                 # [Placement rules] The one place that decides artifact paths.
 └── internal/
-    ├── operations/        # 【実行実体】Outline/Chapter/Design/Panel/Page の具体的なプロセス実装。
-    └── layout/            # 【定数】アスペクト比・画像サイズの定義と正規化。
+    ├── operations/        # [Implementations] The concrete Outline/Chapter/Design/Panel/Page processes.
+    └── layout/            # [Constants] Aspect ratio and image size definitions and normalization.
 ```
 
-`internal/` 配下は `workflow` からしか使われない実装の詳細です。将来これらへの直接アクセスが必要な消費側が現れた場合は、パッケージを `internal/` の外へ移動するだけで公開できます。
+Everything under `internal/` is an implementation detail used only by `workflow`. If a consumer ever needs direct access to them, a package can be made public just by moving it out of `internal/`.
 
 ---
 
-## 🚦 使い方 (Usage)
+## 🚦 Usage
 
-`workflow.New` が設定とクライアント群から全操作を組み立てます。
+`workflow.New` assembles every operation from the configuration and the clients.
 
 ```go
 ops, err := workflow.New(workflow.Args{
-	// Config は実行制御だけ（並列数・間隔・タイムアウト・各種上限）。すべて任意で、
-	// ゼロ値なら ApplyDefaults が補完する。モデル・画風・比率・解像度は呼び出しごとに渡す
+	// Config is run control only (parallelism, spacing, timeouts, limits). All optional;
+	// ApplyDefaults fills zero values. Model, art style, ratio and resolution are passed per call
 	Config:          ports.Config{},
-	Downloader:      httpClient,      // ports.Downloader（参照画像の取得だけに使います）
-	Reader:          reader,          // ports.ContentReader（go-remote-io で GCS/ローカル/HTTP）
+	Downloader:      httpClient,      // ports.Downloader (used only to fetch reference images)
+	Reader:          reader,          // ports.ContentReader (GCS/local/HTTP via go-remote-io)
 	Writer:          writer,
-	AIClient:        aiClient,        // genai-kit の gemini.Generator。台本生成・画像生成の両方に使用
+	AIClient:        aiClient,        // genai-kit's gemini.Generator, used for both script and image generation
 	Characters:      characters,      // go-character-kit (characters.json)
 
-	// プロンプトは5つとも必須。キットは内蔵しない（上の「プロンプトはすべてアプリが持つ」）
+	// All five prompts are required. The kit has none built in ("The app owns every prompt" above)
 	OutlinePrompt:       outlinePrompt,
 	ChapterScriptPrompt: chapterPrompt,
 	DesignSheetPrompt:   designPrompt,
@@ -94,12 +96,12 @@ if err != nil {
 	return err
 }
 
-// 章立て → 章ごとの台本 → デザインシート → パネル → ページ
-// モデル名は毎回渡す（必須）。画風・比率・解像度も同じくここで指定する
+// Outline → per-chapter script → design sheet → panels → pages
+// Pass the model name every time (required). Art style, ratio and resolution are specified here too
 state, _ := ops.Outline.GenerateOutline(ctx, ports.OutlineRequest{
 	SourceURL: "gs://bucket/article.md", Model: textModel,
 })
-state.ID = workID // 作品IDはキットが設定しないため、アプリ側で採番して設定する
+state.ID = workID // the kit does not set the work ID, so the app mints and sets it
 state, _ = ops.ChapterScript.GenerateChapterScript(ctx, state, "ch01", ports.ChapterScriptOptions{Model: textModel})
 state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequest{
 	CharacterIDs: []string{"zundamon"}, JobID: jobID, OutputDir: outDir, Model: imageModel,
@@ -107,35 +109,35 @@ state, _ = ops.DesignSheet.GenerateDesignSheet(ctx, state, ports.DesignSheetRequ
 state, _ = ops.Panel.GeneratePanel(ctx, state, "ch01-p01", ports.GenerateOptions{OutputDir: outDir, Model: imageModel})
 state, _ = ops.Page.ComposePage(ctx, state, 1, ports.GenerateOptions{OutputDir: outDir, Model: imageModel})
 
-// 全パネル・全ページの一括生成（Config.MaxConcurrency で並列化）
+// Batch generation of all panels and pages (parallelised by Config.MaxConcurrency)
 state, _ = ops.Panel.GenerateAllPanels(ctx, state, ports.BatchOptions{OutputDir: outDir, Model: imageModel})
 state, _ = ops.Page.ComposeAllPages(ctx, state, ports.BatchOptions{OutputDir: outDir, Model: imageModel})
 
-// state を保存（これが唯一の真実源。再生成はこの state を読み直して同じ操作を呼ぶだけ）
+// Save the state (the single source of truth; regenerating is just re-reading it and calling the same operation)
 _, _ = store.Save(ctx, writer, state, outDir)
 ```
 
-再生成の例: `ops.Panel.GeneratePanel(ctx, state, "ch01-p03", ports.GenerateOptions{Seed: &newSeed})`（シード振り直し）、`ports.GenerateOptions{EditPrompt: "表情を笑顔に変える"}`（既存画像の部分編集）。
+Regeneration examples: `ops.Panel.GeneratePanel(ctx, state, "ch01-p03", ports.GenerateOptions{Seed: &newSeed})` (re-roll the seed), `ports.GenerateOptions{EditPrompt: "make the expression a smile"}` (partial edit of the existing image).
 
 ---
 
-## 📚 ドキュメント
+## 📚 Documentation
 
-| ドキュメント | 内容 |
+| Document | Contents |
 | --- | --- |
-| [スキーマ (comic.MangaState)](docs/schema.md) | データモデル、state ヘルパー、ページ割りとキャラクター正規化の規則 |
-| [設定と差し替え (Config / DI)](docs/configuration.md) | `ports.Config`、プロンプトの DI、`workflow.Args` の依存 |
-| [操作セット (Operations)](docs/operations.md) | 5操作と一括生成、呼び出し単位の上書き、エラーの分類 |
-| [成果物の配置 (asset)](docs/assets.md) | 保存パスの規約とファイル名の生成 |
+| [Schema (comic.MangaState)](docs/schema.md) | The data model, state helpers, pagination and character normalization rules |
+| [Configuration and DI (Config / DI)](docs/configuration.md) | `ports.Config`, prompt DI, the dependencies in `workflow.Args` |
+| [Operation set (Operations)](docs/operations.md) | The five operations and batch generation, per-call overrides, error classification |
+| [Artifact placement (asset)](docs/assets.md) | Save path conventions and file name generation |
 
 ---
 
-## 🤝 依存関係 (Dependencies)
+## 🤝 Dependencies
 
-* [shouni/genai-kit](https://github.com/shouni/genai-kit) - Vertex AI クライアント（構造化出力対応）と画像生成（`imagegen`）
-* [shouni/go-character-kit](https://github.com/shouni/go-character-kit) - キャラクター資産（characters.json）管理
-* [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - GCS/ローカル/HTTP 対応の読み書き抽象化
+* [shouni/genai-kit](https://github.com/shouni/genai-kit) - Vertex AI client (with structured output) and image generation (`imagegen`)
+* [shouni/go-character-kit](https://github.com/shouni/go-character-kit) - Character asset (characters.json) management
+* [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - Read/write abstraction over GCS, local and HTTP
 
-## 📜 ライセンス (License)
+## 📜 License
 
-このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
+This project is released under the [MIT License](https://opensource.org/licenses/MIT).

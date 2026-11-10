@@ -1,16 +1,18 @@
-// Package reference は、参照画像の URL を生成リクエストへ添える添付へ解決します。
+// Package reference resolves reference image URLs into attachments for a generation
+// request.
 //
-// 解決先は 2 通りです。gs:// は Vertex AI がモデル側で解決するため URI のまま渡し、
-// 取得も転送も起こりません。http(s) はこのパッケージが取得し、バイト列として渡します。
+// There are two outcomes. A gs:// URI is passed through as is, because Vertex AI
+// resolves it model-side; nothing is fetched or transferred. An http(s) URL is fetched
+// by this package and passed as bytes.
 //
-// この経路がキット側にあるのは、取得してよい URL かの判断（SSRF 対策・許可リスト）を
-// 呼び出し側の Downloader 実装が持つ一方、取得の上限（時間・バイト数）は参照画像という
-// 用途に固有だからです。上限を持たない io.ReadAll は、遅い・巨大なリモートに対して
-// メモリと時間を際限なく費やします。
+// This path lives in the kit because, while the decision of whether a URL may be fetched
+// (SSRF protection, allowlists) belongs to the caller's Downloader implementation, the
+// fetch limits (time, bytes) are specific to the use as a reference image. An unbounded
+// io.ReadAll spends memory and time without limit on a slow or huge remote.
 //
-// gs:// の取得口（ports.ContentReader）を受け取らないのは、gs:// を一度も読まないため
-// です。以前は取得してインラインで送っていましたが、URI のまま渡せる相手に対して
-// バイト列を往復させる理由がありません。
+// It takes no gs:// reader (ports.ContentReader) because it never reads gs://. It used to
+// fetch and send inline, but there is no reason to round-trip bytes to a receiver that
+// accepts the URI.
 package reference
 
 import (
@@ -28,35 +30,35 @@ import (
 )
 
 const (
-	// DefaultFetchTimeout は、参照画像 1 枚の取得に許す時間の既定値です。
+	// DefaultFetchTimeout is the default time allowed for fetching one reference image.
 	DefaultFetchTimeout = time.Minute
-	// DefaultMaxBytes は、参照画像 1 枚のサイズ上限の既定値です。
+	// DefaultMaxBytes is the default size limit of one reference image.
 	DefaultMaxBytes int64 = 32 << 20 // 32 MiB
-	// sniffLen は MIME type の判定に使う先頭バイト数です。
-	// http.DetectContentType がこの長さまでしか見ません。
+	// sniffLen is the number of leading bytes used to detect the MIME type.
+	// http.DetectContentType looks no further than this.
 	sniffLen = 512
 )
 
 var (
-	// ErrDownloaderRequired は、New に Downloader が渡されなかった場合に返されます。
+	// ErrDownloaderRequired is returned when New is given no Downloader.
 	ErrDownloaderRequired = errors.New("reference: downloader is required")
-	// ErrTooLarge は、参照画像がサイズ上限を超えた場合に返されます。
+	// ErrTooLarge is returned when a reference image exceeds the size limit.
 	ErrTooLarge = errors.New("reference: image exceeds the size limit")
-	// ErrNotAnImage は、取得した内容が画像として判定できなかった場合に返されます。
+	// ErrNotAnImage is returned when the fetched content cannot be identified as an image.
 	//
-	// 画像でないものを画像として送っても生成は失敗します。取得した側で弾くほうが、
-	// 何が起きたのかを URL 付きで報告できます。
+	// Sending something that is not an image as one makes the generation fail anyway.
+	// Rejecting it at fetch time can report what happened, with the URL.
 	ErrNotAnImage = errors.New("reference: fetched content is not an image")
 )
 
-// Resolver は参照画像の URL を添付へ解決します。
+// Resolver resolves reference image URLs into attachments.
 type Resolver struct {
 	downloader ports.Downloader
 	timeout    time.Duration
 	maxBytes   int64
 }
 
-// New は Resolver を作ります。timeout と maxBytes は 0 以下なら既定値へ倒します。
+// New creates a Resolver. A timeout or maxBytes of 0 or less falls back to the default.
 func New(downloader ports.Downloader, timeout time.Duration, maxBytes int64) (*Resolver, error) {
 	if downloader == nil {
 		return nil, ErrDownloaderRequired
@@ -71,15 +73,15 @@ func New(downloader ports.Downloader, timeout time.Duration, maxBytes int64) (*R
 	return &Resolver{downloader: downloader, timeout: timeout, maxBytes: maxBytes}, nil
 }
 
-// Resolve は参照画像の URL 列を添付へ変換します。
+// Resolve converts a list of reference image URLs into attachments.
 //
-// 並び順は保ちます。参照画像の並び順はモデルの解釈に影響するためです。空文字列の
-// 要素はエラーではなく黙って外れます（「このキャラクターには参照画像が無い」を、
-// 呼び出し側が要素の欠落として表現できるようにするため）。
+// The order is kept, because the order of reference images affects how the model reads
+// them. An empty string is not an error; it is silently dropped (so a caller can express
+// "this character has no reference image" as a missing element).
 //
-// 取得は直列です。gs:// は取得を伴わないため待ち時間が積み上がるのは http(s) の
-// 参照だけで、それは 1 リクエストにつき 1 枚の上書き指定という使われ方だからです。
-// http(s) の参照を複数並べる使い方が増えたら、ここを並行化してください。
+// Fetching is sequential. gs:// involves no fetch, so waiting only accumulates for
+// http(s) references, and those are used as a single override per request. If using
+// several http(s) references becomes common, parallelise this.
 func (r *Resolver) Resolve(ctx context.Context, urls []string) ([]gemini.Attachment, error) {
 	attachments := make([]gemini.Attachment, 0, len(urls))
 	for _, rawURL := range urls {
@@ -102,28 +104,28 @@ func (r *Resolver) Resolve(ctx context.Context, urls []string) ([]gemini.Attachm
 	return attachments, nil
 }
 
-// fetch は http(s) の参照画像を取得し、内容から判定した MIME type を付けて返します。
+// fetch fetches an http(s) reference image and returns it with the MIME type detected from its content.
 func (r *Resolver) fetch(ctx context.Context, rawURL string) (gemini.Attachment, error) {
 	fetchCtx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 
 	stream, err := r.downloader.GetStream(fetchCtx, rawURL)
 	if err != nil {
-		return gemini.Attachment{}, fmt.Errorf("参照画像の取得に失敗しました (%s): %w", rawURL, err)
+		return gemini.Attachment{}, fmt.Errorf("fetch reference image (%s): %w", rawURL, err)
 	}
 	defer func() { _ = stream.Close() }()
 
-	// 上限 +1 バイトまで読み、超過したかどうかを読み切らずに判定する。
+	// Read up to the limit + 1 byte, so exceeding it is detected without reading everything.
 	data, err := io.ReadAll(io.LimitReader(stream, r.maxBytes+1))
 	if err != nil {
-		return gemini.Attachment{}, fmt.Errorf("参照画像の読み込みに失敗しました (%s): %w", rawURL, err)
+		return gemini.Attachment{}, fmt.Errorf("read reference image (%s): %w", rawURL, err)
 	}
 	if int64(len(data)) > r.maxBytes {
 		return gemini.Attachment{}, fmt.Errorf("%w (%d bytes, %s)", ErrTooLarge, r.maxBytes, rawURL)
 	}
 
-	// MIME type は内容から判定します。拡張子は当てにならず、誤った申告は
-	// 受け取り側の解釈を壊すためです。
+	// The MIME type is detected from the content. The extension is unreliable, and a
+	// wrong declaration breaks how the receiver interprets the data.
 	mimeType := http.DetectContentType(data[:min(len(data), sniffLen)])
 	if !strings.HasPrefix(mimeType, "image/") {
 		return gemini.Attachment{}, fmt.Errorf("%w (%s, %s)", ErrNotAnImage, mimeType, rawURL)
@@ -132,7 +134,7 @@ func (r *Resolver) fetch(ctx context.Context, rawURL string) (gemini.Attachment,
 	return gemini.Attachment{Data: data, MIMEType: mimeType}, nil
 }
 
-// isGCSURI は、URI が GCS を指すかを返します。スキームの大文字小文字は区別しません。
+// isGCSURI reports whether the URI points to GCS. The scheme is matched case-insensitively.
 func isGCSURI(uri string) bool {
 	return strings.HasPrefix(strings.ToLower(uri), "gs://")
 }

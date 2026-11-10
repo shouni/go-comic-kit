@@ -1,26 +1,26 @@
-# 📦 成果物の配置 (asset)
+# 📦 Artifact placement (asset)
 
 [← README](../README.md)
 
-生成物の保存先は `asset` パッケージが**唯一の決定者**です。アプリ側で `fmt.Sprintf` や `path.Join` を書かず、必ずこれらを使ってください。規約が2か所に分かれると、片方の変更で既存の成果物が見つからなくなります。
+The `asset` package is the **only decider** of where generated artifacts are saved. Do not write `fmt.Sprintf` or `path.Join` in the app; always use these functions. If the convention lives in two places, a change to one of them makes existing artifacts impossible to find.
 
-| 関数 | 返すパス |
+| Function | Path returned |
 | --- | --- |
-| `asset.StatePath(baseDir)` | state ドキュメント（`comic_state.json`） |
-| `asset.PanelImagePath(baseDir, panelID, ext)` | パネル画像（`images/panel_{id}{ext}`） |
-| `asset.PageImagePath(baseDir, page, ext)` | ページ画像（`images/comic_page_{n}{ext}`） |
-| `asset.DesignSheetPath(baseDir, characterIDs, jobID, ext)` | デザインシート（`character/{tag}/{jobID}{ext}`） |
-| `asset.CharacterDesignPrefix(baseDir, characterID)` | 1キャラクター分のシートのディレクトリ（履歴の一覧に使います） |
+| `asset.StatePath(baseDir)` | The state document (`comic_state.json`) |
+| `asset.PanelImagePath(baseDir, panelID, ext)` | A panel image (`images/panel_{id}{ext}`) |
+| `asset.PageImagePath(baseDir, page, ext)` | A page image (`images/comic_page_{n}{ext}`) |
+| `asset.DesignSheetPath(baseDir, characterIDs, jobID, ext)` | A design sheet (`character/{tag}/{jobID}{ext}`) |
+| `asset.CharacterDesignPrefix(baseDir, characterID)` | The directory of one character's sheets (used for history listings) |
 
-`DesignSheetPath` はキャラクターID群（合成シートなら複数）を受け取るのに対し、`CharacterDesignPrefix` は**単一のキャラクターID**を受け取ります。
+`DesignSheetPath` takes a set of character IDs (several for a combined sheet), while `CharacterDesignPrefix` takes a **single character ID**.
 
-拡張子（`ext`）を取る3つは、いずれも**生成結果の MIME type から決めた値**を渡してください（`imagePorts.ExtensionByMIMEType(resp.MimeType)`）。保存パスは URL や履歴に残り続けるので、中身と食い違う拡張子は後から直せません。
+For the three functions that take an extension (`ext`), always pass **a value decided from the generated MIME type** (`imagePorts.ExtensionByMIMEType(resp.MimeType)`). Save paths stay in URLs and history, so an extension that contradicts the contents cannot be fixed later.
 
-## ファイル名の規約
+## File name conventions
 
-| 関数 | 役割 |
+| Function | Role |
 | --- | --- |
-| `asset.DesignFileTag(characterIDs)` | キャラクターID群からディレクトリ名を作ります。ファイル名長の上限を超えないようルーン境界で切り詰め、CRC32 を付けて衝突を避けます |
-| `asset.SanitizeFileName(name)` | ファイル名として使えない文字の除去 |
+| `asset.DesignFileTag(characterIDs)` | Builds a directory name from character IDs. Truncates at a rune boundary to stay under the file name length limit, and appends a CRC32 to avoid collisions |
+| `asset.SanitizeFileName(name)` | Removes characters that cannot be used in a file name |
 
-`go-remote-io/remoteio` のパス解決はこのパッケージの実装詳細で、外へは出しません。新しい成果物の種類を追加するときは、その配置関数もここに足してください。
+Path resolution in `go-remote-io/remoteio` is an implementation detail of this package and is not exposed. When adding a new kind of artifact, add its placement function here too.

@@ -6,202 +6,221 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 )
 
-// 本ファイルは go-comic-kit の操作セット（README.md の操作セット節）の契約を定義します。
-// すべての操作は冪等で、MangaState を受け取り更新済み MangaState を返します。
+// This file defines the contracts of go-comic-kit's operation set (see the operations
+// section of README.md). Every operation is idempotent: it takes a MangaState and
+// returns the updated MangaState.
 
-// OutlineRequest は章立て生成（GenerateOutline）への入力です。
+// OutlineRequest is the input to outline generation (GenerateOutline).
 type OutlineRequest struct {
-	// SourceURL は原稿の取得元 URI です（SourceText と排他）。
+	// SourceURL is the URI the manuscript is read from (mutually exclusive with SourceText).
 	SourceURL string
-	// SourceText は原稿テキストそのものです（SourceURL と排他）。
+	// SourceText is the manuscript text itself (mutually exclusive with SourceURL).
 	SourceText string
-	// Mode は章立てプロンプトのモード（テンプレート選択）です。空なら既定テンプレート。
+	// Mode is the outline prompt's mode (template selection). Empty means the default template.
 	Mode string
-	// StyleMode は画像生成時のスタイル選択で、生成された MangaState に記録されます。
+	// StyleMode is the style selection for image generation, recorded on the generated MangaState.
 	StyleMode string
-	// MaxChapters は章数の上限です。0 以下なら既定値を使います。
+	// MaxChapters is the chapter limit. 0 or less uses the default.
 	MaxChapters int
-	// Model は章立てを書くテキストモデルです（必須）。
-	// 空文字の呼び出しは ErrInvalidRequest で、AI API は呼びません。
+	// Model is the text model that writes the outline (required).
+	// A call with an empty string is ErrInvalidRequest, and the AI API is not called.
 	Model string
 }
 
-// OutlineGenerator は、原稿から章立て（Chapters）のみを持つ MangaState を生成する契約です。
-// 台本生成の第1段で、各章のパネルは ChapterScriptGenerator が章単位で生成します。
+// OutlineGenerator is the contract that generates, from a manuscript, a MangaState
+// holding only the outline (Chapters). It is the first stage of script generation; each
+// chapter's panels are generated per chapter by ChapterScriptGenerator.
 type OutlineGenerator interface {
 	GenerateOutline(ctx context.Context, req OutlineRequest) (*comic.MangaState, error)
 }
 
-// ChapterScriptOptions は章台本生成（GenerateChapterScript）のオプションです。
-// プロンプトのモードは state.ScriptMode（章立て時に決めた値）から引くため、ここには含めません。
+// ChapterScriptOptions are the options of chapter script generation (GenerateChapterScript).
+// The prompt mode is taken from state.ScriptMode (decided at outline time), so it is not here.
 type ChapterScriptOptions struct {
-	// Model は章台本を書くテキストモデルです（必須）。
+	// Model is the text model that writes the chapter script (required).
 	//
-	// 1作品の台本は章立てと全章で同じモデルが書くべきなので、呼び出し側は
-	// OutlineRequest.Model と同じ値を渡してください。
+	// One work's script should be written by the same model for the outline and every
+	// chapter, so pass the same value as OutlineRequest.Model.
 	Model string
 }
 
-// ChapterScriptGenerator は、章立て全体を文脈としつつ指定章のパネル群（台本）を生成し、
-// 既存の同章パネルを置き換える契約です（冪等・章単位の再生成に対応）。
+// ChapterScriptGenerator is the contract that generates the panels (script) of the given
+// chapter, using the whole outline as context, and replaces that chapter's existing
+// panels (idempotent, supports per-chapter regeneration).
 type ChapterScriptGenerator interface {
 	GenerateChapterScript(ctx context.Context, state *comic.MangaState, chapterID string, opts ChapterScriptOptions) (*comic.MangaState, error)
 }
 
-// DesignOverride は、1回の呼び出しに限定してキャラクターの参照画像・visual_cues を
-// 差し替えるためのその場限りの上書き指定です。キャラクター定義（characters.json）
-// そのものは変更しません。ReferenceURL / VisualCues が空の場合はそのフィールドのみ
-// キャラクター定義の値を使います。CharacterIDs が複数（合成デザインシート）の場合、
-// 上書きはどのキャラクターに適用すべきか一意に決まらないため無視されます。
+// DesignOverride is a one-off override that swaps a character's reference image and
+// visual_cues for a single call. It does not change the character definition
+// (characters.json) itself. When ReferenceURL / VisualCues is empty, that field alone
+// uses the character definition's value. When CharacterIDs has several entries (a
+// combined design sheet), the override is ignored, since which character it applies to
+// is ambiguous.
 type DesignOverride struct {
 	ReferenceURL string
 	VisualCues   []string
 }
 
-// DesignSheetRequest はデザインシート生成（GenerateDesignSheet）への入力です。
+// DesignSheetRequest is the input to design sheet generation (GenerateDesignSheet).
 type DesignSheetRequest struct {
-	// CharacterIDs は対象キャラクターです。複数指定すると1枚の合成シートになります。
+	// CharacterIDs are the target characters. Several make one combined sheet.
 	CharacterIDs []string
-	// JobID は、この生成呼び出しを一意に識別する ID です（呼び出し側が採番）。
-	// 保存パス（OutputDir 配下の character/{tag}/{JobID}.ext）に使われ、同一キャラクターへの
-	// 複数回の生成を上書きせず履歴として残すためのものです。空文字は許可しません。
+	// JobID uniquely identifies this generation call (minted by the caller).
+	// It is used in the save path (character/{tag}/{JobID}.ext under OutputDir), so that
+	// repeated generations for the same character are kept as history instead of
+	// overwriting one another. An empty string is not allowed.
 	JobID string
-	// Seed は生成シードです。nil の場合は生成側で採番し、DesignSheetRef.UsedSeed に
-	// 記録します（その値を渡し直せば同じシートを再現できます）。
-	// GenerateOptions / BatchOptions の Seed と同じ表現です。
+	// Seed is the generation seed. When nil, the generator draws one and records it in
+	// DesignSheetRef.UsedSeed (passing that value again reproduces the same sheet).
+	// It is the same representation as the Seed of GenerateOptions / BatchOptions.
 	Seed *int64
-	// OutputDir はシート画像の保存先ベースディレクトリ（ローカルまたは gs://）です。
-	// キャラクターはジョブ（作品）非依存の共有アセットのため、通常はバケットのルート
-	// （例: "gs://bucket"）を渡します。相対パスは OutputDir に対して
-	// "character/{tag}/{JobID}.ext" として解決されます。
+	// OutputDir is the base directory (local or gs://) where sheet images are saved.
+	// Characters are shared assets independent of any job (work), so it is usually the
+	// bucket root (for example "gs://bucket"). The relative path is resolved against
+	// OutputDir as "character/{tag}/{JobID}.ext".
 	OutputDir string
-	// AspectRatio は "1:1" / "3:4" / "9:16" / "16:9" のいずれかです。空ならキット既定、
-	// 未サポート値は ErrInvalidRequest です。パネルやページの参照アンカーとして使う
-	// シートは、コマ・ページと同じ比率で生成してください（比率が違うと、参照画像の
-	// アスペクト比一致による細部のブレ抑制が効きません）。
+	// AspectRatio is one of "1:1" / "3:4" / "9:16" / "16:9". Empty means the kit
+	// default; an unsupported value is ErrInvalidRequest. Generate a sheet used as a
+	// reference anchor for panels or pages at the same ratio as those panels and pages
+	// (at a different ratio, the detail-drift suppression that comes from aspect-matched
+	// reference images does not work).
 	AspectRatio string
-	// ImageSize は解像度です。空ならキット既定（2K）。シートは全生成物の同一性
-	// アンカーなので、既定はパネルではなくページ側に揃えています。
+	// ImageSize is the resolution. Empty means the kit default (2K). The sheet is the
+	// identity anchor of everything generated, so the default follows pages, not panels.
 	ImageSize string
-	// Layout に DesignLayoutSingleView を渡すと単一ポーズ（参照アンカー向け）、
-	// 空文字なら3面図ターンアラウンドになります。
+	// Layout set to DesignLayoutSingleView produces a single pose (for reference anchors);
+	// an empty string produces a three-view turnaround.
 	Layout string
-	// Override は単一キャラクター指定時のみ適用されるその場限りの上書きです。
+	// Override is a one-off override applied only when a single character is specified.
 	Override DesignOverride
-	// Model はシートを描く画像生成モデルです（必須）。
+	// Model is the image generation model that draws the sheet (required).
 	Model string
-	// StyleMode はこのシートの画風モードです（GenerateOptions.StyleMode と同じ扱い）。
-	// キットは中身を解釈せず、DesignSheetPromptData.StyleMode へ素通しします。
+	// StyleMode is this sheet's art style mode (treated like GenerateOptions.StyleMode).
+	// The kit does not interpret it and passes it through to DesignSheetPromptData.StyleMode.
 	//
-	// シートは他の生成物の同一性アンカーなので、実装はパネル用の画風をそのまま使わず、
-	// 照明・演出を含まないシート用の指定へ解決してください。
+	// The sheet is the identity anchor of everything else generated, so an implementation
+	// should not reuse the panel style as is, but resolve it to a sheet-specific direction
+	// without lighting or staging.
 	StyleMode string
 }
 
-// DesignLayoutSingleView は DesignSheetRequest.Layout に渡す、単一ポーズレイアウトの指定値です。
+// DesignLayoutSingleView is the DesignSheetRequest.Layout value for a single-pose layout.
 const DesignLayoutSingleView = "single"
 
-// DesignSheetGenerator は、キャラクターの同一性アンカーとなるデザインシートを生成し、
-// その記録を MangaState に反映する契約です。state が nil の場合は新しい state を作成します。
+// DesignSheetGenerator is the contract that generates a design sheet serving as a
+// character's identity anchor and records it on the MangaState. A nil state creates a
+// new state.
 type DesignSheetGenerator interface {
 	GenerateDesignSheet(ctx context.Context, state *comic.MangaState, req DesignSheetRequest) (*comic.MangaState, error)
 }
 
-// GenerateOptions はパネル・ページ生成系操作の共通オプションです。
+// GenerateOptions are the options shared by the panel and page generation operations.
 type GenerateOptions struct {
-	// Seed は生成シードです。指定すると振り直しになります。
+	// Seed is the generation seed. Specifying it re-rolls.
 	//
-	// nil の場合は「前回の GenerationRecord.UsedSeed → 主役キャラクターの Seed → 新規採番」
-	// の順に解決します。前回値があれば「同条件での再生成」になり、無ければ採番した値が
-	// GenerationRecord.UsedSeed に記録されるので、次回以降は再現できます。
+	// When nil, it is resolved in the order "previous GenerationRecord.UsedSeed → the
+	// lead character's Seed → newly drawn". With a previous value, this is "regenerate
+	// under the same conditions"; otherwise the drawn value is recorded in
+	// GenerationRecord.UsedSeed, so later runs can reproduce it.
 	Seed *int64
-	// PromptOverride は自動構築されるプロンプトを差し替えます（空なら自動構築）。
+	// PromptOverride replaces the automatically built prompt (empty means build it automatically).
 	PromptOverride string
-	// EditPrompt を指定すると、ゼロからの再生成ではなく既存の生成済み画像
-	// （GenerationRecord.ImageURL）を入力とした編集モードになります。構図・ポーズ・背景を
-	// 保ったまま指示した箇所だけを変更します（go-veo-orchestrator の EditCut と同方式）。
-	// 対象パネルに生成済み画像が無い場合はエラーになります。
+	// EditPrompt switches to an edit mode that takes the existing generated image
+	// (GenerationRecord.ImageURL) as input instead of regenerating from scratch. Only the
+	// instructed parts change, keeping the composition, pose and background (the same
+	// approach as go-veo-orchestrator's EditCut). It is an error when the target panel has
+	// no generated image.
 	EditPrompt string
-	// Model はこの生成に使う画像生成モデルです（必須）。
-	// 空文字の呼び出しは ErrInvalidRequest で、画像 API は呼びません。
+	// Model is the image generation model for this generation (required).
+	// A call with an empty string is ErrInvalidRequest, and the image API is not called.
 	Model string
-	// AspectRatio / ImageSize は生成する画像の比率と解像度です。
-	// 空ならキット既定（3:4、パネル 1K・ページ 2K）。未サポート値は ErrInvalidRequest です
-	// （黙って既定へ落とすと「指定したつもりの比率で生成されない」状態が続きます）。
+	// AspectRatio / ImageSize are the ratio and resolution of the generated image.
+	// Empty means the kit default (3:4, panels 1K, pages 2K). An unsupported value is
+	// ErrInvalidRequest (silently falling back to the default leaves "not generated at
+	// the ratio I asked for" going unnoticed).
 	//
-	// 比率はパネル・ページ・デザインシートで揃えてください（Config の説明を参照）。
+	// Use the same ratio for panels, pages and design sheets (see the Config description).
 	AspectRatio string
 	ImageSize   string
-	// StyleMode はこの生成の画風モードです。空文字ならプロンプト実装の既定になります。
+	// StyleMode is this generation's art style mode. An empty string means the prompt
+	// implementation's default.
 	//
-	// キットは中身を解釈せず、プロンプト実装へ PanelPromptData.StyleMode /
-	// PagePromptData.StyleMode としてそのまま渡します。画風は作品ごとの絵作りで、
-	// しかも画風指定と「その画風で避けたいもの」（ネガティブプロンプト）は対で
-	// 決まります。両方を持っているのはプロンプト実装なので、キットは解決済みの
-	// 文言ではなくモード名を運びます。
+	// The kit does not interpret it and passes it as is to the prompt implementation as
+	// PanelPromptData.StyleMode / PagePromptData.StyleMode. Art style is per-work visual
+	// direction, and the style direction and "what to avoid in that style" (the negative
+	// prompt) are decided as a pair. The prompt implementation holds both, so the kit
+	// carries the mode name rather than resolved text.
 	StyleMode string
-	// OutputDir は生成画像の保存先ベースディレクトリです。
+	// OutputDir is the base directory where generated images are saved.
 	OutputDir string
 }
 
-// PanelImageGenerator は、パネル画像を1コマ単位・全コマ一括で生成/再生成し、
-// 結果を comic.MangaState の comic.GenerationRecord に記録する契約です。
+// PanelImageGenerator is the contract that generates or regenerates panel images, one
+// panel at a time or all at once, and records the result in the comic.MangaState's
+// comic.GenerationRecord.
 type PanelImageGenerator interface {
 	GeneratePanel(ctx context.Context, state *comic.MangaState, panelID string, opts GenerateOptions) (*comic.MangaState, error)
 
-	// GenerateAllPanels は state 内の全パネルをまとめて生成します。
-	// 並列数は Config.MaxConcurrency に従います（既定の 1 では逐次実行と同じ挙動です）。
+	// GenerateAllPanels generates every panel in the state in one go.
+	// Parallelism follows Config.MaxConcurrency (the default of 1 behaves like sequential
+	// execution).
 	//
-	// 一部が失敗しても、成功した分を記録済みの state と、失敗を errors.Join でまとめた
-	// エラーの両方を返します（state が nil になるのは state 自体が不正だった場合だけです）。
-	// 画像生成は高価なので、成功分を保存してから SkipGenerated で残りだけ再実行できます。
+	// Even when some fail, it returns both the state with the successes recorded and an
+	// error joining the failures with errors.Join (the state is nil only when the state
+	// itself was invalid). Image generation is expensive, so save the successes and
+	// re-run only the rest with SkipGenerated.
 	GenerateAllPanels(ctx context.Context, state *comic.MangaState, opts BatchOptions) (*comic.MangaState, error)
 }
 
-// PageImageComposer は、パネル群を1ページ単位・全ページ一括で合成し、
-// 結果を comic.MangaState の comic.PageArtifact に記録する契約です。
+// PageImageComposer is the contract that composes panels into pages, one page at a time
+// or all at once, and records the result in the comic.MangaState's comic.PageArtifact.
 type PageImageComposer interface {
 	ComposePage(ctx context.Context, state *comic.MangaState, page int, opts GenerateOptions) (*comic.MangaState, error)
 
-	// ComposeAllPages は state 内の全ページをまとめて合成します。
-	// 並列数とエラー時の戻り値の扱いは GenerateAllPanels と同じです。
+	// ComposeAllPages composes every page in the state in one go.
+	// Parallelism and the return values on error are the same as GenerateAllPanels.
 	ComposeAllPages(ctx context.Context, state *comic.MangaState, opts BatchOptions) (*comic.MangaState, error)
 }
 
-// BatchOptions は一括生成系操作（GenerateAllPanels / ComposeAllPages）のオプションです。
-// GenerateOptions を埋め込まないのは、1件を狙い撃ちするための EditPrompt / PromptOverride が
-// 一括処理では意味を持たないためです（全対象に同じ編集指示を当てても無意味です）。
+// BatchOptions are the options of the batch operations (GenerateAllPanels /
+// ComposeAllPages). It does not embed GenerateOptions because EditPrompt / PromptOverride,
+// which target a single item, mean nothing in a batch (the same edit instruction applied
+// to every target is pointless).
 type BatchOptions struct {
-	// Seed は全対象に適用する生成シードです。nil の場合は対象ごとに
-	// GenerateOptions.Seed が nil のときと同じ解決規則
-	// （前回値 → 主役キャラクター → 新規採番）に従います。
+	// Seed is the generation seed applied to every target. When nil, each target follows
+	// the same resolution rule as a nil GenerateOptions.Seed
+	// (previous value → lead character → newly drawn).
 	Seed *int64
-	// Model はこの一括生成に使う画像生成モデルです（必須）。
+	// Model is the image generation model for this batch (required).
 	Model string
-	// AspectRatio / ImageSize は GenerateOptions と同じ扱いです。
+	// AspectRatio / ImageSize are treated as in GenerateOptions.
 	AspectRatio string
 	ImageSize   string
-	// StyleMode はこの一括生成の画風モードです（GenerateOptions.StyleMode と同じ扱い）。
+	// StyleMode is this batch's art style mode (treated like GenerateOptions.StyleMode).
 	StyleMode string
-	// OutputDir は生成画像の保存先ベースディレクトリです。
+	// OutputDir is the base directory where generated images are saved.
 	OutputDir string
-	// SkipGenerated が true の場合、すでに生成済み（comic.GenerationRecord を持つ）対象を飛ばします。
-	// 途中まで成功した一括生成を、未生成分だけやり直すときに使います。
+	// SkipGenerated, when true, skips targets already generated (those with a
+	// comic.GenerationRecord). Use it to redo only the missing part of a batch that
+	// partly succeeded.
 	SkipGenerated bool
-	// ChapterID を指定すると、その章のコマ・ページだけを対象にします（空なら全体）。
+	// ChapterID, when set, limits the targets to that chapter's panels and pages (empty
+	// means everything).
 	//
-	// 台本が章単位で作れるのに画像だけ全体一括しか無いと、「1章だけ試して確かめる」が
-	// できません。画像はこの工程でいちばん高価なので、確認の単位を台本と揃えます。
-	// 存在しない章 ID は ErrNotFound です（黙って0件成功にすると、実行したつもりで
-	// 何も起きていない状態に気付けません）。
+	// If the script can be built per chapter but images only all at once, "try one
+	// chapter and check it" is impossible. Images are the most expensive part of the
+	// process, so the unit of checking matches the script's. An unknown chapter ID is
+	// ErrNotFound (a silent zero-item success would hide that nothing happened when
+	// something was meant to).
 	ChapterID string
 }
 
-// Operations は、構築済みの全操作を保持します（workflow.New が組み立てて返します）。
+// Operations holds every assembled operation (built and returned by workflow.New).
 //
-// 解放すべきリソースは持ちません。参照画像のキャッシュは失効を読み出し時に判定する
-// 方式で、掃除のためのバックグラウンド goroutine が無いためです。作って捨てるだけで
-// 済むので、消費側に後始末の責務（かつての Close）が残りません。
+// It holds no resources to release. The reference image cache decides expiry on read
+// and has no background goroutine for cleanup, so creating and dropping it is enough,
+// and the consumer has no cleanup duty (the former Close).
 type Operations struct {
 	Outline       OutlineGenerator
 	ChapterScript ChapterScriptGenerator

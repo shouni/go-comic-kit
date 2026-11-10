@@ -18,7 +18,7 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// PageImageRunner はページ画像の合成（ComposePage 操作）を実行します。
+// PageImageRunner runs page image composition (the ComposePage operation).
 type PageImageRunner struct {
 	characters     *comic.Characters
 	prompt         ports.PagePrompt
@@ -30,21 +30,21 @@ type PageImageRunner struct {
 
 var _ ports.PageImageComposer = (*PageImageRunner)(nil)
 
-// PageImageRunnerArgs は PageImageRunner の構築に必要な依存と設定の集合です。
+// PageImageRunnerArgs is the set of dependencies and settings needed to build a PageImageRunner.
 type PageImageRunnerArgs struct {
 	Characters *comic.Characters
-	// Prompt はページ合成プロンプトの構築器です（必須。キットは既定を持ちません）。
+	// Prompt builds the page composition prompt (required; the kit has no default).
 	Prompt    ports.PagePrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	// MaxConcurrency は ComposeAllPages の並列数です（ports.Config.MaxConcurrency）。
-	// 0 以下の場合は 1（逐次実行）になります。
+	// MaxConcurrency is the parallelism of ComposeAllPages (ports.Config.MaxConcurrency).
+	// 0 or less becomes 1 (sequential execution).
 	MaxConcurrency int
-	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
+	// CacheControl is the Cache-Control used when saving (ports.Config.CacheControl).
 	CacheControl string
 }
 
-// NewPageImageRunner は依存関係を注入して初期化します。
+// NewPageImageRunner initializes the runner with its dependencies injected.
 func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
@@ -59,19 +59,19 @@ func NewPageImageRunner(args PageImageRunnerArgs) *PageImageRunner {
 	}
 }
 
-// pageResources はページ合成に渡す参照画像と、プロンプトから参照するためのインデックスを保持します。
+// pageResources holds the reference images passed to page composition and the indices the prompt uses to refer to them.
 type pageResources struct {
 	images        []string
-	characterFile map[string]int // characterID -> input_file 番号（1始まり）
-	panelFile     map[string]int // panelID -> input_file 番号（1始まり）
+	characterFile map[string]int // characterID -> input_file number (1-based)
+	panelFile     map[string]int // panelID -> input_file number (1-based)
 }
 
-// ComposePage は指定ページのパネル群を1枚のページ画像として合成し、
-// 結果を PageArtifact として state に記録します（冪等・upsert）。
-// Seed / EditPrompt の扱いは ports.GenerateOptions のとおりです。
+// ComposePage composes the panels of the given page into one page image and records the
+// result on the state as a PageArtifact (idempotent, upsert).
+// Seed / EditPrompt behave as described on ports.GenerateOptions.
 func (pg *PageImageRunner) ComposePage(ctx context.Context, state *comic.MangaState, page int, opts ports.GenerateOptions) (*comic.MangaState, error) {
 	if state == nil {
-		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: state is nil", ports.ErrInvalidRequest)
 	}
 
 	artifact, err := pg.renderPage(ctx, state, page, opts)
@@ -83,15 +83,15 @@ func (pg *PageImageRunner) ComposePage(ctx context.Context, state *comic.MangaSt
 	return state, nil
 }
 
-// renderPage は1ページ分の画像を合成・保存し、その記録を返します。
-// state は読むだけで書き換えないため、対象ページが異なれば並列に呼び出せます
-// （記録の反映は呼び出し側が単独で行います。ComposeAllPages 参照）。
+// renderPage composes and saves one page's image and returns its record.
+// It only reads state and never writes to it, so it can be called in parallel for
+// different pages (the caller alone applies the record; see ComposeAllPages).
 func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaState, page int, opts ports.GenerateOptions) (*comic.PageArtifact, error) {
 	panels := state.PanelsForPage(page)
 	if len(panels) == 0 {
-		return nil, fmt.Errorf("%w: ページ %d にパネルがありません", ports.ErrNotFound, page)
+		return nil, fmt.Errorf("%w: page %d has no panels", ports.ErrNotFound, page)
 	}
-	if err := requireModel(opts.Model, "ページ画像"); err != nil {
+	if err := requireModel(opts.Model, "page image"); err != nil {
 		return nil, err
 	}
 	aspectRatio, err := resolveAspectRatio(opts.AspectRatio, layout.DefaultAspectRatio)
@@ -138,7 +138,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ページ %d: %w", page, err)
+		return nil, fmt.Errorf("page %d: %w", page, err)
 	}
 
 	slog.InfoContext(ctx, "Page composition completed", "page", page, "path", record.ImageURL)
@@ -154,11 +154,12 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 	}, nil
 }
 
-// ComposeAllPages は state 内の全ページを maxConcurrency 並列で合成します。
-// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します。
+// ComposeAllPages composes every page in the state with maxConcurrency in parallel.
+// Even when some fail, the successes are recorded on the state and returned together
+// with an error joining the failures.
 func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.MangaState, opts ports.BatchOptions) (*comic.MangaState, error) {
 	if state == nil {
-		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: state is nil", ports.ErrInvalidRequest)
 	}
 
 	if err := validateBatchChapter(state, opts.ChapterID); err != nil {
@@ -167,7 +168,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 
 	pages := uniquePageNumbers(state.Panels)
 	if opts.ChapterID != "" {
-		// 章境界でページが割られている前提（MangaState.PagesForChapter）に乗ります。
+		// Relies on pages being broken at chapter boundaries (MangaState.PagesForChapter).
 		pages = state.PagesForChapter(opts.ChapterID)
 	}
 	targets := make([]int, 0, len(pages))
@@ -198,7 +199,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 		func(ctx context.Context, page int) (*comic.PageArtifact, error) {
 			artifact, err := pg.renderPage(ctx, state, page, single)
 			if err != nil {
-				return nil, fmt.Errorf("ページ %d: %w", page, err)
+				return nil, fmt.Errorf("page %d: %w", page, err)
 			}
 			return artifact, nil
 		})
@@ -220,7 +221,7 @@ func (pg *PageImageRunner) ComposeAllPages(ctx context.Context, state *comic.Man
 	return state, errors.Join(errs...)
 }
 
-// uniquePageNumbers は、パネル群に登場するページ番号を重複なく昇順で返します。
+// uniquePageNumbers returns the page numbers appearing in the panels, without duplicates, in ascending order.
 func uniquePageNumbers(panels []comic.Panel) []int {
 	seen := make(map[int]struct{}, len(panels))
 	pages := make([]int, 0, len(panels))
@@ -235,13 +236,13 @@ func uniquePageNumbers(panels []comic.Panel) []int {
 	return pages
 }
 
-// buildRequest は、編集モードかページ合成かに応じてプロンプト一式と参照画像を構築します。
-// プロンプト本文の組み立ては ports.PagePrompt の実装に委ね、
-// ここは「何番目にどの画像を添付したか」を伝える役に徹します。
+// buildRequest builds the prompt set and reference images for either edit mode or page
+// composition. Assembling the prompt text is left to the ports.PagePrompt
+// implementation; this only conveys "which image was attached at which position".
 func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []string, error) {
 	if opts.EditPrompt != "" {
 		if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
-			return promptSet{}, nil, fmt.Errorf("%w: ページ %d には編集対象の合成済み画像がありません", ports.ErrInvalidRequest, page)
+			return promptSet{}, nil, fmt.Errorf("%w: page %d has no composed image to edit", ports.ErrInvalidRequest, page)
 		}
 		set, err := newPromptSet(pg.prompt.BuildPageEdit(opts.EditPrompt))
 		if err != nil {
@@ -264,29 +265,29 @@ func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []
 	return set.withOverride(opts.PromptOverride), res.images, nil
 }
 
-// pageCharacterRef は、ページ内で参照画像を持つキャラクター1人分の集計です。
+// pageCharacterRef is the tally for one character on the page who has a reference image.
 type pageCharacterRef struct {
 	id  string
 	url string
-	// panels はこのキャラクターが登場したコマ数です（上限を超えたときに残す順の基準）。
+	// panels is the number of panels this character appears in (the order kept when over the limit).
 	panels int
 }
 
-// collectPageResources はページ内の参照画像を「キャラクター → 生成済みパネル」の順で集約し、
-// プロンプトから参照する input_file 番号（1始まり）を割り振ります。
+// collectPageResources gathers the page's reference images in the order "characters →
+// generated panels" and assigns the input_file numbers (1-based) the prompt refers to.
 func (pg *PageImageRunner) collectPageResources(ctx context.Context, panels []comic.Panel, aspectRatio string) *pageResources {
 	res := &pageResources{
 		characterFile: make(map[string]int),
 		panelFile:     make(map[string]int),
 	}
 
-	// 1. 登場キャラクターのマスター参照（重複なし・初出順、上限あり）
+	// 1. Master references of the characters who appear (no duplicates, first-appearance order, capped)
 	for _, ref := range capPageCharacterRefs(ctx, pg.pageCharacterRefs(panels, aspectRatio)) {
 		res.images = append(res.images, ref.url)
 		res.characterFile[ref.id] = len(res.images)
 	}
 
-	// 2. 生成済みパネル画像（構図ガイド）
+	// 2. Generated panel images (layout guides)
 	for _, panel := range panels {
 		if panel.Generation == nil || panel.Generation.ImageURL == "" {
 			continue
@@ -299,9 +300,9 @@ func (pg *PageImageRunner) collectPageResources(ctx context.Context, panels []co
 	return res
 }
 
-// pageCharacterRefs は、ページ内で参照画像を解決できたキャラクターを初出順で集計します。
-// 参照画像を持たないキャラクターと未定義 ID はここで落ちるため、上限は「実際に添付する
-// 枚数」に対して効きます。
+// pageCharacterRefs tallies, in first-appearance order, the characters on the page whose
+// reference images could be resolved. Characters without a reference image and unknown
+// IDs drop out here, so the cap applies to the number of images actually attached.
 func (pg *PageImageRunner) pageCharacterRefs(panels []comic.Panel, aspectRatio string) []pageCharacterRef {
 	index := make(map[string]int)
 	refs := make([]pageCharacterRef, 0, len(panels))
@@ -327,12 +328,14 @@ func (pg *PageImageRunner) pageCharacterRefs(panels []comic.Panel, aspectRatio s
 	return refs
 }
 
-// capPageCharacterRefs は、添付するキャラクター参照を
-// comic.MaxReferencedCharactersPerPage まで絞り込みます。
+// capPageCharacterRefs narrows the attached character references down to
+// comic.MaxReferencedCharactersPerPage.
 //
-// 残すのは登場コマ数の多い順、同数なら初出順です（決定的）。単純な先頭切りだと、
-// 1コマだけ顔を出したキャラクターがアンカーを取り、ページのほぼ全コマに出ている
-// 主役が参照なしになることがあります。戻り値の並びは初出順のままで、添付順は変えません。
+// The ones kept are those appearing in the most panels, ties broken by first appearance
+// (deterministic). A plain head-truncation can hand the anchor to a character who shows
+// up in a single panel and leave the lead, who is in nearly every panel of the page,
+// without a reference. The returned order stays first-appearance; the attachment order
+// does not change.
 func capPageCharacterRefs(ctx context.Context, refs []pageCharacterRef) []pageCharacterRef {
 	if len(refs) <= comic.MaxReferencedCharactersPerPage {
 		return refs
@@ -346,7 +349,7 @@ func capPageCharacterRefs(ctx context.Context, refs []pageCharacterRef) []pageCh
 	dropped := make(map[string]struct{}, len(byImportance)-comic.MaxReferencedCharactersPerPage)
 	for _, ref := range byImportance[comic.MaxReferencedCharactersPerPage:] {
 		dropped[ref.id] = struct{}{}
-		slog.WarnContext(ctx, "ページの参照キャラクターが上限を超えたため参照画像を添付しません",
+		slog.WarnContext(ctx, "not attaching reference image for page character over the limit",
 			"character_id", ref.id,
 			"appears_in_panels", ref.panels,
 			"max", comic.MaxReferencedCharactersPerPage)

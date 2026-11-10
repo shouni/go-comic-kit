@@ -1,4 +1,5 @@
-// Package operations は、go-comic-kit の各操作（章立て・章台本・デザインシート・
-// パネル画像・ページ合成）の実行ロジックを提供します。すべての操作は MangaState を
-// 受け取り、更新済みの MangaState を返す冪等な契約（ports パッケージ参照）に従います。
+// Package operations provides the execution logic of each go-comic-kit operation
+// (outline, chapter script, design sheet, panel image, page composition). Every
+// operation follows the idempotent contract of taking a MangaState and returning the
+// updated MangaState (see the ports package).
 package operations

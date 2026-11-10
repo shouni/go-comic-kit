@@ -50,7 +50,7 @@ func pageTestState() *comic.MangaState {
 			{
 				ID:        "ch02-p01",
 				ChapterID: "ch02",
-				Page:      2, // 別ページ（対象外）
+				Page:      2, // a different page (not a target)
 				Characters: []comic.PanelCharacter{
 					{CharacterID: "zundamon", Prominence: comic.ProminencePrimary},
 				},
@@ -93,25 +93,25 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Fatalf("ComposePage failed: %v", err)
 	}
 
-	// 参照: キャラ2（zundamon, metan）+ 生成済みパネル1（p01のみ）
+	// References: 2 characters (zundamon, metan) + 1 generated panel (p01 only)
 	if len(gen.lastReq.Images) != 3 {
 		t.Fatalf("Images = %+v, want 3 references", gen.lastReq.Images)
 	}
 
-	// プロンプト本文はアプリ側の実装が持つので、ここで見るのは
-	// 「実装へ渡した構造データ」と「返った3本をそのまま載せたか」だけ。
+	// The prompt text belongs to the app's implementation, so this checks only "the
+	// structured data passed to the implementation" and "whether the three returned prompts were used as is".
 	d := prompt.data
 	if d == nil {
 		t.Fatal("PagePrompt was not called")
 	}
-	// 参照番号は添付順と一致していなければ、モデルは別人の参照画像を見て描く。
+	// Unless the reference numbers match the attachment order, the model draws from someone else's reference image.
 	if d.CharacterFile["zundamon"] != 1 || d.CharacterFile["metan"] != 2 {
-		t.Errorf("CharacterFile = %v, want zundamon=1 / metan=2 (添付順)", d.CharacterFile)
+		t.Errorf("CharacterFile = %v, want zundamon=1 / metan=2 (attachment order)", d.CharacterFile)
 	}
 	if d.PanelFile["ch01-p01"] != 3 {
 		t.Errorf("PanelFile = %v, want the generated panel at 3", d.PanelFile)
 	}
-	// このページのコマだけが渡り、別ページのコマは混ざらない。
+	// Only this page's panels are passed; another page's panels do not mix in.
 	if got := panelIDs(d.Panels); len(got) != 2 || got[0] != "ch01-p01" || got[1] != "ch01-p02" {
 		t.Errorf("Panels = %v, want only page 1's panels in order", got)
 	}
@@ -124,12 +124,12 @@ func TestComposePageBuildsLayoutAndReferences(t *testing.T) {
 		t.Errorf("AspectRatio/ImageSize = %q/%q, want 3:4/2K", gen.lastReq.AspectRatio, gen.lastReq.ImageSize)
 	}
 
-	// 先頭パネルの主役キャラの Seed が既定として使われる
+	// The lead character's Seed in the first panel is used as the default
 	if gen.lastReq.Seed == nil || *gen.lastReq.Seed != 10001 {
 		t.Errorf("Seed = %v, want primary character seed 10001", gen.lastReq.Seed)
 	}
 
-	// PageArtifact の記録
+	// The PageArtifact record
 	artifact := state.PageArtifactByNumber(1)
 	if artifact == nil || artifact.Generation == nil {
 		t.Fatal("PageArtifact not recorded")
@@ -155,11 +155,11 @@ func TestComposePageUpsertsArtifactAndReusesSeed(t *testing.T) {
 		t.Fatalf("ComposePage failed: %v", err)
 	}
 
-	// 前回の UsedSeed を再利用
+	// Reuse the previous UsedSeed
 	if gen.lastReq.Seed == nil || *gen.lastReq.Seed != 777 {
 		t.Errorf("Seed = %v, want previous 777", gen.lastReq.Seed)
 	}
-	// upsert（重複エントリを作らない）
+	// upsert (no duplicate entries)
 	if len(state.Pages) != 1 {
 		t.Errorf("Pages = %+v, want 1 entry (upsert)", state.Pages)
 	}
@@ -195,7 +195,7 @@ func TestComposePageEditModeRequiresExistingImage(t *testing.T) {
 	r, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 	_, err := r.ComposePage(context.Background(), pageTestState(), 1, ports.GenerateOptions{EditPrompt: "変更", Model: "page-model"})
-	if err == nil || !strings.Contains(err.Error(), "編集対象") {
+	if err == nil || !strings.Contains(err.Error(), "to edit") {
 		t.Errorf("err = %v, want missing-image error", err)
 	}
 }
@@ -212,9 +212,10 @@ func TestComposePageEmptyPageFails(t *testing.T) {
 	}
 }
 
-// TestComposePageCapsCharacterReferences は、1ページに添付するキャラクター参照が
-// comic.MaxReferencedCharactersPerPage で頭打ちになり、登場コマ数の多い順に残ることを
-// 確認します。上限が無いと、コマ側の上限で抑えたはずの参照過多が合成時に戻ってきます。
+// TestComposePageCapsCharacterReferences checks that the character references attached to
+// one page are capped at comic.MaxReferencedCharactersPerPage, keeping those appearing in
+// the most panels. Without the cap, the excess references the panel cap held back return
+// at composition time.
 func TestComposePageCapsCharacterReferences(t *testing.T) {
 	t.Parallel()
 
@@ -242,8 +243,8 @@ func TestComposePageCapsCharacterReferences(t *testing.T) {
 		Writer:     &mockWriter{},
 	})
 
-	// c1 は初出だが1コマだけ、c6 は初出が最後だが3コマすべてに登場する。
-	// 単純な先頭切りなら c6 が落ち、登場コマ数で選べば c6 が残る。
+	// c1 appears first but in one panel only; c6 appears last but in all three panels.
+	// A plain head-truncation drops c6; choosing by panel count keeps it.
 	state := &comic.MangaState{
 		Version: comic.StateSchemaVersion,
 		Panels: []comic.Panel{
@@ -263,12 +264,12 @@ func TestComposePageCapsCharacterReferences(t *testing.T) {
 		t.Errorf("Images = %d, want %d", got, comic.MaxReferencedCharactersPerPage)
 	}
 	if _, ok := prompt.data.CharacterFile["c6"]; !ok {
-		t.Errorf("CharacterFile = %v, want c6 kept (このページで最も登場コマ数が多い)", prompt.data.CharacterFile)
+		t.Errorf("CharacterFile = %v, want c6 kept (it appears in the most panels on this page)", prompt.data.CharacterFile)
 	}
 	if len(prompt.data.CharacterFile) != comic.MaxReferencedCharactersPerPage {
 		t.Errorf("CharacterFile = %v, want %d entries", prompt.data.CharacterFile, comic.MaxReferencedCharactersPerPage)
 	}
-	// 添付順と参照番号は一致していなければ、モデルは別人の参照画像を見て描く。
+	// Unless the attachment order and reference numbers match, the model draws from someone else's reference image.
 	for id, n := range prompt.data.CharacterFile {
 		if n < 1 || n > len(gen.lastReq.Images) {
 			t.Errorf("CharacterFile[%s] = %d, want a valid attachment index", id, n)
@@ -276,7 +277,7 @@ func TestComposePageCapsCharacterReferences(t *testing.T) {
 	}
 }
 
-// panelChars は指定 ID を primary の登場キャラクターに変換します。
+// panelChars converts the given IDs into primary panel characters.
 func panelChars(ids ...string) []comic.PanelCharacter {
 	chars := make([]comic.PanelCharacter, 0, len(ids))
 	for _, id := range ids {
@@ -285,15 +286,15 @@ func panelChars(ids ...string) []comic.PanelCharacter {
 	return chars
 }
 
-// jpegImageGenerator は JPEG を返す画像生成器です。
+// jpegImageGenerator is an image generator that returns JPEG.
 type jpegImageGenerator struct{}
 
 func (jpegImageGenerator) Generate(_ context.Context, _ ImageRequest) (*ImageResponse, error) {
 	return &ImageResponse{Data: []byte("fake-jpeg"), MIMEType: "image/jpeg", UsedSeed: 7}, nil
 }
 
-// TestComposePageSavesWithResponseExtension は、ページ画像の保存先拡張子が
-// 生成結果の MIME type に従うことを確認します（パネル・デザインシートと同じ規則）。
+// TestComposePageSavesWithResponseExtension checks that the page image's file extension
+// follows the generated MIME type (the same rule as panels and design sheets).
 func TestComposePageSavesWithResponseExtension(t *testing.T) {
 	t.Parallel()
 
