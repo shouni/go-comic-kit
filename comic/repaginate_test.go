@@ -4,11 +4,11 @@ import (
 	"testing"
 )
 
-// panelsForChapters は、章IDごとにコマ数を指定した Panel 列を作ります。
+// panelsForChapters builds a Panel slice from a panel count per chapter ID.
 func panelsForChapters(t *testing.T, spec ...any) []Panel {
 	t.Helper()
 	if len(spec)%2 != 0 {
-		t.Fatalf("spec は 章ID・コマ数 の繰り返しで指定してください: %v", spec)
+		t.Fatalf("spec must repeat chapter ID, panel count: %v", spec)
 	}
 	var panels []Panel
 	for i := 0; i < len(spec); i += 2 {
@@ -24,7 +24,7 @@ func panelsForChapters(t *testing.T, spec ...any) []Panel {
 	return panels
 }
 
-// pagesOf は各コマに振られたページ番号を並び順に返します。
+// pagesOf returns the page number assigned to each panel, in order.
 func pagesOf(panels []Panel) []int {
 	pages := make([]int, len(panels))
 	for i := range panels {
@@ -34,7 +34,7 @@ func pagesOf(panels []Panel) []int {
 }
 
 func TestRepaginateBreaksAtChapterBoundary(t *testing.T) {
-	// ch01 が上限ちょうどで終わらなくても、ch02 は必ず新しいページから始まること。
+	// Even when ch01 does not end exactly at the limit, ch02 must start on a new page.
 	state := &MangaState{Panels: panelsForChapters(t, "ch01", 4, "ch02", 3)}
 
 	state.Repaginate(3)
@@ -49,7 +49,7 @@ func TestRepaginateBreaksAtChapterBoundary(t *testing.T) {
 }
 
 func TestRepaginateWithoutChapterIDsFillsPages(t *testing.T) {
-	// 章IDを持たない（手書き等の）state では、従来どおり上限ごとに詰めるだけ。
+	// A state without chapter IDs (hand-written, etc.) is just packed up to the limit, as before.
 	state := &MangaState{Panels: []Panel{{ID: "p1"}, {ID: "p2"}, {ID: "p3"}, {ID: "p4"}, {ID: "p5"}}}
 
 	state.Repaginate(2)
@@ -64,8 +64,8 @@ func TestRepaginateWithoutChapterIDsFillsPages(t *testing.T) {
 }
 
 func TestRepaginateKeepsUnchangedPageArtifacts(t *testing.T) {
-	// ch01 のコマ構成が変わらなければ、合成済みページ画像は捨てない
-	// （無関係な章の再生成で高価なページ合成をやり直さないため）。
+	// If ch01's panel composition is unchanged, composed page images are not discarded
+	// (so regenerating an unrelated chapter does not redo expensive page composition).
 	state := &MangaState{
 		Panels: panelsForChapters(t, "ch01", 2, "ch02", 2),
 		Pages: []PageArtifact{
@@ -79,13 +79,14 @@ func TestRepaginateKeepsUnchangedPageArtifacts(t *testing.T) {
 	state.Repaginate(6)
 
 	if len(state.Pages) != 2 {
-		t.Fatalf("Pages = %d 件, want 2（構成が変わっていないので両方残るはず）", len(state.Pages))
+		t.Fatalf("Pages = %d, want 2 (composition unchanged, so both should remain)", len(state.Pages))
 	}
 }
 
 func TestRepaginateDropsStalePageArtifacts(t *testing.T) {
-	// ch01 を2コマ→3コマに再生成した状況。ページ1はコマ構成が変わったので記録を捨て、
-	// 構成が変わっていないページ2は残す。実体の無いページ9の記録も捨てる。
+	// ch01 regenerated from 2 panels to 3. Page 1's composition changed, so its record is
+	// discarded; page 2's is unchanged and stays. The record of page 9, which has no
+	// panels, is discarded too.
 	state := &MangaState{
 		Panels: panelsForChapters(t, "ch01", 3, "ch02", 1),
 		Pages: []PageArtifact{
@@ -101,21 +102,22 @@ func TestRepaginateDropsStalePageArtifacts(t *testing.T) {
 	state.Repaginate(6)
 
 	if len(state.Pages) != 1 {
-		t.Fatalf("Pages = %+v, want 1件（ページ2だけが残る）", state.Pages)
+		t.Fatalf("Pages = %+v, want 1 (only page 2 remains)", state.Pages)
 	}
 	if state.Pages[0].PageNumber != 2 {
-		t.Errorf("残ったページ = %d, want 2", state.Pages[0].PageNumber)
+		t.Errorf("remaining page = %d, want 2", state.Pages[0].PageNumber)
 	}
 	if state.PageArtifactByNumber(1) != nil {
-		t.Error("コマ構成が変わったページ1の記録が残っている")
+		t.Error("the record of page 1, whose composition changed, remains")
 	}
 	if state.PageArtifactByNumber(9) != nil {
-		t.Error("実体の無いページ9の記録が残っている")
+		t.Error("the record of page 9, which has no panels, remains")
 	}
 }
 
-// 同じコマ数で章を作り直すと、コマ ID の並びが元と一致します。ID の一致だけで判定すると
-// 古いページ画像が残り、SkipGenerated の再合成がそのページを飛ばしてしまいます。
+// Rebuilding a chapter with the same panel count reproduces the original panel ID
+// sequence. Judging by ID equality alone would keep the stale page images, and a
+// SkipGenerated recomposition would skip those pages.
 func TestReplaceChapterPanelsDropsPagesOfSameSizedRegeneration(t *testing.T) {
 	state := &MangaState{
 		Chapters: []Chapter{{ID: "ch01"}, {ID: "ch02"}},
@@ -128,16 +130,16 @@ func TestReplaceChapterPanelsDropsPagesOfSameSizedRegeneration(t *testing.T) {
 		},
 	}
 
-	// 中身だけが入れ替わった、同じ ID・同じコマ数の章。
+	// A chapter with the same IDs and panel count whose contents alone were swapped.
 	if !state.ReplaceChapterPanels("ch01", panelsForChapters(t, "ch01", 2)) {
 		t.Fatal("ReplaceChapterPanels returned false, want true")
 	}
 	state.Repaginate(6)
 
 	if state.PageArtifactByNumber(1) != nil {
-		t.Error("作り直した章のページ1の記録が残っている（古い画像が再合成を飛ばさせる）")
+		t.Error("the record of the rebuilt chapter's page 1 remains (the stale image makes recomposition skip it)")
 	}
 	if state.PageArtifactByNumber(2) == nil {
-		t.Error("無関係な章のページ2の記録まで消えている")
+		t.Error("the record of page 2 of an unrelated chapter was removed too")
 	}
 }

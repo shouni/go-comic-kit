@@ -42,7 +42,7 @@ func TestPanelImagePath(t *testing.T) {
 }
 
 func TestPanelImagePathSanitizesID(t *testing.T) {
-	// パネルIDにパス区切りが混ざっても images 直下から出ないこと
+	// A path separator in the panel ID must not escape the images directory
 	got, err := PanelImagePath("out", "ch01/p03", ".png")
 	if err != nil {
 		t.Fatalf("PanelImagePath() unexpected error: %v", err)
@@ -76,7 +76,7 @@ func TestDesignSheetPath(t *testing.T) {
 }
 
 func TestCharacterDesignPrefix(t *testing.T) {
-	// 前方一致での一覧・削除に使うため末尾はスラッシュで終わること
+	// It must end with a slash, since it is used for prefix listing and deletion
 	got, err := CharacterDesignPrefix("gs://bucket", "zundamon")
 	if err != nil {
 		t.Fatalf("CharacterDesignPrefix() unexpected error: %v", err)
@@ -86,14 +86,14 @@ func TestCharacterDesignPrefix(t *testing.T) {
 		t.Errorf("CharacterDesignPrefix() = %q, want %q", got, want)
 	}
 
-	// 同じキャラクターの DesignSheetPath はこの接頭辞の下に入ること
-	// （一覧・削除がデザインシートを取りこぼさないための不変条件）
+	// The same character's DesignSheetPath must fall under this prefix
+	// (the invariant that keeps listing and deletion from missing a design sheet)
 	sheet, err := DesignSheetPath("gs://bucket", []string{"zundamon"}, "job-001", ".png")
 	if err != nil {
 		t.Fatalf("DesignSheetPath() unexpected error: %v", err)
 	}
 	if !strings.HasPrefix(sheet, got) {
-		t.Errorf("DesignSheetPath() = %q は CharacterDesignPrefix() = %q の下にない", sheet, got)
+		t.Errorf("DesignSheetPath() = %q is not under CharacterDesignPrefix() = %q", sheet, got)
 	}
 }
 
@@ -106,11 +106,11 @@ func TestDesignFileTag(t *testing.T) {
 
 	t.Run("LongIDsAreTruncatedAtRuneBoundary", func(t *testing.T) {
 		got := DesignFileTag([]string{strings.Repeat("ずんだもん", 40)})
-		if len(got) > maxDesignFileTagBytes+9 { // 切り詰め + "_" + 8桁のCRC32
-			t.Errorf("DesignFileTag() の長さ = %d バイト, want %d 以下", len(got), maxDesignFileTagBytes+9)
+		if len(got) > maxDesignFileTagBytes+9 { // truncation + "_" + 8-digit CRC32
+			t.Errorf("DesignFileTag() length = %d bytes, want at most %d", len(got), maxDesignFileTagBytes+9)
 		}
 		if !utf8.ValidString(got) {
-			t.Errorf("DesignFileTag() = %q が不正な UTF-8（rune 境界で切れていない）", got)
+			t.Errorf("DesignFileTag() = %q is invalid UTF-8 (not cut at a rune boundary)", got)
 		}
 	})
 
@@ -118,7 +118,7 @@ func TestDesignFileTag(t *testing.T) {
 		a := DesignFileTag([]string{strings.Repeat("x", 200) + "a"})
 		b := DesignFileTag([]string{strings.Repeat("x", 200) + "b"})
 		if a == b {
-			t.Error("長いIDの組み合わせ違いが同じタグになっている（チェックサムが効いていない）")
+			t.Error("different combinations of long IDs produced the same tag (the checksum is not working)")
 		}
 	})
 }
@@ -131,9 +131,9 @@ func TestSanitizeFileName(t *testing.T) {
 	}
 }
 
-// TestPageImagePathUsesExtension は、ページ画像の拡張子が呼び出し側の指定
-// （生成結果の MIME type 由来）に従うことを確認します。ここを ".png" 決め打ちに
-// していた頃は、モデルが JPEG を返したページだけ中身と拡張子が食い違っていました。
+// TestPageImagePathUsesExtension checks that a page image's extension follows the
+// caller's choice (derived from the generated MIME type). When this hardcoded ".png",
+// only the pages the model returned as JPEG had an extension contradicting their contents.
 func TestPageImagePathUsesExtension(t *testing.T) {
 	t.Parallel()
 
@@ -146,11 +146,12 @@ func TestPageImagePathUsesExtension(t *testing.T) {
 	}
 }
 
-// DesignSheetPath と DesignSheetJobID が往復することを固定します。
+// Pins the round trip between DesignSheetPath and DesignSheetJobID.
 //
-// 片方向しか無かった頃は、一覧する側が「ファイル名は {jobID}{拡張子}」という規約を
-// 自前で逆算していました。ここでファイル名の付け方を変えると、呼び出し側の一覧が
-// エラーも出さずに空になります。往復で縛っておけば、変えたときにここが落ちます。
+// When only one direction existed, the lister reverse-engineered the "file name is
+// {jobID}{extension}" convention on its own. Changing the naming here would make the
+// caller's listing turn empty without any error. Pinning the round trip makes this fail
+// when it changes.
 func TestDesignSheetPathRoundTrip(t *testing.T) {
 	const baseDir = "gs://bucket"
 
@@ -160,10 +161,10 @@ func TestDesignSheetPathRoundTrip(t *testing.T) {
 		jobID     string
 		extension string
 	}{
-		{"通常", "zundamon", "c20260718-113045-1a2b3c4d", ".png"},
-		{"旧採番形式", "zundamon", "c20260718-113045-1a2b3c4d", ".jpg"},
-		{"記号を含むID", "zundamon", "c2026/07/18-113045", ".png"},
-		{"拡張子なし", "zundamon", "c20260718-113045-1a2b3c4d", ""},
+		{"plain", "zundamon", "c20260718-113045-1a2b3c4d", ".png"},
+		{"old ID format", "zundamon", "c20260718-113045-1a2b3c4d", ".jpg"},
+		{"ID with symbols", "zundamon", "c2026/07/18-113045", ".png"},
+		{"no extension", "zundamon", "c20260718-113045-1a2b3c4d", ""},
 	}
 
 	for _, tt := range tests {
@@ -180,9 +181,9 @@ func TestDesignSheetPathRoundTrip(t *testing.T) {
 
 			got, ok := DesignSheetJobID(prefix, uri)
 			if !ok {
-				t.Fatalf("DesignSheetJobID(%q, %q) = _, false（プレフィックス配下と認識されていない）", prefix, uri)
+				t.Fatalf("DesignSheetJobID(%q, %q) = _, false (not recognised as under the prefix)", prefix, uri)
 			}
-			// 保存されるのは SanitizeFileName を通したあとの ID です。
+			// What is saved is the ID after SanitizeFileName.
 			if want := SanitizeFileName(tt.jobID); got != want {
 				t.Errorf("DesignSheetJobID() = %q, want %q", got, want)
 			}
@@ -190,7 +191,7 @@ func TestDesignSheetPathRoundTrip(t *testing.T) {
 	}
 }
 
-// プレフィックス配下でないもの・階層を挟むものは拾わないこと。
+// Anything not under the prefix, or with an intermediate level, must not be picked up.
 func TestDesignSheetJobIDRejectsUnrelatedPaths(t *testing.T) {
 	const prefix = "gs://bucket/character/zundamon/"
 
@@ -198,11 +199,11 @@ func TestDesignSheetJobIDRejectsUnrelatedPaths(t *testing.T) {
 		name string
 		uri  string
 	}{
-		{"別キャラクター", "gs://bucket/character/metan/job-1.png"},
-		{"階層を挟む", "gs://bucket/character/zundamon/sub/job-1.png"},
-		{"プレフィックスそのもの", "gs://bucket/character/zundamon/"},
-		{"前方一致するだけの別ディレクトリ", "gs://bucket/character/zundamon2/job-1.png"},
-		{"無関係", "gs://bucket/comics/job-1/comic_state.json"},
+		{"different character", "gs://bucket/character/metan/job-1.png"},
+		{"intermediate level", "gs://bucket/character/zundamon/sub/job-1.png"},
+		{"the prefix itself", "gs://bucket/character/zundamon/"},
+		{"different directory sharing the prefix", "gs://bucket/character/zundamon2/job-1.png"},
+		{"unrelated", "gs://bucket/comics/job-1/comic_state.json"},
 	}
 
 	for _, tt := range tests {

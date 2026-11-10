@@ -17,7 +17,7 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// PanelImageRunner はパネル画像の生成/再生成（GeneratePanel 操作）を実行します。
+// PanelImageRunner runs panel image generation and regeneration (the GeneratePanel operation).
 type PanelImageRunner struct {
 	characters     *comic.Characters
 	prompt         ports.PanelPrompt
@@ -29,21 +29,21 @@ type PanelImageRunner struct {
 
 var _ ports.PanelImageGenerator = (*PanelImageRunner)(nil)
 
-// PanelImageRunnerArgs は PanelImageRunner の構築に必要な依存と設定の集合です。
+// PanelImageRunnerArgs is the set of dependencies and settings needed to build a PanelImageRunner.
 type PanelImageRunnerArgs struct {
 	Characters *comic.Characters
-	// Prompt はパネル生成プロンプトの構築器です（必須。キットは既定を持ちません）。
+	// Prompt builds the panel generation prompt (required; the kit has no default).
 	Prompt    ports.PanelPrompt
 	Generator ImageGenerator
 	Writer    remoteio.Writer
-	// MaxConcurrency は GenerateAllPanels の並列数です（ports.Config.MaxConcurrency）。
-	// 0 以下の場合は 1（逐次実行）になります。
+	// MaxConcurrency is the parallelism of GenerateAllPanels (ports.Config.MaxConcurrency).
+	// 0 or less becomes 1 (sequential execution).
 	MaxConcurrency int
-	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
+	// CacheControl is the Cache-Control used when saving (ports.Config.CacheControl).
 	CacheControl string
 }
 
-// NewPanelImageRunner は依存関係を注入して初期化します。
+// NewPanelImageRunner initializes the runner with its dependencies injected.
 func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 	if args.MaxConcurrency <= 0 {
 		args.MaxConcurrency = 1
@@ -58,15 +58,15 @@ func NewPanelImageRunner(args PanelImageRunnerArgs) *PanelImageRunner {
 	}
 }
 
-// GeneratePanel は指定パネルの画像を生成し、結果を GenerationRecord として state に記録します。
-// Seed / EditPrompt の扱いは ports.GenerateOptions のとおりです。
+// GeneratePanel generates the image of the given panel and records the result on the
+// state as a GenerationRecord. Seed / EditPrompt behave as described on ports.GenerateOptions.
 func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *comic.MangaState, panelID string, opts ports.GenerateOptions) (*comic.MangaState, error) {
 	if state == nil {
-		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: state is nil", ports.ErrInvalidRequest)
 	}
 	panel := state.PanelByID(panelID)
 	if panel == nil {
-		return nil, fmt.Errorf("%w: パネル %q", ports.ErrNotFound, panelID)
+		return nil, fmt.Errorf("%w: panel %q", ports.ErrNotFound, panelID)
 	}
 
 	record, err := pr.renderPanel(ctx, panel, opts)
@@ -78,13 +78,13 @@ func (pr *PanelImageRunner) GeneratePanel(ctx context.Context, state *comic.Mang
 	return state, nil
 }
 
-// renderPanel は1コマ分の画像を生成・保存し、その生成記録を返します。
-// panel は読むだけで書き換えないため、対象が異なれば並列に呼び出せます
-// （記録の反映は呼び出し側が単独で行います。GenerateAllPanels 参照）。
+// renderPanel generates and saves one panel's image and returns its generation record.
+// It only reads panel and never writes to it, so it can be called in parallel for
+// different targets (the caller alone applies the record; see GenerateAllPanels).
 func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions) (*comic.GenerationRecord, error) {
 	panelID := panel.ID
 
-	if err := requireModel(opts.Model, "パネル画像"); err != nil {
+	if err := requireModel(opts.Model, "panel image"); err != nil {
 		return nil, err
 	}
 	aspectRatio, err := resolveAspectRatio(opts.AspectRatio, layout.DefaultAspectRatio)
@@ -125,18 +125,19 @@ func (pr *PanelImageRunner) renderPanel(ctx context.Context, panel *comic.Panel,
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("パネル %q: %w", panelID, err)
+		return nil, fmt.Errorf("panel %q: %w", panelID, err)
 	}
 
 	slog.InfoContext(ctx, "Panel image generation completed", "panel", panelID, "path", record.ImageURL)
 	return record, nil
 }
 
-// GenerateAllPanels は state 内の全パネルを maxConcurrency 並列で生成します。
-// 一部が失敗しても成功分は state に記録し、失敗をまとめたエラーと一緒に返します。
+// GenerateAllPanels generates every panel in the state with maxConcurrency in parallel.
+// Even when some fail, the successes are recorded on the state and returned together
+// with an error joining the failures.
 func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.MangaState, opts ports.BatchOptions) (*comic.MangaState, error) {
 	if state == nil {
-		return nil, fmt.Errorf("%w: state が nil です", ports.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: state is nil", ports.ErrInvalidRequest)
 	}
 
 	if err := validateBatchChapter(state, opts.ChapterID); err != nil {
@@ -173,7 +174,7 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 			panel := &state.Panels[index]
 			record, err := pr.renderPanel(ctx, panel, single)
 			if err != nil {
-				return nil, fmt.Errorf("パネル %q: %w", panel.ID, err)
+				return nil, fmt.Errorf("panel %q: %w", panel.ID, err)
 			}
 			return record, nil
 		})
@@ -195,13 +196,13 @@ func (pr *PanelImageRunner) GenerateAllPanels(ctx context.Context, state *comic.
 	return state, errors.Join(errs...)
 }
 
-// buildRequest は、編集モードか通常生成かに応じてプロンプト一式と参照画像を構築します。
-// プロンプト本文の組み立ては ports.PanelPrompt の実装に委ね、
-// ここは「どのキャラクターの参照画像をどの順序で添付したか」を伝える役に徹します。
+// buildRequest builds the prompt set and reference images for either edit mode or
+// normal generation. Assembling the prompt text is left to the ports.PanelPrompt
+// implementation; this only conveys "whose reference images were attached, in what order".
 func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel, opts ports.GenerateOptions, aspectRatio string) (promptSet, []string, error) {
 	if opts.EditPrompt != "" {
 		if panel.Generation == nil || panel.Generation.ImageURL == "" {
-			return promptSet{}, nil, fmt.Errorf("%w: パネル %q には編集対象の生成済み画像がありません", ports.ErrInvalidRequest, panel.ID)
+			return promptSet{}, nil, fmt.Errorf("%w: panel %q has no generated image to edit", ports.ErrInvalidRequest, panel.ID)
 		}
 		set, err := newPromptSet(pr.prompt.BuildPanelEdit(opts.EditPrompt))
 		if err != nil {
@@ -215,15 +216,15 @@ func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel
 	for _, id := range panel.ReferencedCharacterIDs() {
 		char := pr.characters.GetCharacter(id)
 		if char == nil {
-			// ChapterScriptRunner が background に降格させるため通常は到達しないが、
-			// 手書きの state 等で未知IDが紛れた場合は参照なしで続行する。
-			slog.WarnContext(ctx, "未定義のキャラクターIDを参照対象から除外します", "character_id", id)
+			// Normally unreachable, since ChapterScriptRunner demotes these to background,
+			// but if an unknown ID slips in (a hand-written state, etc.), continue without a reference.
+			slog.WarnContext(ctx, "excluding unknown character ID from references", "character_id", id)
 			continue
 		}
-		// 生成アスペクト比に一致する参照画像（あれば）を優先し、細部のブレを抑える
+		// Prefer a reference image matching the generation aspect ratio (if any) to suppress detail drift
 		referenceURL := char.ReferenceURLFor(aspectRatio)
 		if referenceURL == "" {
-			slog.WarnContext(ctx, "キャラクターに参照画像がありません", "character_id", id)
+			slog.WarnContext(ctx, "character has no reference image", "character_id", id)
 			continue
 		}
 		images = append(images, referenceURL)

@@ -92,17 +92,17 @@ func TestSaveNilStateFails(t *testing.T) {
 	}
 }
 
-// errReader は Open を必ず失敗させる ContentReader です。
+// errReader is a ContentReader whose Open always fails.
 type errReader struct{ err error }
 
 func (r *errReader) Open(_ context.Context, _ string) (io.ReadCloser, error) {
 	return nil, r.err
 }
 
-// TestLoadClassifiesFailures は、Load の失敗が ports の番兵で分類されることを
-// 確認します。state が「まだ無い」「壊れている」「読めなかった」は消費側の応答
-// （404 / 400 / 502）が変わるところなので、メッセージではなく errors.Is で
-// 見分けられなければなりません。
+// TestLoadClassifiesFailures checks that Load's failures are classified with the ports
+// sentinels. "Not there yet", "broken" and "could not be read" change the consumer's
+// response (404 / 400 / 502), so they must be distinguishable with errors.Is, not by
+// message.
 func TestLoadClassifiesFailures(t *testing.T) {
 	t.Parallel()
 
@@ -111,7 +111,7 @@ func TestLoadClassifiesFailures(t *testing.T) {
 		want   error
 	}{
 		"missing": {
-			// remoteio はローカル・GCS・S3 のいずれでも不存在を os.ErrNotExist で包む。
+			// remoteio wraps not-found as os.ErrNotExist on local, GCS and S3 alike.
 			reader: &errReader{err: fmt.Errorf("open failed: %w", fs.ErrNotExist)},
 			want:   ports.ErrNotFound,
 		},
@@ -124,7 +124,7 @@ func TestLoadClassifiesFailures(t *testing.T) {
 			want:   ports.ErrInvalidRequest,
 		},
 		"duplicate member": {
-			// json/v2 の既定は重複拒否。v1 は後勝ちで黙って読んでいた。
+			// json/v2 rejects duplicates by default. v1 silently read them last-key-wins.
 			reader: &memReader{data: []byte(`{"id":"a","id":"b"}`)},
 			want:   ports.ErrInvalidRequest,
 		},
@@ -144,9 +144,9 @@ func TestLoadClassifiesFailures(t *testing.T) {
 	}
 }
 
-// TestLoadIfExistsOnlyTreatsNotFoundAsAbsent は、「無い」と言えるのが ErrNotFound の
-// ときだけであることを確認します。読み取り失敗や壊れた state まで「無い」に化けると、
-// 呼び出し側が新規に生成した状態で既存の記録を上書きします。
+// TestLoadIfExistsOnlyTreatsNotFoundAsAbsent checks that only ErrNotFound means
+// "absent". If a read failure or a broken state turned into "absent", the caller would
+// overwrite the existing record with a freshly generated state.
 func TestLoadIfExistsOnlyTreatsNotFoundAsAbsent(t *testing.T) {
 	t.Parallel()
 
@@ -183,8 +183,8 @@ func TestLoadIfExistsOnlyTreatsNotFoundAsAbsent(t *testing.T) {
 	}
 }
 
-// TestSaveClassifiesWriteFailure は、保存の失敗が再試行の価値がある分類
-// （ErrGeneration）で返ることを確認します。
+// TestSaveClassifiesWriteFailure checks that a save failure comes back in the class worth
+// retrying (ErrGeneration).
 func TestSaveClassifiesWriteFailure(t *testing.T) {
 	t.Parallel()
 

@@ -19,8 +19,8 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// concurrencyProbe は、同時に走った生成の最大数を記録する ImageGenerator です。
-// failOn に含まれるプロンプト断片を持つリクエストは失敗させます。
+// concurrencyProbe is an ImageGenerator that records the maximum number of generations
+// running at once. Requests containing a prompt fragment in failOn are failed.
 type concurrencyProbe struct {
 	mu      sync.Mutex
 	inFlite int
@@ -53,7 +53,7 @@ func (p *concurrencyProbe) Generate(_ context.Context, req ImageRequest) (*Image
 	return &ImageResponse{Data: []byte("fake-png"), MIMEType: "image/png", UsedSeed: 777}, nil
 }
 
-// concurrentWriter は並列書き込みに耐える mockWriter 代替です。
+// concurrentWriter is a mockWriter replacement that tolerates parallel writes.
 type concurrentWriter struct {
 	mu    sync.Mutex
 	paths []string
@@ -66,7 +66,7 @@ func (w *concurrentWriter) Write(_ context.Context, path string, _ io.Reader, _ 
 	return nil
 }
 
-// batchState は指定コマ数の state を作ります（1章・全コマ同一ページ）。
+// batchState builds a state with the given number of panels (one chapter, all panels on one page).
 func batchState(t *testing.T, panelCount int) *comic.MangaState {
 	t.Helper()
 	state := &comic.MangaState{
@@ -90,9 +90,9 @@ func batchState(t *testing.T, panelCount int) *comic.MangaState {
 func TestGenerateAllPanelsRunsConcurrently(t *testing.T) {
 	t.Parallel()
 
-	// バブル内では hold の time.Sleep が仮想時間を進めるだけになり、枠が埋まるまで
-	// 次のコマが走り出さないことが保証されます。実時間に依存しないため、
-	// 「2 以上 4 以下」ではなく MaxConcurrency ちょうどを期待できます。
+	// Inside the bubble, hold's time.Sleep only advances virtual time, which guarantees the
+	// next panel does not start until a slot frees up. Not depending on real time, the test
+	// can expect exactly MaxConcurrency rather than "between 2 and 4".
 	synctest.Test(t, func(t *testing.T) {
 		probe := &concurrencyProbe{hold: 30 * time.Millisecond}
 		runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
@@ -107,14 +107,14 @@ func TestGenerateAllPanelsRunsConcurrently(t *testing.T) {
 		}
 
 		if got := probe.calls.Load(); got != 8 {
-			t.Errorf("生成回数 = %d, want 8", got)
+			t.Errorf("generations = %d, want 8", got)
 		}
 		if probe.peak != 4 {
-			t.Errorf("同時実行の最大数 = %d, want 4（少なければ並列に走っておらず、多ければ MaxConcurrency を超えている）", probe.peak)
+			t.Errorf("peak concurrency = %d, want 4 (lower means not running in parallel, higher means exceeding MaxConcurrency)", probe.peak)
 		}
 		for i := range state.Panels {
 			if state.Panels[i].Generation == nil {
-				t.Fatalf("パネル %q に生成記録がない", state.Panels[i].ID)
+				t.Fatalf("panel %q has no generation record", state.Panels[i].ID)
 			}
 		}
 	})
@@ -128,14 +128,14 @@ func TestGenerateAllPanelsSerialByDefault(t *testing.T) {
 		runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 		runner.generator = probe
 		runner.writer = &concurrentWriter{}
-		// NewPanelImageRunner の既定（MaxConcurrency 未指定 → 1）を模す
+		// Mimic NewPanelImageRunner's default (MaxConcurrency unset → 1)
 		runner.maxConcurrency = 1
 
 		if _, err := runner.GenerateAllPanels(context.Background(), batchState(t, 4), ports.BatchOptions{Model: "batch-model"}); err != nil {
 			t.Fatalf("GenerateAllPanels failed: %v", err)
 		}
 		if probe.peak != 1 {
-			t.Errorf("同時実行の最大数 = %d, want 1（既定は逐次実行）", probe.peak)
+			t.Errorf("peak concurrency = %d, want 1 (the default is sequential)", probe.peak)
 		}
 	})
 }
@@ -143,7 +143,7 @@ func TestGenerateAllPanelsSerialByDefault(t *testing.T) {
 func TestGenerateAllPanelsKeepsSuccessesOnPartialFailure(t *testing.T) {
 	t.Parallel()
 
-	// scene-02 のコマだけ失敗させる
+	// Fail only the scene-02 panel
 	probe := &concurrencyProbe{failOn: "scene-02"}
 	runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 	runner.generator = probe
@@ -155,17 +155,17 @@ func TestGenerateAllPanelsKeepsSuccessesOnPartialFailure(t *testing.T) {
 		t.Fatal("GenerateAllPanels succeeded, want error")
 	}
 	if state == nil {
-		t.Fatal("state = nil, want 成功分を記録した state")
+		t.Fatal("state = nil, want the state with the successes recorded")
 	}
 	if !errors.Is(err, ports.ErrGeneration) {
-		t.Errorf("err = %v, want ports.ErrGeneration を含む", err)
+		t.Errorf("err = %v, want one containing ports.ErrGeneration", err)
 	}
 
 	if state.Panels[0].Generation == nil || state.Panels[2].Generation == nil {
-		t.Error("成功したコマの生成記録が state に残っていない")
+		t.Error("the successful panel's generation record is missing from the state")
 	}
 	if state.Panels[1].Generation != nil {
-		t.Error("失敗したコマに生成記録が付いている")
+		t.Error("the failed panel has a generation record")
 	}
 }
 
@@ -186,10 +186,10 @@ func TestGenerateAllPanelsSkipGenerated(t *testing.T) {
 	}
 
 	if got := probe.calls.Load(); got != 2 {
-		t.Errorf("生成回数 = %d, want 2（生成済みの1コマは飛ばす）", got)
+		t.Errorf("generations = %d, want 2 (the already generated panel is skipped)", got)
 	}
 	if state.Panels[0].Generation.ImageURL != "gs://b/done.png" {
-		t.Error("生成済みコマの記録が上書きされている")
+		t.Error("the already generated panel's record was overwritten")
 	}
 }
 
@@ -202,8 +202,8 @@ func TestGenerateAllPanelsNilState(t *testing.T) {
 	}
 }
 
-// 打ち切られた後に順番が来た要素は生成を始めないこと。始めてしまうと、ジョブが
-// タイムアウトした後も残りの全件が課金されます。
+// An element whose turn comes after the cutoff must not start generating. If it did,
+// every remaining item would still be billed after the job timed out.
 func TestRunBatchStopsStartingAfterCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -212,16 +212,16 @@ func TestRunBatchStopsStartingAfterCancel(t *testing.T) {
 	results, errs := runBatch(ctx, 1, []int{0, 1, 2, 3}, func(_ context.Context, index int) (int, error) {
 		calls.Add(1)
 		if index == 1 {
-			cancel() // 2 件目の生成中にジョブが打ち切られる
+			cancel() // the job is cut off while the 2nd item is generating
 		}
 		return index + 10, nil
 	})
 
 	if got := calls.Load(); got != 2 {
-		t.Errorf("render の呼び出し回数 = %d, want 2（打ち切り後は始めない）", got)
+		t.Errorf("render calls = %d, want 2 (nothing starts after the cutoff)", got)
 	}
 	if results[0] != 10 || results[1] != 11 {
-		t.Errorf("results = %v, want 済んだ 2 件の結果が残る", results)
+		t.Errorf("results = %v, want the 2 finished results kept", results)
 	}
 	for _, i := range []int{2, 3} {
 		if !errors.Is(errs[i], context.Canceled) {
@@ -246,7 +246,7 @@ func TestUniquePageNumbersSortedAndDeduplicated(t *testing.T) {
 	}
 }
 
-// batchPageState は指定ページ数の state を作ります（各ページ1コマ、生成済み）。
+// batchPageState builds a state with the given number of pages (one generated panel per page).
 func batchPageState(t *testing.T, pageCount int) *comic.MangaState {
 	t.Helper()
 	state := &comic.MangaState{
@@ -285,20 +285,20 @@ func TestComposeAllPagesRunsConcurrently(t *testing.T) {
 		}
 
 		if got := probe.calls.Load(); got != 6 {
-			t.Errorf("合成回数 = %d, want 6", got)
+			t.Errorf("compositions = %d, want 6", got)
 		}
 		if probe.peak != 3 {
-			t.Errorf("同時実行の最大数 = %d, want 3（少なければ並列に走っておらず、多ければ MaxConcurrency を超えている）", probe.peak)
+			t.Errorf("peak concurrency = %d, want 3 (lower means not running in parallel, higher means exceeding MaxConcurrency)", probe.peak)
 		}
 
 		if len(state.Pages) != 6 {
-			t.Fatalf("Pages = %d 件, want 6", len(state.Pages))
+			t.Fatalf("Pages = %d, want 6", len(state.Pages))
 		}
-		// ページ番号ごとに1件ずつ upsert されていること
+		// One upsert per page number
 		for page := 1; page <= 6; page++ {
 			artifact := state.PageArtifactByNumber(page)
 			if artifact == nil || artifact.Generation == nil {
-				t.Errorf("ページ %d の記録がない", page)
+				t.Errorf("no record for page %d", page)
 			}
 		}
 	})
@@ -318,13 +318,13 @@ func TestComposeAllPagesKeepsSuccessesOnPartialFailure(t *testing.T) {
 		t.Fatal("ComposeAllPages succeeded, want error")
 	}
 	if state == nil {
-		t.Fatal("state = nil, want 成功分を記録した state")
+		t.Fatal("state = nil, want the state with the successes recorded")
 	}
 	if len(state.Pages) != 2 {
-		t.Errorf("Pages = %d 件, want 2（成功した分だけ記録される）", len(state.Pages))
+		t.Errorf("Pages = %d, want 2 (only the successes are recorded)", len(state.Pages))
 	}
 	if state.PageArtifactByNumber(2) != nil {
-		t.Error("失敗したページ2の記録が付いている")
+		t.Error("the failed page 2 has a record")
 	}
 }
 
@@ -349,16 +349,16 @@ func TestComposeAllPagesSkipGenerated(t *testing.T) {
 	}
 
 	if got := probe.calls.Load(); got != 2 {
-		t.Errorf("合成回数 = %d, want 2（合成済みの1ページは飛ばす）", got)
+		t.Errorf("compositions = %d, want 2 (the already composed page is skipped)", got)
 	}
 	if state.PageArtifactByNumber(1).Generation.ImageURL != "gs://b/page_1.png" {
-		t.Error("合成済みページの記録が上書きされている")
+		t.Error("the already composed page's record was overwritten")
 	}
 }
 
-// 一括生成でも画風モードがプロンプト実装まで届くことを確かめます。
-// 一括生成は BatchOptions を GenerateOptions へ詰め替えて1件ずつ回すので、
-// その詰め替えで落ちていないことを1件見ておきます。
+// Checks that the art style mode reaches the prompt implementation in a batch too.
+// A batch repacks BatchOptions into GenerateOptions and runs them one by one, so one item
+// is checked to confirm the repacking does not drop it.
 func TestGenerateAllPanelsPassesStyleMode(t *testing.T) {
 	t.Parallel()
 

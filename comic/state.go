@@ -1,9 +1,9 @@
-// Package comic は、go-comic-kit の中核データモデルを定義します。
+// Package comic defines the core data model of go-comic-kit.
 //
-// 中心となるのは MangaState（1作品の全状態を保持する永続ドキュメント）で、
-// 章・コマ・台詞・デザインシート記録・ページ成果物と、それらを操作するメソッドを持ちます。
-// 操作の契約（インターフェース）は ports パッケージが持ちます。
-// 設計の詳細は README.md を参照してください。
+// At its center is MangaState (the persisted document holding every piece of state of
+// one work): chapters, panels, dialogue, design-sheet records and page artifacts, with
+// the methods that operate on them. The operation contracts (interfaces) live in the
+// ports package. See README.md for the design.
 package comic
 
 import (
@@ -11,42 +11,45 @@ import (
 	"time"
 )
 
-// StateSchemaVersion は MangaState の現行スキーマバージョンです。
+// StateSchemaVersion is the current schema version of MangaState.
 const StateSchemaVersion = 1
 
-// DefaultMaxPanelsPerPage は1ページに載せるパネル数の既定値です（Repaginate 用）。
-// ページ割りの規則そのものなので、生成側の上限（ports.Config）ではなくここが持ちます。
+// DefaultMaxPanelsPerPage is the default number of panels on one page (for Repaginate).
+// It is the pagination rule itself, so it lives here rather than among the generation
+// limits (ports.Config).
 const DefaultMaxPanelsPerPage = 6
 
-// MaxReferencedCharactersPerPanel は、1コマで参照画像（デザインシート）を添付する
-// キャラクター（primary + secondary）の上限です。参照画像が増えるほど複数キャラクター同士の
-// 同一性維持は難しくなり、顔や衣装の取り違えが起きます。これを超える登場者は
-// ProminenceBackground（参照なしのモブ）として描かせます。
+// MaxReferencedCharactersPerPanel is the maximum number of characters (primary +
+// secondary) whose reference images (design sheets) are attached to one panel. The more
+// reference images there are, the harder it gets to keep several characters' identities
+// apart, and faces and outfits get swapped. Characters beyond it are drawn as
+// ProminenceBackground (mobs without a reference).
 const MaxReferencedCharactersPerPanel = 3
 
-// MaxReferencedCharactersPerPage は、1ページの合成で参照画像（デザインシート）を
-// 添付するキャラクターの上限です。
+// MaxReferencedCharactersPerPage is the maximum number of characters whose reference
+// images (design sheets) are attached when composing one page.
 //
-// コマ側の上限（MaxReferencedCharactersPerPanel）だけではページ合成を守れません。
-// 1ページには DefaultMaxPanelsPerPage までのコマが載り、合成時にはそれぞれの
-// 生成済みコマ画像も構図ガイドとして添付されるため、上限が無いと 1 回の合成に
-// 10 枚を超える参照が付きます。参照が増えるほど同一性維持が壊れるという、コマ側の
-// 上限とまったく同じ理由でページ側にも上限が要ります。
+// The per-panel cap (MaxReferencedCharactersPerPanel) alone does not protect page
+// composition. A page holds up to DefaultMaxPanelsPerPage panels, and composition also
+// attaches each generated panel image as a layout guide, so without a cap one
+// composition carries more than 10 references. Pages need a cap for exactly the same
+// reason panels do: the more references, the more identity breaks down.
 //
-// あふれた分は参照なし（プロンプトの文章での指定のみ）になります。残すのは
-// そのページに多く登場するキャラクターで、同数なら初出順です。
+// The overflow gets no reference (it is specified only in the prompt text). The
+// characters kept are the ones appearing most on that page, ties broken by first
+// appearance.
 const MaxReferencedCharactersPerPage = 4
 
-// PanelCharacter.Prominence に指定できる値です。
-// ProminencePrimary / ProminenceSecondary のキャラクターには参照画像（デザインシート）が
-// 添付され、ProminenceBackground は参照なしのモブとして描画されます。
+// Values accepted by PanelCharacter.Prominence.
+// ProminencePrimary / ProminenceSecondary characters get their reference images (design
+// sheets) attached; ProminenceBackground ones are drawn as mobs without a reference.
 const (
 	ProminencePrimary    = "primary"
 	ProminenceSecondary  = "secondary"
 	ProminenceBackground = "background"
 )
 
-// DialogueLine.Kind に指定できる値です。
+// Values accepted by DialogueLine.Kind.
 const (
 	DialogueKindSpeech    = "speech"
 	DialogueKindThought   = "thought"
@@ -55,9 +58,9 @@ const (
 	DialogueKindSFX       = "sfx"
 )
 
-// MangaState は1作品の全状態を保持する永続ドキュメントです。
-// GCS 等に保存されたこのドキュメントが唯一の真実源（source of truth）であり、
-// 履歴一覧・詳細参照・パネル単位の再生成はすべてこのドキュメントを起点に行います。
+// MangaState is the persisted document holding every piece of state of one work.
+// This document, stored on GCS or elsewhere, is the single source of truth: history
+// listings, detail views and per-panel regeneration all start from it.
 type MangaState struct {
 	Version      int              `json:"version"`
 	ID           string           `json:"id"`
@@ -75,10 +78,11 @@ type MangaState struct {
 	UpdatedAt    time.Time        `json:"updated_at"`
 }
 
-// Chapter は作品の1章（台本生成の単位）を表します。
-// 台本は「章立て（GenerateOutline）→ 章ごとのパネル生成（GenerateChapterScript）」の
-// 2段階で生成します。リッチな Panel スキーマを一発で大量生成すると JSON の破綻率と
-// 品質のブレが上がるため、1回の生成の複雑度を章単位に抑えます。
+// Chapter is one chapter of a work (the unit of script generation).
+// The script is generated in two stages: the outline (GenerateOutline), then the panels
+// of each chapter (GenerateChapterScript). Generating the rich Panel schema in bulk in
+// one shot raises the rate of broken JSON and the variance in quality, so one
+// generation's complexity is held to a chapter.
 type Chapter struct {
 	ID            string   `json:"id"`
 	Title         string   `json:"title"`
@@ -87,16 +91,16 @@ type Chapter struct {
 	PanelIDs      []string `json:"panel_ids,omitempty"`
 }
 
-// DesignSheetRef は、この作品の同一性アンカーとして使ったデザインシートの記録です。
+// DesignSheetRef records a design sheet used as an identity anchor for this work.
 type DesignSheetRef struct {
 	CharacterID string `json:"character_id"`
 	ImageURL    string `json:"image_url"`
 	UsedSeed    int64  `json:"used_seed"`
 }
 
-// Panel は漫画の1コマを表します。
-// 登場キャラクター（Characters）と発話（Dialogues）は独立しており、
-// 発話しないキャラクターも登場者として第一級で表現できます。
+// Panel is one panel of the comic.
+// The characters who appear (Characters) and the speech (Dialogues) are independent, so
+// a character who does not speak is still a first-class participant.
 type Panel struct {
 	ID           string            `json:"id"`
 	ChapterID    string            `json:"chapter_id,omitempty"`
@@ -109,9 +113,9 @@ type Panel struct {
 	Generation   *GenerationRecord `json:"generation,omitempty"`
 }
 
-// PanelCharacter は、コマへの1キャラクターの登場のしかたを表します。
-// キャラクター間の関係性（誰が誰に何をしているか）は Action に自由記述します
-// （例: "メタンの肩を掴んで揺さぶる"）。
+// PanelCharacter describes how one character appears in a panel.
+// Relationships between characters (who is doing what to whom) are free text in Action
+// (for example, "grabs Metan by the shoulders and shakes her").
 type PanelCharacter struct {
 	CharacterID string `json:"character_id"`
 	Prominence  string `json:"prominence,omitempty"`
@@ -120,16 +124,17 @@ type PanelCharacter struct {
 	Position    string `json:"position,omitempty"`
 }
 
-// DialogueLine は1つの吹き出し・ナレーションを表します。
-// SpeakerID が空文字の場合はナレーション/キャプションとして扱います。
+// DialogueLine is one speech balloon or narration.
+// An empty SpeakerID is treated as narration or a caption.
 type DialogueLine struct {
 	SpeakerID string `json:"speaker_id,omitempty"`
 	Text      string `json:"text"`
 	Kind      string `json:"kind,omitempty"`
 }
 
-// GenerationRecord は、画像がどの条件で生成されたかの完全な記録です。
-// これがあることで「同条件で再生成」「シードだけ変えて再生成」が可能になります。
+// GenerationRecord is the complete record of the conditions an image was generated under.
+// It is what makes "regenerate under the same conditions" and "regenerate with only the
+// seed changed" possible.
 type GenerationRecord struct {
 	ImageURL       string    `json:"image_url"`
 	UsedSeed       int64     `json:"used_seed"`
@@ -139,15 +144,16 @@ type GenerationRecord struct {
 	GeneratedAt    time.Time `json:"generated_at"`
 }
 
-// PageArtifact は複数パネルを1枚に合成したページ画像の記録です。
+// PageArtifact records a page image composed from several panels.
 type PageArtifact struct {
 	PageNumber int               `json:"page_number"`
 	PanelIDs   []string          `json:"panel_ids"`
 	Generation *GenerationRecord `json:"generation,omitempty"`
 }
 
-// PanelByID は指定 ID のパネルへのポインタを返します。見つからない場合は nil を返します。
-// 返されたポインタ経由の変更は state に反映されます（パネル単位の再生成で使用）。
+// PanelByID returns a pointer to the panel with the given ID, or nil if there is none.
+// Changes made through the returned pointer are reflected in the state (used by
+// per-panel regeneration).
 func (s *MangaState) PanelByID(id string) *Panel {
 	if s == nil {
 		return nil
@@ -160,8 +166,9 @@ func (s *MangaState) PanelByID(id string) *Panel {
 	return nil
 }
 
-// ReferencedCharacterIDs は、このパネルで参照画像を添付すべきキャラクター ID を
-// 重複なく登場順で返します。ProminenceBackground のキャラクター（モブ）は除外されます。
+// ReferencedCharacterIDs returns the IDs of the characters whose reference images should
+// be attached for this panel, without duplicates and in order of appearance.
+// ProminenceBackground characters (mobs) are excluded.
 func (p Panel) ReferencedCharacterIDs() []string {
 	seen := make(map[string]struct{})
 	var ids []string
@@ -178,7 +185,7 @@ func (p Panel) ReferencedCharacterIDs() []string {
 	return ids
 }
 
-// SetDesignSheet は指定キャラクターのデザインシート記録を追加または更新（upsert）します。
+// SetDesignSheet adds or updates (upserts) the design-sheet record of the given character.
 func (s *MangaState) SetDesignSheet(ref DesignSheetRef) {
 	for i := range s.DesignSheets {
 		if s.DesignSheets[i].CharacterID == ref.CharacterID {
@@ -189,7 +196,7 @@ func (s *MangaState) SetDesignSheet(ref DesignSheetRef) {
 	s.DesignSheets = append(s.DesignSheets, ref)
 }
 
-// SetPageArtifact は指定ページ番号のページ画像記録を追加または更新（upsert）します。
+// SetPageArtifact adds or updates (upserts) the page-image record of the given page number.
 func (s *MangaState) SetPageArtifact(artifact PageArtifact) {
 	for i := range s.Pages {
 		if s.Pages[i].PageNumber == artifact.PageNumber {
@@ -200,7 +207,7 @@ func (s *MangaState) SetPageArtifact(artifact PageArtifact) {
 	s.Pages = append(s.Pages, artifact)
 }
 
-// PageArtifactByNumber は指定ページ番号のページ画像記録を返します。無ければ nil を返します。
+// PageArtifactByNumber returns the page-image record of the given page number, or nil if there is none.
 func (s *MangaState) PageArtifactByNumber(page int) *PageArtifact {
 	if s == nil {
 		return nil
@@ -213,7 +220,7 @@ func (s *MangaState) PageArtifactByNumber(page int) *PageArtifact {
 	return nil
 }
 
-// PanelsForPage は指定ページ番号に属するパネルを登場順で返します。
+// PanelsForPage returns the panels on the given page, in order of appearance.
 func (s *MangaState) PanelsForPage(page int) []Panel {
 	if s == nil {
 		return nil
@@ -227,7 +234,7 @@ func (s *MangaState) PanelsForPage(page int) []Panel {
 	return panels
 }
 
-// PanelsForChapter は指定章のコマを、state の並び順で返します。
+// PanelsForChapter returns the panels of the given chapter, in the state's order.
 func (s *MangaState) PanelsForChapter(chapterID string) []Panel {
 	if s == nil {
 		return nil
@@ -241,11 +248,12 @@ func (s *MangaState) PanelsForChapter(chapterID string) []Panel {
 	return panels
 }
 
-// PagesForChapter は指定章のコマが載るページ番号を昇順で返します。
+// PagesForChapter returns, in ascending order, the page numbers carrying the given
+// chapter's panels.
 //
-// Repaginate が章境界でページを割る（1ページに2章を混ぜない）ため、ページは必ず
-// どれか1章だけに属します。この前提が崩れると、章単位の再合成が隣の章のページまで
-// 巻き込むことになります。
+// Repaginate breaks pages at chapter boundaries (never mixing two chapters on one page),
+// so every page belongs to exactly one chapter. If that assumption breaks,
+// chapter-scoped recomposition drags in the neighbouring chapter's pages.
 func (s *MangaState) PagesForChapter(chapterID string) []int {
 	if s == nil {
 		return nil
@@ -266,7 +274,7 @@ func (s *MangaState) PagesForChapter(chapterID string) []int {
 	return pages
 }
 
-// ChapterByID は指定 ID の章へのポインタを返します。見つからない場合は nil を返します。
+// ChapterByID returns a pointer to the chapter with the given ID, or nil if there is none.
 func (s *MangaState) ChapterByID(id string) *Chapter {
 	if s == nil {
 		return nil
@@ -279,14 +287,17 @@ func (s *MangaState) ChapterByID(id string) *Chapter {
 	return nil
 }
 
-// ReplaceChapterPanels は指定章のパネル群を置き換えます（冪等な章単位再生成の基礎）。
-// 既存の同章パネルを取り除き、state.Chapters の章順を保った位置に newPanels を挿入します。
-// 章の PanelIDs も更新します。指定 ID の章が存在しない場合は false を返し、何も変更しません。
+// ReplaceChapterPanels replaces the panels of the given chapter (the basis of idempotent
+// chapter-level regeneration). It removes the chapter's existing panels and inserts
+// newPanels at the position that keeps the chapter order of state.Chapters. It also
+// updates the chapter's PanelIDs. If no chapter has the given ID, it returns false and
+// changes nothing.
 //
-// 置き換える章のコマを載せていた PageArtifact は、ここで取り除きます。コマ ID は章内の
-// 位置で決まるため（ch01-p01 …）、同じコマ数で作り直すと ID の並びが元と一致し、
-// Repaginate の「コマ構成が変わったページだけ落とす」判定では古いページ画像が残ります。
-// 中身が入れ替わったことを知っているのはこの関数だけです。
+// PageArtifacts that carried the replaced chapter's panels are removed here. Panel IDs
+// are decided by position within the chapter (ch01-p01 …), so rebuilding with the same
+// panel count reproduces the original ID sequence, and Repaginate's "drop only pages
+// whose composition changed" check would keep the stale page images. Only this function
+// knows that the contents were swapped.
 func (s *MangaState) ReplaceChapterPanels(chapterID string, newPanels []Panel) bool {
 	chapter := s.ChapterByID(chapterID)
 	if chapter == nil {
@@ -303,8 +314,8 @@ func (s *MangaState) ReplaceChapterPanels(chapterID string, newPanels []Panel) b
 		return slices.ContainsFunc(artifact.PanelIDs, func(id string) bool { return replaced[id] })
 	})
 
-	// 章順にパネルを並べ直す。対象章の位置に newPanels を差し込み、
-	// どの章にも属さないパネルは末尾に保持する。
+	// Reorder the panels by chapter: insert newPanels at the target chapter's position,
+	// and keep panels that belong to no chapter at the end.
 	rebuilt := make([]Panel, 0, len(s.Panels)+len(newPanels))
 	for i := range s.Chapters {
 		if s.Chapters[i].ID == chapterID {

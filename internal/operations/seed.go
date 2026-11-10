@@ -7,14 +7,16 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 )
 
-// resolveSeedChain は「明示指定 > 前回の UsedSeed > 主役キャラクターの Seed > 新規採番」の
-// 優先順位で生成シードを決定します。パネル生成とページ合成で共通の解決規則です。
+// resolveSeedChain decides the generation seed in the priority "explicit > previous
+// UsedSeed > lead character's Seed > newly drawn". It is the resolution rule shared by
+// panel generation and page composition.
 //
-// 最後に新規採番するのは、シードを渡さずに生成すると API 側がランダムに選び、その値が
-// レスポンスに返らないためです。GenerationRecord.UsedSeed は 0 のまま記録され、次に
-// この関数へ渡しても「前回の UsedSeed」として採用されません（0 は「未設定」と区別が
-// つかない）。結果として、シードを一度も明示しない作品では「同条件での再生成」が
-// 永久に別の絵になります。ここで採番しておけば、記録された値でいつでも再現できます。
+// It draws a new one last because, when generating without a seed, the API picks one at
+// random and does not return it in the response. GenerationRecord.UsedSeed would be
+// recorded as 0, and passing it to this function next time would not adopt it as the
+// "previous UsedSeed" (0 cannot be told apart from "unset"). As a result, in a work
+// whose seeds are never specified, "regenerate under the same conditions" would always
+// draw a different picture. Drawing here means the recorded value can always reproduce it.
 func resolveSeedChain(explicit *int64, prev *comic.GenerationRecord, characters *comic.Characters, panelChars []comic.PanelCharacter) *int64 {
 	if explicit != nil {
 		return explicit
@@ -36,8 +38,8 @@ func resolveSeedChain(explicit *int64, prev *comic.GenerationRecord, characters 
 	return newSeed()
 }
 
-// newSeed は新しい生成シードを返します。
-// 下層（genai-kit）が int32 の範囲外を弾くため、範囲内に収めます。
+// newSeed returns a new generation seed.
+// The layer below (genai-kit) rejects values outside int32, so it stays within that range.
 func newSeed() *int64 {
 	seed := rand.Int64N(math.MaxInt32)
 	return &seed

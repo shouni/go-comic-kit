@@ -9,16 +9,17 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// 本ファイルは「引用した本文に生の改行が混ざっても章台本が失われない」ことを固定します。
+// This file pins that "a chapter script is not lost when quoted text contains raw newlines".
 //
-// 構造化出力（ResponseSchema）を指定しても、モデルは複数行の台詞や情景描写を
-// 引用するとき、JSON 文字列の中へ生の改行を入れてきます。応答を返しきったあとの
-// 崩れなので API の再試行では直らず、補修が無ければ章まるごと ErrGeneration で落ちます。
-// 補修は genai-kit の gemini.CleanJSONResponse が持っています。
+// Even with structured output (ResponseSchema), the model puts raw newlines inside JSON
+// strings when quoting multi-line dialogue or scene descriptions. The breakage happens
+// after the response is complete, so an API retry does not fix it, and without repair the
+// whole chapter fails with ErrGeneration. The repair lives in genai-kit's
+// gemini.CleanJSONResponse.
 
-// chapterJSONWithRawNewline は、台詞と情景描写に生の改行を含む章台本の応答です。
-// バッククォートではなく通常の文字列リテラルで書いているのは、\n を
-// エスケープではなく実際の改行としてペイロードへ入れるためです。
+// chapterJSONWithRawNewline is a chapter script response with raw newlines in the
+// dialogue and the scene description. It uses an ordinary string literal rather than
+// backquotes so that \n goes into the payload as an actual newline, not an escape.
 const chapterJSONWithRawNewline = "{\n" +
 	"  \"panels\": [\n" +
 	"    {\n" +
@@ -34,10 +35,10 @@ const chapterJSONWithRawNewline = "{\n" +
 func TestGenerateChapterScriptSurvivesRawNewlinesInQuotedText(t *testing.T) {
 	t.Parallel()
 
-	// 前提の固定: このペイロードは素のままでは JSON として読めません。
-	// ここが通ってしまうと、以降は補修を通らずに成功するので試験になりません。
+	// Pin the premise: this payload cannot be read as JSON as is.
+	// If this passed, everything after would succeed without the repair and test nothing.
 	if json.Valid([]byte(chapterJSONWithRawNewline)) {
-		t.Fatal("試験用ペイロードが妥当な JSON になっています。生の改行が消えていないか確認してください")
+		t.Fatal("the test payload is valid JSON; check that the raw newlines have not been lost")
 	}
 
 	ai := &fakeContentGenerator{text: chapterJSONWithRawNewline}
@@ -46,19 +47,19 @@ func TestGenerateChapterScriptSurvivesRawNewlinesInQuotedText(t *testing.T) {
 	state, err := runner.GenerateChapterScript(context.Background(), outlineState(), "ch01",
 		ports.ChapterScriptOptions{Model: "text-model"})
 	if err != nil {
-		t.Fatalf("引用文中の生の改行で章台本が失われました: %v", err)
+		t.Fatalf("a raw newline in quoted text lost the chapter script: %v", err)
 	}
 
 	panels := state.PanelsForChapter("ch01")
 	if len(panels) != 1 {
-		t.Fatalf("PanelsForChapter() = %d 件, want 1", len(panels))
+		t.Fatalf("PanelsForChapter() = %d, want 1", len(panels))
 	}
 
-	// 改行はエスケープされて本文に残る（削られない）。
+	// The newline stays in the text, escaped (not removed).
 	if !strings.Contains(panels[0].VisualAnchor, "\n") {
-		t.Errorf("VisualAnchor から改行が失われています: %q", panels[0].VisualAnchor)
+		t.Errorf("VisualAnchor lost its newline: %q", panels[0].VisualAnchor)
 	}
 	if len(panels[0].Dialogues) != 1 || !strings.Contains(panels[0].Dialogues[0].Text, "\n") {
-		t.Errorf("台詞から改行が失われています: %+v", panels[0].Dialogues)
+		t.Errorf("the dialogue lost its newline: %+v", panels[0].Dialogues)
 	}
 }

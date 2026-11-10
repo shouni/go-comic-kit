@@ -11,25 +11,25 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// maxInputSize は読み込みを許可する最大テキストサイズ (5MB) です。
+// maxInputSize is the maximum text size allowed to be read (5MB).
 const maxInputSize = 5 * 1024 * 1024
 
-// resolveSourceText は OutlineRequest のソース指定（テキスト直接 or URL）を解決します。
+// resolveSourceText resolves the source of an OutlineRequest (text given directly, or a URL).
 func resolveSourceText(ctx context.Context, reader ports.ContentReader, sourceText, sourceURL string) (string, error) {
 	if strings.TrimSpace(sourceText) != "" {
 		return sourceText, nil
 	}
 	if strings.TrimSpace(sourceURL) == "" {
-		return "", fmt.Errorf("%w: SourceText または SourceURL のいずれかを指定してください", ports.ErrInvalidRequest)
+		return "", fmt.Errorf("%w: specify either SourceText or SourceURL", ports.ErrInvalidRequest)
 	}
 	if reader == nil {
-		return "", fmt.Errorf("%w: SourceURL を読み込むための ContentReader が設定されていません", ports.ErrInvalidRequest)
+		return "", fmt.Errorf("%w: no ContentReader is configured to read SourceURL", ports.ErrInvalidRequest)
 	}
 	return readContent(ctx, reader, sourceURL)
 }
 
-// readContent は、指定されたソースURLからコンテンツを取得します。
-// maxInputSize を超える場合は UTF-8 の文字境界で安全に切り捨てます。
+// readContent retrieves the content from the given source URL.
+// Content over maxInputSize is truncated safely at a UTF-8 character boundary.
 func readContent(ctx context.Context, reader ports.ContentReader, url string) (string, error) {
 	rc, err := reader.Open(ctx, url)
 	if err != nil {
@@ -37,28 +37,28 @@ func readContent(ctx context.Context, reader ports.ContentReader, url string) (s
 	}
 	defer func() {
 		if closeErr := rc.Close(); closeErr != nil {
-			slog.WarnContext(ctx, "ストリームのクローズに失敗しました", "error", closeErr)
+			slog.WarnContext(ctx, "failed to close stream", "error", closeErr)
 		}
 	}()
 	limitedReader := io.LimitReader(rc, int64(maxInputSize))
 	content, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", fmt.Errorf("読み込みに失敗しました: %w", err)
+		return "", fmt.Errorf("read source: %w", err)
 	}
 
-	// 追加の読み込みを試みて切り捨てを判定
+	// Try one more read to detect truncation
 	oneMoreByte := make([]byte, 1)
 	n, readErr := rc.Read(oneMoreByte)
 	if readErr != nil && readErr != io.EOF {
-		return "", fmt.Errorf("サイズ確認中にエラーが発生しました: %w", readErr)
+		return "", fmt.Errorf("check source size: %w", readErr)
 	}
 
 	if n > 0 {
-		slog.WarnContext(ctx, "制限サイズに達したため切り捨てられました",
+		slog.WarnContext(ctx, "source truncated at the size limit",
 			"url", url,
 			"limit_bytes", maxInputSize)
 
-		// UTF-8の文字境界に合わせて末尾の不正なバイトを取り除く
+		// Drop the invalid trailing bytes to align with a UTF-8 character boundary
 		if !utf8.Valid(content) {
 			for len(content) > 0 {
 				isStart := utf8.RuneStart(content[len(content)-1])

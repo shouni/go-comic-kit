@@ -5,21 +5,22 @@ import (
 	"io"
 )
 
-// ContentReader は、指定されたURIからコンテンツを取得するためのインターフェースです。
+// ContentReader is the interface for retrieving content from a URI.
 type ContentReader interface {
 	Open(ctx context.Context, uri string) (io.ReadCloser, error)
 }
 
-// Downloader は、URL からデータストリームを取得するためのインターフェースです。
+// Downloader is the interface for retrieving a data stream from a URL.
 //
-// go-http-kit の httpkit.Streamer を直接受け取らずここで宣言しているのは、口が
-// stdlib の型だけで閉じており、それだけのために依存辺を 1 本増やす必要がないためです。
-// *httpkit.Client はそのまま満たします。
+// It is declared here instead of taking go-http-kit's httpkit.Streamer because its
+// signature uses stdlib types only, and that alone does not justify one more dependency
+// edge. *httpkit.Client satisfies it as is.
 //
-// 取得先の検証（SSRF 対策・ドメイン許可リスト）は実装側の責務です。参照画像の URL は
-// 呼び出し側の入力がそのまま渡るため、キットは取りに行ってよいかを判断しません。
+// Validating the destination (SSRF protection, domain allowlists) is the
+// implementation's responsibility. Reference image URLs are the caller's input passed
+// through as is, so the kit does not decide whether they may be fetched.
 type Downloader interface {
-	// GetStream は指定された URL からデータストリームを取得します。
-	// 呼び出し元は、使用後に必ず戻り値の io.ReadCloser を Close() する責任があります。
+	// GetStream retrieves a data stream from the given URL.
+	// The caller is responsible for calling Close() on the returned io.ReadCloser after use.
 	GetStream(ctx context.Context, url string) (io.ReadCloser, error)
 }

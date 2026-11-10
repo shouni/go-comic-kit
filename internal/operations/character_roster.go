@@ -7,7 +7,8 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 )
 
-// characterRoster はプロンプトに注入するキャラクター一覧（箇条書き）を構築します。
+// characterRoster builds the character list (bulleted) injected into the prompt.
+// Its text is prompt data sent to the model, so it stays Japanese.
 func characterRoster(characters *comic.Characters) string {
 	if characters.Len() == 0 {
 		return "（キャラクター定義なし）"

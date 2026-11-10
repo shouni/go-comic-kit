@@ -13,7 +13,7 @@ import (
 	"github.com/shouni/go-comic-kit/internal/operations"
 )
 
-// blockingImageGenerator は release されるまで応答を返さない fake です。
+// blockingImageGenerator is a fake that does not respond until released.
 type blockingImageGenerator struct {
 	calls   atomic.Int32
 	release chan struct{}
@@ -41,8 +41,8 @@ func imageReq(seed *int64) operations.ImageRequest {
 func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 	t.Parallel()
 
-	// synctest.Test はこの関数を隔離された「バブル」で実行します。合流待ちを
-	// synctest.Wait で表現できるため、待ち時間を秒数で見積もらずに済みます。
+	// synctest.Test runs this function in an isolated "bubble". Waiting for callers to
+	// merge can be expressed with synctest.Wait, so no wait time has to be guessed in seconds.
 	synctest.Test(t, func(t *testing.T) {
 		inner := &blockingImageGenerator{release: make(chan struct{})}
 		g := &singleflightImageGenerator{inner: inner}
@@ -61,8 +61,8 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 			})
 		}
 
-		// 全ゴルーチンが in-flight に相乗りするまで待ってから解放する。
-		// Wait はバブル内の他のゴルーチンがすべて継続的にブロックした時点で返ります。
+		// Wait until every goroutine has joined the in-flight call, then release.
+		// Wait returns once every other goroutine in the bubble is durably blocked.
 		synctest.Wait()
 		close(inner.release)
 		wg.Wait()
@@ -71,7 +71,7 @@ func TestSingleflightFusionDeduplicatesConcurrentCalls(t *testing.T) {
 			t.Errorf("inner calls = %d, want 1 (deduplicated)", got)
 		}
 
-		// 応答は呼び出し元ごとに複製され、変更が他に波及しない
+		// The response is cloned per caller, so a change does not leak to the others
 		results[0].Data[0] = 'X'
 		if results[1].Data[0] == 'X' {
 			t.Error("response Data is shared between callers, want cloned")
@@ -83,7 +83,7 @@ func TestSingleflightFusionDifferentSeedsAreSeparate(t *testing.T) {
 	t.Parallel()
 
 	inner := &blockingImageGenerator{release: make(chan struct{})}
-	close(inner.release) // 即時応答
+	close(inner.release) // respond immediately
 	g := &singleflightImageGenerator{inner: inner}
 
 	seed1, seed2 := int64(1), int64(2)
@@ -109,7 +109,7 @@ func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 		inner := &blockingImageGenerator{release: make(chan struct{})}
 		g := &singleflightImageGenerator{inner: inner}
 
-		// 呼び出し元A: すぐキャンセルする
+		// Caller A: cancels right away
 		ctxA, cancelA := context.WithCancel(context.Background())
 		errA := make(chan error, 1)
 		go func() {
@@ -117,7 +117,7 @@ func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 			errA <- err
 		}()
 
-		// 呼び出し元B: 同一キーで相乗りし、完走を期待する
+		// Caller B: joins on the same key and is expected to finish
 		respB := make(chan *operations.ImageResponse, 1)
 		go func() {
 			resp, err := g.Generate(context.Background(), imageReq(nil))
@@ -127,14 +127,14 @@ func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 			respB <- resp
 		}()
 
-		// A と B の双方が in-flight に入るまで待つ
+		// Wait until both A and B are in flight
 		synctest.Wait()
 		cancelA()
 		if err := <-errA; err == nil {
 			t.Error("caller A returned nil error after cancel, want context error")
 		}
 
-		// A のキャンセル後に実行を解放しても B は結果を受け取れる
+		// Releasing the execution after A's cancel still gives B the result
 		close(inner.release)
 		select {
 		case resp := <-respB:
@@ -142,13 +142,13 @@ func TestSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 				t.Errorf("caller B response = %+v, want shared result", resp)
 			}
 		case <-time.After(5 * time.Second):
-			// バブル内の時計は仮想時間なので、この 5 秒で実時間は消費しません。
+			// The clock in the bubble is virtual, so these 5 seconds take no real time.
 			t.Fatal("caller B timed out, shared execution was killed by caller A's cancel")
 		}
 	})
 }
 
-// countingStructuredGenerator は呼び出し回数を数える fake です。
+// countingStructuredGenerator is a fake that counts its calls.
 type countingStructuredGenerator struct {
 	calls   atomic.Int32
 	release chan struct{}

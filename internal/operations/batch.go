@@ -10,12 +10,14 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// runBatch は targets の各要素に対して render を最大 maxConcurrency 並列で実行し、
-// 結果とエラーを targets と同じ並びで返します（失敗した要素の結果はゼロ値です）。
+// runBatch runs render for each element of targets with at most maxConcurrency in
+// parallel, and returns the results and errors in the same order as targets (a failed
+// element's result is the zero value).
 //
-// 最初の失敗で残りを打ち切らないのは、成功分を記録して未生成分だけ再実行できる
-// ようにするためです（ports.PanelImageGenerator.GenerateAllPanels 参照）。
-// ctx が終わった後に順番が来た要素は render を呼ばず、ctx のエラーを記録します。
+// It does not abort the rest on the first failure, so that the successes can be recorded
+// and only the missing ones re-run (see ports.PanelImageGenerator.GenerateAllPanels).
+// An element whose turn comes after ctx is done does not call render; ctx's error is
+// recorded instead.
 func runBatch[T any](
 	ctx context.Context,
 	maxConcurrency int,
@@ -33,9 +35,10 @@ func runBatch[T any](
 	eg.SetLimit(maxConcurrency)
 	for i, target := range targets {
 		eg.Go(func() error {
-			// 呼び出し元のキャンセル後は新しい生成を始めません（済んだ分の結果は残します）。
-			// render の先の AI 呼び出しは ctx から切り離されて走るため、ここで止めないと、
-			// ジョブが打ち切られた後も残りの全件が 1 件ずつ発射されて課金されます。
+			// After the caller cancels, no new generation starts (finished results are kept).
+			// The AI call behind render runs detached from ctx, so without stopping here,
+			// every remaining item would still be fired one by one, and billed, after the
+			// job was cut off.
 			if err := ctx.Err(); err != nil {
 				errs[i] = err
 				return nil
@@ -49,21 +52,21 @@ func runBatch[T any](
 			return nil
 		})
 	}
-	// render に渡すクロージャは常に nil を返すため、Wait もエラーを返しません
-	// （個々の失敗は errs に集約しています）。
+	// The closures passed to eg.Go always return nil, so Wait returns no error either
+	// (individual failures are gathered in errs).
 	_ = eg.Wait()
 
 	return results, errs
 }
 
-// validateBatchChapter は BatchOptions.ChapterID が state に存在するかを確かめます。
-// 存在しない ID を 0 件成功として通さない理由は ports.BatchOptions.ChapterID を参照。
+// validateBatchChapter checks that BatchOptions.ChapterID exists in the state.
+// For why an unknown ID is not passed as a zero-item success, see ports.BatchOptions.ChapterID.
 func validateBatchChapter(state *comic.MangaState, chapterID string) error {
 	if chapterID == "" {
 		return nil
 	}
 	if state.ChapterByID(chapterID) == nil {
-		return fmt.Errorf("%w: 章 %q", ports.ErrNotFound, chapterID)
+		return fmt.Errorf("%w: chapter %q", ports.ErrNotFound, chapterID)
 	}
 	return nil
 }

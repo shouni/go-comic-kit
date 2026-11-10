@@ -1,5 +1,6 @@
-// Package ports は、go-comic-kit の操作の契約（インターフェース）と、
-// その入出力・設定を定義します。データモデルそのものは comic パッケージが持ちます。
+// Package ports defines the contracts (interfaces) of go-comic-kit's operations, with
+// their inputs, outputs and configuration. The data model itself lives in the comic
+// package.
 package ports
 
 import (
@@ -8,60 +9,63 @@ import (
 	"github.com/shouni/go-comic-kit/comic"
 )
 
-// デフォルト値の定義
+// Default values
 const (
-	// DefaultMaxConcurrency は一括生成（GenerateAllPanels / ComposeAllPages）の
-	// 既定の最大並列数です。既定を1にしているのは、明示的に上げるまで従来どおりの
-	// 逐次実行を保ち、API クォータの消費のしかたを変えないためです。
+	// DefaultMaxConcurrency is the default maximum parallelism of batch generation
+	// (GenerateAllPanels / ComposeAllPages). The default is 1 so that, until it is raised
+	// explicitly, execution stays sequential as before and API quota is consumed the same
+	// way.
 	DefaultMaxConcurrency = 1
-	// DefaultRequestTimeout は外部 AI 呼び出し1回あたりの既定の上限時間です。
-	// 画像生成は数十秒かかることがあるため、余裕を持たせています。
+	// DefaultRequestTimeout is the default time limit of one external AI call.
+	// Image generation can take tens of seconds, so it leaves headroom.
 	DefaultRequestTimeout = 5 * time.Minute
-	// DefaultMaxChapters は章立て生成（GenerateOutline）の既定の章数上限です。
+	// DefaultMaxChapters is the default chapter limit of outline generation (GenerateOutline).
 	DefaultMaxChapters = 8
-	// DefaultMaxPanelsPerChapter は章単位の台本生成の既定のパネル数上限です。
+	// DefaultMaxPanelsPerChapter is the default panel limit of per-chapter script generation.
 	DefaultMaxPanelsPerChapter = 8
 
-	// DefaultCacheControl は、生成画像を保存する際の既定の Cache-Control です。
-	// "public" は生成物を公開配信してよいという前提なので、非公開バケットへ書くデプロイでは
-	// Config.CacheControl に "private" 等を指定してください。
+	// DefaultCacheControl is the default Cache-Control used when saving generated images.
+	// "public" assumes the artifacts may be served publicly, so a deployment writing to a
+	// private bucket should set Config.CacheControl to "private" or similar.
 	DefaultCacheControl = "public, max-age=1800"
 )
 
-// Config は Go Comic Kit の各操作を動作させるための基本設定です。
+// Config is the basic configuration that runs Go Comic Kit's operations.
 type Config struct {
 	// --- Generation Settings ---
-	// MaxConcurrency は一括生成（GenerateAllPanels / ComposeAllPages）の最大並列数です。
-	// 1コマ・1ページ単位の操作は元から1回の生成しか行わないため影響を受けません。
+	// MaxConcurrency is the maximum parallelism of batch generation (GenerateAllPanels /
+	// ComposeAllPages). Single-panel and single-page operations only ever run one
+	// generation, so they are unaffected.
 	MaxConcurrency int
-	// RateInterval は AI 呼び出しの発射間隔の下限です（0 で無制限）。テキスト生成・画像生成を
-	// まとめて1つのリミッターで制御します。クォータはプロジェクト単位のためです。
-	// スループットの上限は MaxConcurrency ではなく 1/RateInterval で決まる点に注意してください
-	// （例: RateInterval=10s なら並列数をいくつにしても毎分6回までになります）。
+	// RateInterval is the minimum spacing between AI calls (0 means unlimited). Text and
+	// image generation share one limiter, because quota is per project.
+	// Note that throughput is capped by 1/RateInterval, not by MaxConcurrency
+	// (for example, RateInterval=10s allows at most 6 calls a minute at any parallelism).
 	RateInterval time.Duration
-	// CacheControl は生成画像を保存する際の Cache-Control です。
-	// 空の場合は DefaultCacheControl（public, max-age=1800）を使います。
+	// CacheControl is the Cache-Control used when saving generated images.
+	// Empty uses DefaultCacheControl (public, max-age=1800).
 	CacheControl string
 
 	// --- Script Settings ---
-	// MaxChapters は章立て生成の章数上限です。
+	// MaxChapters is the chapter limit of outline generation.
 	MaxChapters int
-	// MaxPanelsPerChapter は章単位の台本生成のパネル数上限です。
+	// MaxPanelsPerChapter is the panel limit of per-chapter script generation.
 	MaxPanelsPerChapter int
 
 	// --- Layout Settings ---
-	// MaxPanelsPerPage は1ページに載せるコマ数の上限です（Repaginate に渡されます）。
-	// 章が変わるところでは、この数に達していなくても必ず改ページします。
+	// MaxPanelsPerPage is the maximum number of panels on one page (passed to Repaginate).
+	// A new page always starts where the chapter changes, even below this number.
 	MaxPanelsPerPage int
 
 	// --- Timeout & Retries ---
-	// RequestTimeout は外部 AI 呼び出し1回あたりの上限時間です（テキスト生成・画像生成・
-	// 参照画像のアップロードに適用されます）。工程列全体を包む上限ではないので、
-	// 一番遅い1回の生成が収まる長さにしてください。0 以下なら DefaultRequestTimeout。
+	// RequestTimeout is the time limit of one external AI call (applied to text
+	// generation, image generation and reference image uploads). It does not bound the
+	// whole sequence of steps, so make it long enough for the slowest single generation.
+	// 0 or less means DefaultRequestTimeout.
 	RequestTimeout time.Duration
 }
 
-// ApplyDefaults は未設定（ゼロ値）の項目にデフォルト値を適用します。
+// ApplyDefaults fills unset (zero-value) fields with their defaults.
 func (c *Config) ApplyDefaults() {
 	if c.MaxConcurrency <= 0 {
 		c.MaxConcurrency = DefaultMaxConcurrency
@@ -80,10 +84,10 @@ func (c *Config) ApplyDefaults() {
 	}
 }
 
-// Validate は設定値の妥当性を検証します。
+// Validate checks that the configuration is valid.
 //
-// 現在このメソッドが弾くものはありません（理由は ErrConfigInvalid の説明を参照）。
-// workflow.New が呼ぶ口は、設定に必須項目が戻ったときの置き場として残してあります。
+// Currently it rejects nothing (see ErrConfigInvalid for why). The hook that workflow.New
+// calls is kept as the place for checks if required fields return to the configuration.
 func (c *Config) Validate() error {
 	return nil
 }

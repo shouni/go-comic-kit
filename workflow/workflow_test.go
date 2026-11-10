@@ -56,7 +56,7 @@ func validArgs(t *testing.T) Args {
 		t.Fatalf("NewCharacters failed: %v", err)
 	}
 	return Args{
-		// モデル名と画風指定はキットが既定値を持たないため、呼び出し側が必ず指定する。
+		// The kit has no defaults for model names and art direction, so the caller always specifies them.
 		Config:     ports.Config{},
 		Downloader: &fakeDownloader{},
 		Reader:     &fakeWorkflowReader{},
@@ -95,7 +95,7 @@ func TestNewValidatesRequiredArgs(t *testing.T) {
 		"Writer":     func(a *Args) { a.Writer = nil },
 		"AIClient":   func(a *Args) { a.AIClient = nil },
 		"Characters": func(a *Args) { a.Characters = nil },
-		// プロンプトは5つとも必須。1つでも nil なら構築に失敗すること。
+		// All five prompts are required. Construction must fail if any one is nil.
 		"OutlinePrompt":       func(a *Args) { a.OutlinePrompt = nil },
 		"ChapterScriptPrompt": func(a *Args) { a.ChapterScriptPrompt = nil },
 		"DesignSheetPrompt":   func(a *Args) { a.DesignSheetPrompt = nil },

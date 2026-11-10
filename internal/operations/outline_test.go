@@ -83,7 +83,7 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 	if len(state.Chapters) != 2 {
 		t.Fatalf("Chapters = %+v, want 2", state.Chapters)
 	}
-	// AI出力のIDは信用せず ch01 形式で採番し直す
+	// IDs in the AI output are not trusted; they are reassigned in ch01 form
 	if state.Chapters[0].ID != "ch01" || state.Chapters[1].ID != "ch02" {
 		t.Errorf("chapter IDs = %q, %q, want ch01, ch02", state.Chapters[0].ID, state.Chapters[1].ID)
 	}
@@ -96,11 +96,11 @@ func TestGenerateOutlineFromSourceText(t *testing.T) {
 	if state.CreatedAt.IsZero() || state.UpdatedAt.IsZero() {
 		t.Error("CreatedAt/UpdatedAt must be set")
 	}
-	// 構造化出力オプションの検証
+	// Check the structured output options
 	if ai.lastOpts.ResponseMIMEType != "application/json" || ai.lastOpts.ResponseJSONSchema == nil {
 		t.Errorf("opts = %+v, want application/json with ResponseJSONSchema", ai.lastOpts)
 	}
-	// セーフティブロックによる生成失敗を抑えるため BlockNone を指定する
+	// BlockNone is set to avoid generation failures from safety blocks
 	if len(ai.lastOpts.SafetySettings) != 4 {
 		t.Errorf("SafetySettings = %+v, want 4 categories with BlockNone", ai.lastOpts.SafetySettings)
 	}
@@ -205,9 +205,9 @@ func TestGenerateOutlineEmptyModelOverrideKeepsConfigured(t *testing.T) {
 	}
 }
 
-// 既定も上書きも無い呼び出しは、AI を呼ばずに ErrInvalidRequest で落とします。
-// モデル名の無いリクエストは必ず失敗するので、送る前に、しかも「引数が悪い」と
-// 分かる形で返します。
+// A call with neither a default nor an override fails with ErrInvalidRequest without
+// calling the AI. A request without a model name always fails, so it is returned before
+// sending, in a form that says "the arguments are wrong".
 func TestGenerateOutlineWithoutAnyModelFails(t *testing.T) {
 	t.Parallel()
 
@@ -219,11 +219,11 @@ func TestGenerateOutlineWithoutAnyModelFails(t *testing.T) {
 		t.Errorf("err = %v, want ErrInvalidRequest", err)
 	}
 	if ai.lastModel != "" || ai.lastPrompt != "" {
-		t.Error("モデル名が無いのに AI を呼んでいます")
+		t.Error("the AI was called without a model name")
 	}
 }
 
-// 設定が空でも、呼び出しごとに渡せば生成できます。
+// Even with an empty configuration, generation works when the model is passed per call.
 func TestGenerateOutlineWithOverrideOnly(t *testing.T) {
 	t.Parallel()
 

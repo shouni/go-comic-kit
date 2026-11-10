@@ -8,9 +8,9 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// TestRenderImageClassifiesFailures は、生成以外の失敗（保存・保存先パス）にも
-// ports の番兵エラーが付くことを確認します。裸のエラーで返すと、消費側が errors.Is で
-// HTTP ステータスへ振り分けられなくなります（ports/errors.go の規約）。
+// TestRenderImageClassifiesFailures checks that failures other than generation (saving,
+// the save path) also carry a ports sentinel error. Returned bare, the consumer can no
+// longer map them to an HTTP status with errors.Is (the rule in ports/errors.go).
 func TestRenderImageClassifiesFailures(t *testing.T) {
 	t.Parallel()
 
@@ -24,21 +24,21 @@ func TestRenderImageClassifiesFailures(t *testing.T) {
 		want    error
 	}{
 		{
-			name:    "生成の失敗は ErrGeneration",
+			name:    "generation failure is ErrGeneration",
 			gen:     &failingImageGenerator{err: errors.New("upstream 503")},
 			writer:  &mockWriter{},
 			pathFor: okPath,
 			want:    ports.ErrGeneration,
 		},
 		{
-			name:    "保存先パスの失敗は ErrInvalidRequest",
+			name:    "save path failure is ErrInvalidRequest",
 			gen:     &mockImageGenerator{},
 			writer:  &mockWriter{},
 			pathFor: func(string) (string, error) { return "", errors.New("bad output dir") },
 			want:    ports.ErrInvalidRequest,
 		},
 		{
-			name:    "保存の失敗は ErrGeneration",
+			name:    "save failure is ErrGeneration",
 			gen:     &mockImageGenerator{},
 			writer:  &mockWriter{err: errors.New("gcs unavailable")},
 			pathFor: okPath,
@@ -61,8 +61,8 @@ func TestRenderImageClassifiesFailures(t *testing.T) {
 	}
 }
 
-// TestRenderImageRecordsGenerationConditions は、再生成に必要な条件が記録されることを
-// 確認します（GenerationRecord は再生成の基礎です）。
+// TestRenderImageRecordsGenerationConditions checks that the conditions needed for
+// regeneration are recorded (GenerationRecord is the basis of regeneration).
 func TestRenderImageRecordsGenerationConditions(t *testing.T) {
 	t.Parallel()
 
@@ -99,15 +99,16 @@ func (f *failingImageGenerator) Generate(context.Context, ImageRequest) (*ImageR
 	return nil, f.err
 }
 
-// TestRenderImageCacheControl は、保存時の Cache-Control が設定で差し替えられ、
-// 未設定なら既定値になることを確認します。"public" はライブラリが決めてよい値ではなく、
-// 生成物を公開配信してよいかというデプロイ側の判断です。
+// TestRenderImageCacheControl checks that the Cache-Control used when saving can be
+// replaced by configuration and falls back to the default when unset. "public" is not
+// the library's call to make; whether artifacts may be served publicly is the
+// deployment's decision.
 func TestRenderImageCacheControl(t *testing.T) {
 	t.Parallel()
 
 	for name, tt := range map[string]struct{ given, want string }{
-		"未設定なら既定値": {"", ports.DefaultCacheControl},
-		"指定があれば尊重": {"private, max-age=0", "private, max-age=0"},
+		"unset uses the default":     {"", ports.DefaultCacheControl},
+		"explicit value is honoured": {"private, max-age=0", "private, max-age=0"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -17,7 +17,7 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// DesignSheetRunner はキャラクターデザインシート生成（GenerateDesignSheet 操作）を実行します。
+// DesignSheetRunner runs character design sheet generation (the GenerateDesignSheet operation).
 type DesignSheetRunner struct {
 	prompt       ports.DesignSheetPrompt
 	characters   *comic.Characters
@@ -28,21 +28,21 @@ type DesignSheetRunner struct {
 
 var _ ports.DesignSheetGenerator = (*DesignSheetRunner)(nil)
 
-// DesignSheetRunnerArgs は DesignSheetRunner の構築に必要な依存と設定の集合です。
-// PanelImageRunnerArgs / PageImageRunnerArgs と同じ形にしてあります。位置引数だと
-// 無関係な文字列が並んで取り違えてもコンパイルが通り、依存が増えるたびに
-// 呼び出し側の並び順も変わるためです。
+// DesignSheetRunnerArgs is the set of dependencies and settings needed to build a
+// DesignSheetRunner. It has the same shape as PanelImageRunnerArgs / PageImageRunnerArgs.
+// With positional arguments, unrelated strings sit side by side and still compile when
+// swapped, and every added dependency shifts the order at the call sites.
 type DesignSheetRunnerArgs struct {
-	// Prompt はアプリ側が実装する ports.DesignSheetPrompt です（キットは内蔵しません）。
+	// Prompt is the ports.DesignSheetPrompt the app implements (the kit has no built-in one).
 	Prompt     ports.DesignSheetPrompt
 	Characters *comic.Characters
 	Generator  ImageGenerator
 	Writer     remoteio.Writer
-	// CacheControl は保存時の Cache-Control です（ports.Config.CacheControl）。
+	// CacheControl is the Cache-Control used when saving (ports.Config.CacheControl).
 	CacheControl string
 }
 
-// NewDesignSheetRunner は依存関係を注入して初期化します。
+// NewDesignSheetRunner initializes the runner with its dependencies injected.
 func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 	return &DesignSheetRunner{
 		prompt:       args.Prompt,
@@ -53,14 +53,15 @@ func NewDesignSheetRunner(args DesignSheetRunnerArgs) *DesignSheetRunner {
 	}
 }
 
-// GenerateDesignSheet はデザインシートを生成・保存し、その記録を state に反映して返します。
-// state が nil の場合は新しい MangaState を作成します。複数キャラクター指定時は1枚の
-// 合成シートを生成し、各キャラクターに同じ画像の DesignSheetRef を記録します。
+// GenerateDesignSheet generates and saves a design sheet, records it on the state and
+// returns the state. A nil state creates a new MangaState. With several characters it
+// generates one combined sheet and records a DesignSheetRef to the same image for each
+// character.
 func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *comic.MangaState, req ports.DesignSheetRequest) (*comic.MangaState, error) {
 	if strings.TrimSpace(req.JobID) == "" {
-		return nil, fmt.Errorf("%w: デザインシート生成には job_id が必要です", ports.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: design sheet generation requires a job_id", ports.ErrInvalidRequest)
 	}
-	if err := requireModel(req.Model, "デザインシート"); err != nil {
+	if err := requireModel(req.Model, "design sheet"); err != nil {
 		return nil, err
 	}
 	aspectRatio, err := resolveAspectRatio(req.AspectRatio, layout.DefaultAspectRatio)
@@ -74,7 +75,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 
 	imageURIs, descriptions, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override, aspectRatio)
 	if err != nil {
-		return nil, fmt.Errorf("キャラクター資産の収集に失敗しました: %w", err)
+		return nil, fmt.Errorf("collect character assets: %w", err)
 	}
 
 	slog.InfoContext(ctx, "Executing design sheet generation",
@@ -90,7 +91,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		StyleMode:    req.StyleMode,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: デザインシートプロンプトの構築に失敗しました: %w", ports.ErrGeneration, err)
+		return nil, fmt.Errorf("%w: build design sheet prompt: %w", ports.ErrGeneration, err)
 	}
 
 	record, err := renderImage(ctx, dr.generator, dr.writer, imageRenderRequest{
@@ -108,10 +109,10 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("デザインシート (%v): %w", req.CharacterIDs, err)
+		return nil, fmt.Errorf("design sheet (%v): %w", req.CharacterIDs, err)
 	}
 
-	// state への記録は冪等（同一キャラクターの記録は上書き）。
+	// Recording on the state is idempotent (a record for the same character is overwritten).
 	now := time.Now().UTC()
 	if state == nil {
 		state = &comic.MangaState{
@@ -131,7 +132,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 	return state, nil
 }
 
-// designSeed は、指定が無ければ（nil）新しいシードを採番します。
+// designSeed draws a new seed when none is specified (nil).
 func designSeed(v *int64) *int64 {
 	if v == nil {
 		return newSeed()
@@ -139,12 +140,14 @@ func designSeed(v *int64) *int64 {
 	return v
 }
 
-// collectCharacterURIs はキャラクター情報を収集し、ImageURIスライスと説明文を返します。
-// override は ids が単一（合成デザインシートでない）場合のみ適用されます。
+// collectCharacterURIs gathers the character information and returns the image URI
+// slice and the descriptions. override applies only when ids has a single entry (not a
+// combined design sheet).
 //
-// 参照画像は、これから描くシートと同じ比率のものがあればそれを使います
-// （panel.go / page.go と同じ ReferenceURLFor の規則）。比率の違う元絵から起こすと、
-// 全生成物の同一性アンカーであるシート自体に構図の歪みが乗るためです。
+// If a reference image exists at the same ratio as the sheet about to be drawn, it is
+// used (the same ReferenceURLFor rule as panel.go / page.go). Drawing from a master at a
+// different ratio puts compositional distortion into the sheet itself, which is the
+// identity anchor of everything generated.
 func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride, aspectRatio string) ([]string, []string, error) {
 	var uris []string
 	var descriptions []string
@@ -175,7 +178,7 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []str
 		}
 
 		if referenceURL == "" {
-			slog.WarnContext(ctx, "キャラクターに有効な参照画像がないためスキップします", "id", id)
+			slog.WarnContext(ctx, "skipping character without a valid reference image", "id", id)
 			continue
 		}
 
@@ -189,11 +192,11 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []str
 	}
 
 	if len(missingIDs) > 0 {
-		return nil, nil, fmt.Errorf("%w: キャラクターID %s", ports.ErrNotFound, strings.Join(missingIDs, ", "))
+		return nil, nil, fmt.Errorf("%w: character ID %s", ports.ErrNotFound, strings.Join(missingIDs, ", "))
 	}
 
 	if len(uris) == 0 {
-		return nil, nil, fmt.Errorf("%w: 有効な参照画像を持つキャラクターが1つもありません (対象ID: %s)", ports.ErrInvalidRequest, strings.Join(ids, ", "))
+		return nil, nil, fmt.Errorf("%w: no character has a valid reference image (IDs: %s)", ports.ErrInvalidRequest, strings.Join(ids, ", "))
 	}
 
 	return uris, descriptions, nil

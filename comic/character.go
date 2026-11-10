@@ -2,8 +2,8 @@ package comic
 
 import characterkit "github.com/shouni/go-character-kit/character"
 
-// Character は go-character-kit のキャラクター型のエイリアスです。
+// Character is an alias of go-character-kit's character type.
 type Character = characterkit.Character
 
-// Characters は go-character-kit のキャラクター集合型のエイリアスです。
+// Characters is an alias of go-character-kit's character collection type.
 type Characters = characterkit.Characters

@@ -20,7 +20,7 @@ func TestResolveSeedChain(t *testing.T) {
 	}
 	primary := []comic.PanelCharacter{{CharacterID: "tsumugi", Prominence: comic.ProminencePrimary}}
 
-	t.Run("明示指定が最優先", func(t *testing.T) {
+	t.Run("explicit value wins", func(t *testing.T) {
 		explicit := int64(7)
 		got := resolveSeedChain(&explicit, &comic.GenerationRecord{UsedSeed: 99}, characters, primary)
 		if got == nil || *got != 7 {
@@ -28,24 +28,25 @@ func TestResolveSeedChain(t *testing.T) {
 		}
 	})
 
-	t.Run("前回の UsedSeed を再利用", func(t *testing.T) {
+	t.Run("reuses the previous UsedSeed", func(t *testing.T) {
 		got := resolveSeedChain(nil, &comic.GenerationRecord{UsedSeed: 99}, characters, primary)
 		if got == nil || *got != 99 {
 			t.Errorf("seed = %v, want 99", got)
 		}
 	})
 
-	t.Run("主役キャラクターの Seed", func(t *testing.T) {
+	t.Run("lead character Seed", func(t *testing.T) {
 		got := resolveSeedChain(nil, nil, characters, primary)
 		if got == nil || *got != characterSeed {
 			t.Errorf("seed = %v, want %d", got, characterSeed)
 		}
 	})
 
-	// 何も無い場合に nil を返すと、下層は API 側のランダムシードで生成し、その値は
-	// レスポンスに返らないため UsedSeed が 0 で記録される。次回の再生成は「前回の
-	// UsedSeed」を採用できず、また別の絵になる。ここで採番することでその連鎖を断つ。
-	t.Run("何も無ければ新規採番する", func(t *testing.T) {
+	// Returning nil when nothing is available makes the layer below generate with the
+	// API's random seed, which the response does not return, so UsedSeed is recorded as 0.
+	// The next regeneration cannot adopt the "previous UsedSeed" and draws yet another
+	// picture. Drawing here breaks that chain.
+	t.Run("draws a new seed when nothing is available", func(t *testing.T) {
 		got := resolveSeedChain(nil, nil, characters, nil)
 		if got == nil {
 			t.Fatal("seed = nil, want a freshly drawn seed")
@@ -55,8 +56,8 @@ func TestResolveSeedChain(t *testing.T) {
 		}
 	})
 
-	// 採番したシードが毎回同じだと、シード未指定の生成がすべて同じ絵に寄ってしまう。
-	t.Run("採番は呼び出しごとに変わる", func(t *testing.T) {
+	// If the drawn seed were the same every time, every generation without a seed would converge on the same picture.
+	t.Run("drawn seed varies per call", func(t *testing.T) {
 		seen := make(map[int64]struct{}, 8)
 		for range 8 {
 			got := resolveSeedChain(nil, nil, nil, nil)
@@ -66,12 +67,12 @@ func TestResolveSeedChain(t *testing.T) {
 			seen[*got] = struct{}{}
 		}
 		if len(seen) == 1 {
-			t.Error("採番されたシードが全て同じです")
+			t.Error("every drawn seed is the same")
 		}
 	})
 
-	// UsedSeed が 0 の記録は「未設定」と区別がつかないため、再利用してはいけない。
-	t.Run("UsedSeed が 0 の記録は再利用しない", func(t *testing.T) {
+	// A record with UsedSeed 0 cannot be told apart from "unset", so it must not be reused.
+	t.Run("does not reuse a record with UsedSeed 0", func(t *testing.T) {
 		got := resolveSeedChain(nil, &comic.GenerationRecord{UsedSeed: 0}, characters, primary)
 		if got == nil || *got != characterSeed {
 			t.Errorf("seed = %v, want the character seed %d", got, characterSeed)

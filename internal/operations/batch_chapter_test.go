@@ -10,8 +10,8 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// chapterBatchState は2章ぶんの state を作ります（ch01 = 1ページ目、ch02 = 2ページ目）。
-// Repaginate と同じく、1ページに2章を混ぜません。
+// chapterBatchState builds a two-chapter state (ch01 = page 1, ch02 = page 2).
+// Like Repaginate, it never mixes two chapters on one page.
 func chapterBatchState() *comic.MangaState {
 	state := &comic.MangaState{
 		Version: comic.StateSchemaVersion,
@@ -40,12 +40,13 @@ func chapterBatchState() *comic.MangaState {
 	return state
 }
 
-// 章を指定した一括生成は、その章のコマ・ページだけを対象にします。
-// 画像はいちばん高価な工程なので、確認の単位を台本（章単位）と揃えるための絞り込みです。
+// A batch with a chapter targets only that chapter's panels and pages.
+// Images are the most expensive step, so this narrowing matches the unit of checking to
+// the script's (per chapter).
 func TestBatchChapterScope(t *testing.T) {
 	t.Parallel()
 
-	t.Run("パネルは指定章のみ", func(t *testing.T) {
+	t.Run("panels of the given chapter only", func(t *testing.T) {
 		runner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 
 		state, err := runner.GenerateAllPanels(context.Background(), chapterBatchState(),
@@ -62,7 +63,7 @@ func TestBatchChapterScope(t *testing.T) {
 		}
 	})
 
-	t.Run("ページは指定章のページのみ", func(t *testing.T) {
+	t.Run("pages of the given chapter only", func(t *testing.T) {
 		runner, _, _ := newPageRunner(t, &fakePagePrompt{})
 
 		state, err := runner.ComposeAllPages(context.Background(), chapterBatchState(),
@@ -71,13 +72,13 @@ func TestBatchChapterScope(t *testing.T) {
 			t.Fatalf("ComposeAllPages() error = %v", err)
 		}
 
-		// ch02 は2ページ目だけ。1ページ目（ch01）は合成されない。
+		// ch02 is only page 2. Page 1 (ch01) is not composed.
 		if len(state.Pages) != 1 || state.Pages[0].PageNumber != 2 {
 			t.Errorf("Pages = %+v, want only page 2", state.Pages)
 		}
 	})
 
-	t.Run("存在しない章は ErrNotFound", func(t *testing.T) {
+	t.Run("unknown chapter is ErrNotFound", func(t *testing.T) {
 		panelRunner, _, _ := newPanelRunner(t, &fakePanelPrompt{})
 		pageRunner, _, _ := newPageRunner(t, &fakePagePrompt{})
 		opts := ports.BatchOptions{ChapterID: "ch99", Model: "batch-model"}

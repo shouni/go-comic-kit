@@ -16,7 +16,7 @@ func TestIsAspectRatio(t *testing.T) {
 	}
 }
 
-// AspectRatios が内部スライスを共有していると、呼び出し側の書き換えが全体に波及します。
+// If AspectRatios shared its internal slice, a caller's modification would leak everywhere.
 func TestAspectRatiosReturnsACopy(t *testing.T) {
 	got := AspectRatios()
 	if !slices.Contains(got, DefaultAspectRatio) {

@@ -10,16 +10,17 @@ import (
 	"github.com/shouni/go-comic-kit/ports"
 )
 
-// 本ファイルのフェイクは、キットがプロンプト本文を持たないことの裏返しです。
-// 文言はアプリ側の実装が持つので、ここで確かめるのは「操作がプロンプト実装へ
-// 何を渡したか」と「返ってきた3本をそのまま生成リクエストへ載せたか」だけです。
+// The fakes in this file are the flip side of the kit holding no prompt text.
+// The wording belongs to the app's implementation, so what is checked here is only "what
+// the operation passed to the prompt implementation" and "whether the three returned
+// prompts went into the generation request as is".
 
 const (
 	fakeSystemPrompt   = "FAKE-SYSTEM"
 	fakeNegativePrompt = "FAKE-NEGATIVE"
 )
 
-// fakeScriptPrompt は台本系（章立て・章台本）のプロンプト実装です。
+// fakeScriptPrompt is the prompt implementation for scripts (outline and chapter script).
 type fakeScriptPrompt struct {
 	mu          sync.Mutex
 	outlineData *ports.OutlinePromptData
@@ -41,7 +42,7 @@ func (f *fakeScriptPrompt) BuildChapterScript(mode string, data *ports.ChapterPr
 	return "FAKE-CHAPTER\n" + data.Chapter.ID, nil
 }
 
-// fakeDesignPrompt はデザインシートのプロンプト実装です。
+// fakeDesignPrompt is the design sheet prompt implementation.
 type fakeDesignPrompt struct {
 	mu   sync.Mutex
 	data *ports.DesignSheetPromptData
@@ -54,8 +55,8 @@ func (f *fakeDesignPrompt) BuildDesignSheet(data *ports.DesignSheetPromptData) (
 	return fakeSystemPrompt, "FAKE-DESIGN " + strings.Join(data.Descriptions, " / "), fakeNegativePrompt, nil
 }
 
-// fakePanelPrompt はパネルのプロンプト実装です。
-// 一括生成はコマ／ページを並列に処理するため、記録はロックで守ります。
+// fakePanelPrompt is the panel prompt implementation.
+// Batches process panels/pages in parallel, so the records are guarded by a lock.
 type fakePanelPrompt struct {
 	mu         sync.Mutex
 	data       *ports.PanelPromptData
@@ -77,7 +78,7 @@ func (f *fakePanelPrompt) BuildPanelEdit(editPrompt string) (string, string, str
 	return fakeSystemPrompt, "FAKE-PANEL-EDIT " + editPrompt, fakeNegativePrompt, nil
 }
 
-// fakePagePrompt はページ合成のプロンプト実装です。
+// fakePagePrompt is the page composition prompt implementation.
 type fakePagePrompt struct {
 	mu         sync.Mutex
 	data       *ports.PagePromptData
@@ -106,7 +107,7 @@ func (f *fakePagePrompt) BuildPageEdit(editPrompt string) (string, string, strin
 	return fakeSystemPrompt, "FAKE-PAGE-EDIT " + editPrompt, fakeNegativePrompt, nil
 }
 
-// panelIDs は、プロンプト実装へ渡ったコマ一覧の ID を返します。
+// panelIDs returns the IDs of the panels passed to the prompt implementation.
 func panelIDs(panels []comic.Panel) []string {
 	ids := make([]string, 0, len(panels))
 	for _, p := range panels {

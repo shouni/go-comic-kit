@@ -2,15 +2,16 @@ package comic
 
 import "slices"
 
-// Repaginate は全パネルの Page 番号を振り直します。1ページあたりのコマ数は maxPerPage を
-// 上限とし、加えて章が変わるところでは必ず改ページします（前章の残りコマと次章の冒頭コマが
-// 同じページに同居すると、ページとして読めなくなるため）。章の生成・再生成後に呼ぶことで、
-// ページ割りを常に決定的に保ちます。maxPerPage が 0 以下の場合は DefaultMaxPanelsPerPage を
-// 使います。
+// Repaginate renumbers the Page of every panel. A page holds at most maxPerPage panels,
+// and a new page always starts where the chapter changes (a page that mixes the last
+// panels of one chapter with the opening panels of the next cannot be read as a page).
+// Calling it after a chapter is generated or regenerated keeps pagination deterministic.
+// A maxPerPage of 0 or less uses DefaultMaxPanelsPerPage.
 //
-// ページ割りが変わると既存の PageArtifact は実体とずれるため、コマ構成が変わったページと
-// コマが無くなったページの記録は取り除きます。構成が変わっていないページの記録は残るので、
-// 1章だけを再生成しても無関係なページ画像を作り直す必要はありません。
+// Once pagination changes, existing PageArtifacts no longer match what is on the page,
+// so the records of pages whose panels changed and of pages left with no panels are
+// removed. Records of pages whose composition is unchanged stay, so regenerating one
+// chapter does not force unrelated page images to be rebuilt.
 func (s *MangaState) Repaginate(maxPerPage int) {
 	if s == nil {
 		return
@@ -35,7 +36,7 @@ func (s *MangaState) Repaginate(maxPerPage int) {
 	s.pruneStalePageArtifacts()
 }
 
-// pruneStalePageArtifacts は、現在のコマ構成と一致しなくなった PageArtifact を取り除きます。
+// pruneStalePageArtifacts removes the PageArtifacts that no longer match the current panel composition.
 func (s *MangaState) pruneStalePageArtifacts() {
 	if len(s.Pages) == 0 {
 		return
