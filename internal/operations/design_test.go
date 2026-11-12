@@ -328,6 +328,51 @@ func TestGenerateDesignSheetUnknownCharacterFails(t *testing.T) {
 	}
 }
 
+// A new character has no reference image until her first sheet: she is drawn from her
+// description alone, and the prompt is told so (Referenced false) rather than being skipped.
+func TestGenerateDesignSheetDrawsACharacterWithoutReferenceFromHerDescription(t *testing.T) {
+	t.Parallel()
+	cm, err := characterkit.NewCharacters([]comic.Character{
+		{ID: "metan", Name: "Metan", ReferenceURL: "gs://bucket/metan.png", VisualCues: []string{"purple hair"}},
+		{ID: "akari", Name: "Akari", VisualCues: []string{"silver hair", "navy jacket"}},
+	})
+	if err != nil {
+		t.Fatalf("NewCharacters failed: %v", err)
+	}
+	genMock := &mockDesignGenerator{}
+	designPrompt := &fakeDesignPrompt{}
+	dr := NewDesignSheetRunner(DesignSheetRunnerArgs{
+		Prompt: designPrompt, Characters: cm, Generator: genMock, Writer: &mockWriter{},
+	})
+
+	// alone: no image is attached, the description still goes to the prompt
+	if _, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
+		CharacterIDs: []string{"akari"}, JobID: "job-akari", Model: "design-model", OutputDir: "gs://bucket/out",
+	}); err != nil {
+		t.Fatalf("GenerateDesignSheet failed: %v", err)
+	}
+	if len(genMock.lastReq.Images) != 0 {
+		t.Errorf("Images = %+v, want none for a character without a reference", genMock.lastReq.Images)
+	}
+	if got := designPrompt.data; len(got.Descriptions) != 1 || !strings.Contains(got.Descriptions[0], "silver hair") ||
+		len(got.Referenced) != 1 || got.Referenced[0] {
+		t.Errorf("prompt data = %+v, want Akari's description with Referenced [false]", got)
+	}
+
+	// with a referenced character: only Metan's image is attached, and the flags say whose it is
+	if _, err := dr.GenerateDesignSheet(context.Background(), nil, ports.DesignSheetRequest{
+		CharacterIDs: []string{"metan", "akari"}, JobID: "job-pair", Model: "design-model", OutputDir: "gs://bucket/out",
+	}); err != nil {
+		t.Fatalf("GenerateDesignSheet failed: %v", err)
+	}
+	if len(genMock.lastReq.Images) != 1 || genMock.lastReq.Images[0] != "gs://bucket/metan.png" {
+		t.Errorf("Images = %+v, want only Metan's reference", genMock.lastReq.Images)
+	}
+	if got := designPrompt.data.Referenced; len(got) != 2 || !got[0] || got[1] {
+		t.Errorf("Referenced = %v, want [true false]", got)
+	}
+}
+
 func TestGenerateDesignSheetRequiresJobID(t *testing.T) {
 	t.Parallel()
 	dr, _, _, _ := newTestRunner(t)

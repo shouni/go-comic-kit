@@ -45,7 +45,7 @@ The prompts of all five operations are injected through `workflow.Args`. **All f
 
 ### ⚠️ Reference image numbers
 
-For images, `PanelPromptData.SubjectIDs` and `PagePromptData.CharacterFile` / `PanelFile` are **the order in which images are actually attached**. Always use them when writing reference numbers in a prompt. If you recount on your own, the model ends up drawing while looking at someone else's reference image.
+For images, `PanelPromptData.SubjectIDs` and `PagePromptData.CharacterFile` / `PanelFile` are **the order in which images are actually attached**. Always use them when writing reference numbers in a prompt. If you recount on your own, the model ends up drawing while looking at someone else's reference image. For design sheets, `DesignSheetPromptData.Referenced` plays this role: `Referenced[i]` says whether `Descriptions[i]`'s character has an image attached, and the attached images follow the subjects marked true, in order. A subject marked false (a new character with no reference yet) is drawn from her description alone — do not tell the model to follow an image for her.
 
 ## Dependencies in workflow.Args
 
