@@ -51,6 +51,13 @@ type DesignSheetPromptData struct {
 	// Descriptions describe the target characters (name + VisualCues).
 	// For several characters (a combined design sheet) it has two or more elements.
 	Descriptions []string
+	// Referenced[i] reports whether Descriptions[i]'s character has a reference image
+	// attached. The attached images follow the referenced subjects in order. A subject with
+	// false has no image yet (a new character's first sheet) and is drawn from her
+	// description alone, so the implementation must not tell the model to follow an
+	// attached image for her — doing so with no image, or with someone else's, invents a look.
+	// Same length as Descriptions.
+	Referenced []bool
 	// Layout set to DesignLayoutSingleView means a single-pose layout; an empty string
 	// means a three-view turnaround.
 	Layout string

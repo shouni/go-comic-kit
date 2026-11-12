@@ -5,7 +5,7 @@ go 1.27
 require (
 	github.com/google/go-cmp v0.7.0
 	github.com/shouni/genai-kit v1.8.2
-	github.com/shouni/go-character-kit v1.3.2
+	github.com/shouni/go-character-kit v1.4.0
 	github.com/shouni/go-remote-io v1.13.17
 	golang.org/x/sync v0.25.0
 )

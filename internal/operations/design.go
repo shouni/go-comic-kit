@@ -73,7 +73,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 		return nil, err
 	}
 
-	imageURIs, descriptions, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override, aspectRatio)
+	imageURIs, descriptions, referenced, err := dr.collectCharacterURIs(ctx, req.CharacterIDs, req.Override, aspectRatio)
 	if err != nil {
 		return nil, fmt.Errorf("collect character assets: %w", err)
 	}
@@ -87,6 +87,7 @@ func (dr *DesignSheetRunner) GenerateDesignSheet(ctx context.Context, state *com
 
 	systemPrompt, userPrompt, negativePrompt, err := dr.prompt.BuildDesignSheet(&ports.DesignSheetPromptData{
 		Descriptions: descriptions,
+		Referenced:   referenced,
 		Layout:       req.Layout,
 		StyleMode:    req.StyleMode,
 	})
@@ -141,16 +142,22 @@ func designSeed(v *int64) *int64 {
 }
 
 // collectCharacterURIs gathers the character information and returns the image URI
-// slice and the descriptions. override applies only when ids has a single entry (not a
-// combined design sheet).
+// slice, the descriptions, and for each description whether its character has a reference
+// image attached. override applies only when ids has a single entry (not a combined design
+// sheet).
 //
 // If a reference image exists at the same ratio as the sheet about to be drawn, it is
 // used (the same ReferenceURLFor rule as panel.go / page.go). Drawing from a master at a
 // different ratio puts compositional distortion into the sheet itself, which is the
 // identity anchor of everything generated.
-func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride, aspectRatio string) ([]string, []string, error) {
+//
+// A character with no reference image at all is drawn from her description alone rather
+// than skipped: a new character has no image until her first sheet, and that sheet is how
+// she gets one (go-character-kit allows an empty reference_url for this since v1.4.0).
+func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []string, override ports.DesignOverride, aspectRatio string) ([]string, []string, []bool, error) {
 	var uris []string
 	var descriptions []string
+	var referenced []bool
 	var missingIDs []string
 	processedIDs := make(map[string]struct{})
 	applyOverride := len(ids) == 1
@@ -178,11 +185,11 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []str
 		}
 
 		if referenceURL == "" {
-			slog.WarnContext(ctx, "skipping character without a valid reference image", "id", id)
-			continue
+			slog.InfoContext(ctx, "drawing a character without a reference image from her description", "id", id)
+		} else {
+			uris = append(uris, referenceURL)
 		}
-
-		uris = append(uris, referenceURL)
+		referenced = append(referenced, referenceURL != "")
 
 		desc := char.Name
 		if len(visualCues) > 0 {
@@ -192,12 +199,12 @@ func (dr *DesignSheetRunner) collectCharacterURIs(ctx context.Context, ids []str
 	}
 
 	if len(missingIDs) > 0 {
-		return nil, nil, fmt.Errorf("%w: character ID %s", ports.ErrNotFound, strings.Join(missingIDs, ", "))
+		return nil, nil, nil, fmt.Errorf("%w: character ID %s", ports.ErrNotFound, strings.Join(missingIDs, ", "))
 	}
 
-	if len(uris) == 0 {
-		return nil, nil, fmt.Errorf("%w: no character has a valid reference image (IDs: %s)", ports.ErrInvalidRequest, strings.Join(ids, ", "))
+	if len(descriptions) == 0 {
+		return nil, nil, nil, fmt.Errorf("%w: no character to draw (IDs: %s)", ports.ErrInvalidRequest, strings.Join(ids, ", "))
 	}
 
-	return uris, descriptions, nil
+	return uris, descriptions, referenced, nil
 }
