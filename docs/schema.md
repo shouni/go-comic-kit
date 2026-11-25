@@ -16,6 +16,9 @@ type MangaState struct {
 	ScriptMode   string           // selection of the script prompt template (persisted so regeneration uses the same mode)
 	TextModel    string           // the model that wrote this work's script (record only; set and read by the caller)
 	ImageModel   string           // the model that drew this work's images (record only; set and read by the caller)
+	Cast         []string         // the character IDs this work may use (empty means every defined character)
+	Lang         string           // language of the text drawn on the pages (the kit hands it to the prompts and does not interpret it)
+	AspectRatio  string           // ratio of this work's panels and pages (record only; the caller passes it back on each image call)
 	Chapters     []Chapter        // the outline (the output of GenerateOutline)
 	DesignSheets []DesignSheetRef // record of the design sheets used
 	Panels       []Panel
@@ -54,7 +57,7 @@ type PanelCharacter struct {
 type DialogueLine struct {
 	SpeakerID string // empty means narration/caption
 	Text      string
-	Kind      string // "speech" | "thought" | "shout" | "narration" | "sfx"
+	Kind      string // "speech" | "thought" | "shout" | "narration" | "sfx" | "lyric"
 }
 
 type GenerationRecord struct {
@@ -87,6 +90,7 @@ type PageArtifact struct {
 | `PagesForChapter` | Page numbers carrying the given chapter's panels (the target of chapter-scoped batch composition) |
 | `ReplaceChapterPanels` → `Repaginate` | Replace a chapter's panels and reassign pages (**call them in this order**) |
 | `SetPageArtifact` / `SetDesignSheet` | Upsert for the same page number or the same character |
+| `InCast` | Whether a character may be used in this work (always true with an empty `Cast`) |
 
 ## Pagination rules
 
@@ -101,7 +105,17 @@ Relationships between characters (who is doing what to whom) are expressed as fr
 Script generation normalization does not trust the IDs the AI produces and mechanically corrects two things:
 
 * A `character_id` missing from `characters.json` is demoted to `background` (drawn as a mob without a reference image). This prevents reference resolution from silently falling back to the default character and drawing the wrong person.
-* A `speaker_id` missing from `characters.json` is converted to narration. This prevents the raw ID from being drawn where the speaker's name belongs.
+* A `speaker_id` missing from `characters.json` is converted to narration. This prevents the raw ID from being drawn where the speaker's name belongs. A sung line (`kind: "lyric"`) only loses the speaker and keeps its kind: it needs no speaker, and a caption box would change how it is drawn.
+
+## The work's cast
+
+`MangaState.Cast` (from `OutlineRequest.CharacterIDs`) limits a work to some of the defined characters. Script generation shows the model **only** those characters, and normalization treats any other ID like an unknown one, even when `characters.json` defines it. A roster that lists everyone leaves "use only these two" to one sentence of the prompt.
+
+An ID in `OutlineRequest.CharacterIDs` that is not defined is `ErrInvalidRequest`, before the AI call: a work written without the character it was made for looks like a success. An empty cast means every defined character, as before.
+
+## Sung lines
+
+`DialogueKindLyric` (`"lyric"`) marks words that are sung rather than spoken, for a work drawn from a song. The kit only carries the kind (schema, normalization); how it is lettered belongs to the page prompt implementation.
 
 ## Limits on characters with attached reference images
 
@@ -113,3 +127,13 @@ The more reference images there are, the more character identities break down, a
 | 4 per page | `comic.MaxReferencedCharactersPerPage` | Page composition | No reference image (specified only in the prompt text). The characters appearing most on that page are kept, ties broken by first appearance |
 
 Pages need a cap too because a page carries several panels, and composition also attaches each generated panel image as a layout guide. With only the per-panel cap, one composition would carry more than 10 references.
+
+## Supplementary sheets on a panel
+
+A character may have supplementary design sheets besides the master reference (go-character-kit's `Character.Sheets`). Panel generation attaches them **after** the subjects' references, at most `comic.MaxSupplementarySheetsPerPanel` (2):
+
+* only for `primary` characters whose master reference is attached,
+* one kind per character, chosen by the shot: a shot containing the word `close` takes `expressions`, any other shot takes `outfit`,
+* never `parts` (props without a person).
+
+A character without that kind gets nothing, so a roster with no `sheets` behaves exactly as before. The prompt implementation receives them as `PanelPromptData.Sheets`, each with the number of its attached image.

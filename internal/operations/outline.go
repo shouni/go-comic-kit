@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/shouni/go-comic-kit/comic"
@@ -68,10 +70,20 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		maxChapters = req.MaxChapters
 	}
 
+	cast, err := r.resolveCast(req.CharacterIDs)
+	if err != nil {
+		return nil, err
+	}
+	aspectRatio, err := resolveAspectRatio(req.AspectRatio, "")
+	if err != nil {
+		return nil, err
+	}
+
 	data := &ports.OutlinePromptData{
 		InputText:       inputText,
-		CharacterRoster: characterRoster(r.characters),
+		CharacterRoster: characterRoster(r.characters, cast),
 		MaxChapters:     maxChapters,
+		Lang:            req.Lang,
 	}
 	finalPrompt, err := r.prompt.BuildOutline(req.Mode, data)
 	if err != nil {
@@ -107,6 +119,9 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 		Description: parsed.Description,
 		StyleMode:   req.StyleMode,
 		ScriptMode:  req.Mode,
+		Cast:        cast,
+		Lang:        req.Lang,
+		AspectRatio: aspectRatio,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -122,4 +137,22 @@ func (r *OutlineRunner) GenerateOutline(ctx context.Context, req ports.OutlineRe
 	slog.InfoContext(ctx, "OutlineRunner: generated outline",
 		"title", state.Title, "chapters", len(state.Chapters))
 	return state, nil
+}
+
+// resolveCast validates the requested cast and returns it without blanks or duplicates,
+// in the order given. An undefined ID is ErrInvalidRequest rather than being dropped:
+// a work written without the character it was made for looks like a success.
+func (r *OutlineRunner) resolveCast(ids []string) ([]string, error) {
+	var cast []string
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || slices.Contains(cast, id) {
+			continue
+		}
+		if r.characters == nil || r.characters.GetCharacter(id) == nil {
+			return nil, fmt.Errorf("%w: character %q in CharacterIDs is not defined", ports.ErrInvalidRequest, id)
+		}
+		cast = append(cast, id)
+	}
+	return cast, nil
 }

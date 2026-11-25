@@ -128,7 +128,7 @@ func TestChapterScriptLogsCarryCallerContext(t *testing.T) {
 		"truncating panels over the limit",
 		"demoting unknown character ID to background",
 		"demoting referenced character over the limit to background",
-		"converting unknown speaker ID to narration",
+		"dropping unknown speaker ID",
 	}
 
 	got := logged()

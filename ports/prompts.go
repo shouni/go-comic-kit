@@ -18,6 +18,9 @@ type OutlinePromptData struct {
 	CharacterRoster string
 	// MaxChapters is the chapter limit.
 	MaxChapters int
+	// Lang is the language the work's text is written in (OutlineRequest.Lang). Empty
+	// means the implementation's default. The kit does not interpret it.
+	Lang string
 }
 
 // ChapterPromptData is the data passed to the per-chapter script generation prompt template.
@@ -34,6 +37,8 @@ type ChapterPromptData struct {
 	CharacterRoster string
 	// MaxPanels is the panel limit per chapter.
 	MaxPanels int
+	// Lang is the language the work's text is written in (MangaState.Lang).
+	Lang string
 }
 
 // OutlinePrompt is the contract that builds the outline generation prompt.
@@ -85,6 +90,11 @@ type PanelPromptData struct {
 	// attachment order. Implementations must number references in this order. If the
 	// order drifts, the model draws while looking at someone else's reference image.
 	SubjectIDs []string
+	// Sheets are the supplementary design sheets attached after the subjects' references,
+	// in attachment order. Implementations must refer to each by its File number and say
+	// what it is for; a sheet is a layout of several drawings, and a model told nothing
+	// may reproduce the layout instead of reading the detail from it.
+	Sheets []PanelSheetRef
 	// StyleMode is the art style mode the caller specified (GenerateOptions.StyleMode).
 	// An empty string means unspecified, and the implementation's default applies. The
 	// kit does not interpret it.
@@ -93,6 +103,17 @@ type PanelPromptData struct {
 	// and "what to avoid in that style" (the negative prompt) are decided as a pair, and
 	// the implementation holds both.
 	StyleMode string
+}
+
+// PanelSheetRef is one supplementary design sheet attached to a panel generation.
+type PanelSheetRef struct {
+	// CharacterID is the character the sheet belongs to (always one of SubjectIDs).
+	CharacterID string
+	// Kind is the sheet kind (go-character-kit's SheetExpressions / SheetOutfit).
+	Kind string
+	// File is the number (1-based) of the attached image, counted across all attachments:
+	// the subjects come first, so it starts at len(SubjectIDs)+1.
+	File int
 }
 
 // PanelPrompt is the contract that builds the panel image generation prompt.
@@ -121,6 +142,13 @@ type PagePromptData struct {
 	PanelFile map[string]int
 	// StyleMode is the art style mode the caller specified (treated like PanelPromptData.StyleMode).
 	StyleMode string
+	// Lang is the language of the text to draw (MangaState.Lang). It decides the lettering
+	// and the reading direction, both of which the implementation owns. Empty means the
+	// implementation's default.
+	Lang string
+	// AspectRatio is the ratio the page is generated at (already resolved, never empty), so
+	// the implementation can word the page's shape instead of assuming a portrait page.
+	AspectRatio string
 }
 
 // PagePrompt is the contract that builds the page composition prompt.

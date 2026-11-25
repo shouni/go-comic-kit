@@ -81,6 +81,7 @@ func chapterScriptSchema() map[string]any {
 											comic.DialogueKindShout,
 											comic.DialogueKindNarration,
 											comic.DialogueKindSFX,
+											comic.DialogueKindLyric,
 										},
 									},
 								},

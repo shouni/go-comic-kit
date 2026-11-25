@@ -110,7 +110,7 @@ func (pg *PageImageRunner) renderPage(ctx context.Context, state *comic.MangaSta
 	}
 	seed := resolveSeedChain(opts.Seed, prevGeneration, pg.characters, panels[0].Characters)
 
-	set, images, err := pg.buildRequest(ctx, page, panels, existing, opts, aspectRatio)
+	set, images, err := pg.buildRequest(ctx, page, panels, existing, opts, aspectRatio, state.Lang)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func uniquePageNumbers(panels []comic.Panel) []int {
 // buildRequest builds the prompt set and reference images for either edit mode or page
 // composition. Assembling the prompt text is left to the ports.PagePrompt
 // implementation; this only conveys "which image was attached at which position".
-func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio string) (promptSet, []string, error) {
+func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []comic.Panel, existing *comic.PageArtifact, opts ports.GenerateOptions, aspectRatio, lang string) (promptSet, []string, error) {
 	if opts.EditPrompt != "" {
 		if existing == nil || existing.Generation == nil || existing.Generation.ImageURL == "" {
 			return promptSet{}, nil, fmt.Errorf("%w: page %d has no composed image to edit", ports.ErrInvalidRequest, page)
@@ -258,6 +258,8 @@ func (pg *PageImageRunner) buildRequest(ctx context.Context, page int, panels []
 		CharacterFile: res.characterFile,
 		PanelFile:     res.panelFile,
 		StyleMode:     opts.StyleMode,
+		Lang:          lang,
+		AspectRatio:   aspectRatio,
 	}))
 	if err != nil {
 		return promptSet{}, nil, err

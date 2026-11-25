@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/shouni/go-comic-kit/comic"
 
 	"github.com/shouni/genai-kit/imagegen"
+	"github.com/shouni/go-character-kit/character"
 	"github.com/shouni/go-remote-io/remoteio"
 
 	"github.com/shouni/go-comic-kit/asset"
@@ -231,14 +234,81 @@ func (pr *PanelImageRunner) buildRequest(ctx context.Context, panel *comic.Panel
 		subjectIDs = append(subjectIDs, id)
 	}
 
+	sheets := pr.supplementarySheets(panel, subjectIDs)
+	for i := range sheets {
+		images = append(images, sheets[i].url)
+		sheets[i].ref.File = len(images)
+	}
+	sheetRefs := make([]ports.PanelSheetRef, len(sheets))
+	for i := range sheets {
+		sheetRefs[i] = sheets[i].ref
+	}
+
 	set, err := newPromptSet(pr.prompt.BuildPanel(&ports.PanelPromptData{
 		Panel:      *panel,
 		Characters: pr.characters,
 		SubjectIDs: subjectIDs,
+		Sheets:     sheetRefs,
 		StyleMode:  opts.StyleMode,
 	}))
 	if err != nil {
 		return promptSet{}, nil, err
 	}
 	return set.withOverride(opts.PromptOverride), images, nil
+}
+
+// panelSheet is one supplementary sheet chosen for a panel, before its attachment number is known.
+type panelSheet struct {
+	ref ports.PanelSheetRef
+	url string
+}
+
+// supplementarySheets picks the supplementary design sheets to attach after the
+// subjects' master references, up to comic.MaxSupplementarySheetsPerPanel.
+//
+// Only primary characters with an attached master get one, and each gets the single kind
+// that suits the shot (supplementarySheetKind). A sheet for a character whose master is
+// not attached would be an image the prompt has no subject number for; a sheet for a
+// secondary character spends one of the few reference slots on someone the panel is not
+// about. The parts sheet is never attached: it shows props without a person, which a
+// panel prompt cannot use without redrawing them.
+func (pr *PanelImageRunner) supplementarySheets(panel *comic.Panel, subjectIDs []string) []panelSheet {
+	kind := supplementarySheetKind(panel.Shot)
+	var sheets []panelSheet
+	seen := make(map[string]struct{})
+	for i := range panel.Characters {
+		pc := &panel.Characters[i]
+		if len(sheets) == comic.MaxSupplementarySheetsPerPanel {
+			break
+		}
+		if pc.Prominence != comic.ProminencePrimary || !slices.Contains(subjectIDs, pc.CharacterID) {
+			continue
+		}
+		if _, ok := seen[pc.CharacterID]; ok {
+			continue
+		}
+		seen[pc.CharacterID] = struct{}{}
+		url := pr.characters.GetCharacter(pc.CharacterID).SheetURL(kind)
+		if url == "" {
+			continue
+		}
+		sheets = append(sheets, panelSheet{
+			ref: ports.PanelSheetRef{CharacterID: pc.CharacterID, Kind: kind},
+			url: url,
+		})
+	}
+	return sheets
+}
+
+// supplementarySheetKind returns the sheet kind that helps a panel of the given shot: a
+// close-up is about the face, so it takes the expression sheet; any other shot shows the
+// body, so it takes the outfit sheet.
+//
+// Shot is free text written by the script prompt, so this matches the word "close"
+// rather than a fixed vocabulary.
+func supplementarySheetKind(shot string) string {
+	if strings.Contains(strings.ToLower(shot), "close") {
+		return character.SheetExpressions
+	}
+	return character.SheetOutfit
 }
