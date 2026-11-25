@@ -56,20 +56,43 @@ const (
 	DialogueKindShout     = "shout"
 	DialogueKindNarration = "narration"
 	DialogueKindSFX       = "sfx"
+	// DialogueKindLyric is a sung line: lettering that floats in the panel without a
+	// balloon tail. A work that introduces a song quotes its words this way, so the reader
+	// can tell them from what a character says. It may have no speaker.
+	DialogueKindLyric = "lyric"
 )
+
+// MaxSupplementarySheetsPerPanel is the maximum number of supplementary design sheets
+// (go-character-kit's Character.Sheets: expressions, outfit) attached to one panel on top
+// of the characters' master references. They sharpen a detail the master does not show
+// well, but every extra image also makes it harder to keep the subjects apart, which is
+// the reason MaxReferencedCharactersPerPanel exists.
+const MaxSupplementarySheetsPerPanel = 2
 
 // MangaState is the persisted document holding every piece of state of one work.
 // This document, stored on GCS or elsewhere, is the single source of truth: history
 // listings, detail views and per-panel regeneration all start from it.
 type MangaState struct {
-	Version      int              `json:"version"`
-	ID           string           `json:"id"`
-	Title        string           `json:"title"`
-	Description  string           `json:"description"`
-	StyleMode    string           `json:"style_mode"`
-	ScriptMode   string           `json:"script_mode,omitempty"`
-	TextModel    string           `json:"text_model,omitempty"`
-	ImageModel   string           `json:"image_model,omitempty"`
+	Version     int    `json:"version"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	StyleMode   string `json:"style_mode"`
+	ScriptMode  string `json:"script_mode,omitempty"`
+	TextModel   string `json:"text_model,omitempty"`
+	ImageModel  string `json:"image_model,omitempty"`
+	// Cast lists the character IDs this work may use. Empty means every defined
+	// character. Script generation shows the model only these characters, and treats any
+	// other ID in its output as unknown.
+	Cast []string `json:"cast,omitempty"`
+	// Lang is the language of the text drawn on the pages (for example "ja" or "en").
+	// The kit does not interpret it; it is handed to the prompt implementations. Empty
+	// means the implementation's default.
+	Lang string `json:"lang,omitempty"`
+	// AspectRatio is the ratio this work's panels and pages are generated at. The kit
+	// records it and the caller passes it back on every image call, so one work is never
+	// drawn at two ratios. Empty means the caller's default.
+	AspectRatio  string           `json:"aspect_ratio,omitempty"`
 	Chapters     []Chapter        `json:"chapters,omitempty"`
 	DesignSheets []DesignSheetRef `json:"design_sheets,omitempty"`
 	Panels       []Panel          `json:"panels"`
@@ -149,6 +172,15 @@ type PageArtifact struct {
 	PageNumber int               `json:"page_number"`
 	PanelIDs   []string          `json:"panel_ids"`
 	Generation *GenerationRecord `json:"generation,omitempty"`
+}
+
+// InCast reports whether the given character may be used in this work. With an empty
+// Cast every character may.
+func (s *MangaState) InCast(characterID string) bool {
+	if s == nil || len(s.Cast) == 0 {
+		return true
+	}
+	return slices.Contains(s.Cast, characterID)
 }
 
 // PanelByID returns a pointer to the panel with the given ID, or nil if there is none.

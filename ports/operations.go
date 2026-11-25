@@ -22,6 +22,19 @@ type OutlineRequest struct {
 	StyleMode string
 	// MaxChapters is the chapter limit. 0 or less uses the default.
 	MaxChapters int
+	// CharacterIDs limits the work to these characters (recorded as MangaState.Cast and
+	// applied to every chapter script). Empty means every defined character. An ID that
+	// is not defined is ErrInvalidRequest: a misspelt cast would otherwise write the whole
+	// work without the character it was made for.
+	CharacterIDs []string
+	// Lang is the language of the text drawn on the pages, recorded on the generated
+	// MangaState and handed to the prompt implementations. The kit does not interpret it.
+	Lang string
+	// AspectRatio is the ratio the work's panels and pages will be generated at, recorded
+	// on the generated MangaState. Empty records nothing; an unsupported value is
+	// ErrInvalidRequest. The kit does not apply it by itself: pass the recorded value on
+	// each image call.
+	AspectRatio string
 	// Model is the text model that writes the outline (required).
 	// A call with an empty string is ErrInvalidRequest, and the AI API is not called.
 	Model string
@@ -42,6 +55,10 @@ type ChapterScriptOptions struct {
 	// One work's script should be written by the same model for the outline and every
 	// chapter, so pass the same value as OutlineRequest.Model.
 	Model string
+	// MaxPanels is the panel limit of this chapter. 0 or less uses Config.MaxPanelsPerChapter.
+	// A short format (a four-panel strip, a one-page introduction) is a property of the
+	// work, not of the deployment, so it rides on the call.
+	MaxPanels int
 }
 
 // ChapterScriptGenerator is the contract that generates the panels (script) of the given

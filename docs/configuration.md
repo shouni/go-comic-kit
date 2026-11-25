@@ -26,6 +26,10 @@ Per-call values are validated by each operation before it runs, returning `ErrIn
 | `StyleMode` | `GenerateOptions` / `BatchOptions` / `DesignSheetRequest` | Empty means the prompt implementation's default |
 | `AspectRatio` | Same as above | Empty means `3:4`. **Keep it the same** for panels, pages and sheets; otherwise the drift suppression from reference images is silently disabled |
 | `ImageSize` | Same as above | Empty means 1K for panels and 2K for pages and sheets |
+| `CharacterIDs` | `OutlineRequest` | Empty means every defined character. Recorded as `MangaState.Cast` and applied to every chapter script. An undefined ID is `ErrInvalidRequest` |
+| `Lang` | `OutlineRequest` | Recorded as `MangaState.Lang` and handed to the outline, chapter and page prompt implementations. The kit does not interpret it |
+| `AspectRatio` | `OutlineRequest` | Recorded as `MangaState.AspectRatio` (validated like the image calls). The kit does not apply it: read it back and pass it on each image call |
+| `MaxPanels` | `ChapterScriptOptions` | 0 or less means `Config.MaxPanelsPerChapter`. A short format is a property of the work, so it rides on the call |
 
 ## Prompt injection
 
@@ -45,7 +49,7 @@ The prompts of all five operations are injected through `workflow.Args`. **All f
 
 ### ⚠️ Reference image numbers
 
-For images, `PanelPromptData.SubjectIDs` and `PagePromptData.CharacterFile` / `PanelFile` are **the order in which images are actually attached**. Always use them when writing reference numbers in a prompt. If you recount on your own, the model ends up drawing while looking at someone else's reference image. For design sheets, `DesignSheetPromptData.Referenced` plays this role: `Referenced[i]` says whether `Descriptions[i]`'s character has an image attached, and the attached images follow the subjects marked true, in order. A subject marked false (a new character with no reference yet) is drawn from her description alone — do not tell the model to follow an image for her.
+For images, `PanelPromptData.SubjectIDs` and `PagePromptData.CharacterFile` / `PanelFile` are **the order in which images are actually attached**. Supplementary sheets come after the subjects, and each `PanelPromptData.Sheets[i].File` is its number counted across all attachments; say what each sheet is for, or the model may reproduce the sheet's layout. Always use them when writing reference numbers in a prompt. If you recount on your own, the model ends up drawing while looking at someone else's reference image. For design sheets, `DesignSheetPromptData.Referenced` plays this role: `Referenced[i]` says whether `Descriptions[i]`'s character has an image attached, and the attached images follow the subjects marked true, in order. A subject marked false (a new character with no reference yet) is drawn from her description alone — do not tell the model to follow an image for her.
 
 ## Dependencies in workflow.Args
 
